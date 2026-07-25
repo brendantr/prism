@@ -1,0 +1,127 @@
+import { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { Card, LinearSpectrum, Screen, SectionHeader, StatBlock, Text } from '@/components/ui';
+import { PhasePanel } from '@/components/ui/PhasePanel';
+import { e1rmSeries } from '@/domain/calc/prs';
+import { volumeInWindow } from '@/domain/calc/readiness';
+import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
+import { useShallow } from 'zustand/react/shallow';
+import { formatVolume } from '@/utils/format';
+import { color, space } from '@/theme';
+
+/**
+ * PROGRESS (Phase 2)
+ *
+ * Phase 1 ships the numbers that the calculation engine already produces, so
+ * this tab is useful today rather than empty. The full charting surface --
+ * interactive e1RM/volume charts, PR history and per-exercise detail -- lands
+ * in Phase 2 on top of the same `e1rmSeries` / `volumeByDay` selectors.
+ */
+export default function ProgressScreen() {
+  const history = useTrainingStore(useShallow(selectCompletedWorkouts));
+  const profile = useTrainingStore((s) => s.profile);
+  const exerciseById = useTrainingStore((s) => s.exerciseById);
+
+  const now = useMemo(() => new Date(), []);
+
+  const headline = useMemo(() => {
+    if (!profile) return null;
+    const week = volumeInWindow(history, now, 7);
+    const fourWeek = volumeInWindow(history, now, 28);
+    return { week, weeklyAverage: fourWeek / 4, sessions: history.length };
+  }, [history, profile, now]);
+
+  const keyLifts = useMemo(() => {
+    const ids = ['ex_back_squat', 'ex_bench_press', 'ex_deadlift', 'ex_pullup'];
+    return ids
+      .map((id) => {
+        const series = e1rmSeries(history, id);
+        if (series.length < 2) return null;
+        const first = series[0];
+        const last = series[series.length - 1];
+        return {
+          id,
+          name: exerciseById.get(id)?.name ?? id,
+          current: last.e1rm,
+          change: (last.e1rm - first.e1rm) / first.e1rm,
+          points: series,
+        };
+      })
+      .filter((v): v is NonNullable<typeof v> => v != null);
+  }, [history, exerciseById]);
+
+  if (!profile || !headline) return <Screen title="Progress" />;
+
+  const peak = Math.max(...keyLifts.map((l) => Math.abs(l.change)), 0.01);
+
+  return (
+    <Screen eyebrow="Every angle" title="Progress">
+      <Card variant="raised" padding="xl" spectral style={styles.gutter}>
+        <View style={styles.statRow}>
+          <StatBlock
+            label="Last 7 days"
+            value={formatVolume(headline.week, profile.unit)}
+            unit={profile.unit}
+            tone="violet"
+          />
+          <StatBlock
+            label="4-week avg"
+            value={formatVolume(headline.weeklyAverage, profile.unit)}
+            unit={`${profile.unit}/wk`}
+          />
+          <StatBlock label="Sessions" value={String(headline.sessions)} />
+        </View>
+      </Card>
+
+      <SectionHeader title="Key lifts" eyebrow="Estimated 1RM, 8 weeks" />
+      <Card style={styles.gutter} padding="lg">
+        {keyLifts.map((lift, i) => (
+          <View key={lift.id} style={[styles.liftRow, i > 0 && styles.divided]}>
+            <View style={styles.liftHead}>
+              <Text variant="title3" numberOfLines={1} style={styles.liftName}>
+                {lift.name}
+              </Text>
+              <Text variant="numeric" tone="violet">
+                {formatVolume(lift.current, profile.unit)}
+                <Text variant="eyebrow" tone="faint">{` ${profile.unit}`}</Text>
+              </Text>
+            </View>
+            <View style={styles.track}>
+              <LinearSpectrum height={5} progress={Math.abs(lift.change) / peak} rounded />
+            </View>
+            <Text variant="bodySm" tone={lift.change >= 0 ? 'positive' : 'coral'}>
+              {`${lift.change >= 0 ? '+' : '−'}${Math.abs(lift.change * 100).toFixed(1)}% over ${lift.points.length} sessions`}
+            </Text>
+          </View>
+        ))}
+      </Card>
+
+      <SectionHeader title="Coming next" eyebrow="Roadmap" />
+      <PhasePanel
+        phase={2}
+        summary="Interactive charts on top of the series this screen already computes."
+        deliverables={[
+          'Estimated 1RM chart with a selectable time window and trend line',
+          'Weekly volume chart split by muscle region',
+          'Full PR history, filterable by lift and record type',
+          'Exercise detail: every set ever logged, best sets, rep-range breakdown',
+        ]}
+        readyNow={[
+          'e1rmSeries() and volumeByDay() selectors, unit-tested',
+          'Epley 1RM with a rep cap so long sets cannot fake a record',
+          'PR detection for both estimated 1RM and heaviest completed weight',
+        ]}
+      />
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  gutter: { marginHorizontal: space.lg },
+  statRow: { flexDirection: 'row', gap: space.md },
+  liftRow: { paddingVertical: space.md, gap: space.sm },
+  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  liftHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.sm },
+  liftName: { flex: 1 },
+  track: { height: 5, backgroundColor: color.inset, borderRadius: 3, overflow: 'hidden' },
+});
