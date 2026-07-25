@@ -6,19 +6,13 @@
     "scheme": "prism",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "backgroundColor": "#07070B",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#07070B"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.prism.trainer"
     },
     "android": {
       "package": "app.prism.trainer",
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "backgroundColor": "#07070B"
       }
@@ -27,7 +21,17 @@
       "bundler": "metro",
       "output": "single"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#07070B",
+          "imageWidth": 180
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }
