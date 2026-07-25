@@ -22,7 +22,6 @@
       "output": "single"
     },
     "plugins": [
-      "expo-router",
       [
         "expo-splash-screen",
         {
