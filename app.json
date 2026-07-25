@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "PRism",
+    "slug": "prism",
+    "version": "0.1.0",
+    "scheme": "prism",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "backgroundColor": "#07070B",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#07070B"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.prism.trainer"
+    },
+    "android": {
+      "package": "app.prism.trainer",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#07070B"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
