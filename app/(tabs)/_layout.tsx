@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View, type ColorValue } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { color, space, type } from '@/theme';
 
@@ -70,7 +70,9 @@ function TabIcon({
   focused,
 }: {
   name: keyof typeof Ionicons.glyphMap;
-  c: string;
+  // React Navigation hands the tab tint through as ColorValue, which covers
+  // platform-opaque colours as well as plain strings.
+  c: ColorValue;
   focused: boolean;
 }) {
   return (

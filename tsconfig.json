@@ -5,10 +5,15 @@
     "noUncheckedIndexedAccess": false,
     "noImplicitOverride": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
+    // No "baseUrl": it is deprecated as of TypeScript 5.9 and removed in 7.0.
+    // Without it, "paths" resolves relative to this file, which is what we want.
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@/*": ["./src/*"]
+    },
+    // TypeScript 6 stopped auto-including node_modules/@types under Expo's
+    // "bundler" module resolution, which left every `describe`/`it`/`expect`
+    // in the test suite unresolved. Naming them explicitly restores that.
+    "types": ["jest", "node"]
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
   "exclude": ["node_modules"]
