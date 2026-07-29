@@ -26,6 +26,11 @@ type StepKey = (typeof STEP_KEYS)[number];
  * question backwards, then out of the flow. Four routes would let the stack and
  * the progress bar disagree after a gesture-driven back.
  *
+ * Every question is skippable. Skipping advances without recording an answer --
+ * it does not write a default. A middling stand-in would be indistinguishable
+ * from a real choice later, which is the same mistake the check-in scales
+ * deliberately avoid.
+ *
  * Answers are recorded in `onboardingStore` and deliberately not applied to the
  * profile in this sprint; see that store for why.
  */
@@ -60,7 +65,13 @@ export default function StepsScreen() {
 
   return (
     <View style={styles.canvas}>
-      <ProgressHeader step={index + 1} totalSteps={STEP_KEYS.length} onBack={back} />
+      <ProgressHeader
+        step={index + 1}
+        totalSteps={STEP_KEYS.length}
+        onBack={back}
+        onSkip={next}
+        skipLabel={STEPS.skipLabel}
+      />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: space.xxl }]}

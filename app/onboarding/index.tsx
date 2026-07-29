@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, LinearSpectrum, Text } from '@/components/ui';
+import { Button, FadeIn, LinearSpectrum, Text } from '@/components/ui';
 import { WELCOME } from '@/content/onboarding';
 import { color, space } from '@/theme';
 
@@ -20,7 +20,7 @@ export default function WelcomeScreen() {
 
   return (
     <View style={[styles.canvas, { paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.xl }]}>
-      <View style={styles.body}>
+      <FadeIn style={styles.body}>
         <Text variant="eyebrow" tone="violet">
           {WELCOME.eyebrow}
         </Text>
@@ -31,9 +31,9 @@ export default function WelcomeScreen() {
         <Text variant="body" tone="secondary" style={styles.copy}>
           {WELCOME.body}
         </Text>
-      </View>
+      </FadeIn>
 
-      <View style={styles.actions}>
+      <FadeIn delay={180} style={styles.actions}>
         <Button
           label={WELCOME.primaryCta}
           fullWidth
@@ -47,7 +47,7 @@ export default function WelcomeScreen() {
           onPress={() => router.push('/onboarding/auth?mode=signin')}
           style={styles.secondary}
         />
-      </View>
+      </FadeIn>
     </View>
   );
 }

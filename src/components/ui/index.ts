@@ -8,6 +8,7 @@ export * from './SegmentedControl';
 export * from './SearchField';
 export * from './ListRow';
 export * from './EmptyState';
+export * from './FadeIn';
 export * from './StatBlock';
 export * from './ReadinessRing';
 export * from './ConsistencyStrip';

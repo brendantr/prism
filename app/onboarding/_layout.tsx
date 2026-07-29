@@ -7,7 +7,11 @@ import { color } from '@/theme';
  * that returns you to a half-filled form.
  *
  * Every screen here can be backed out of except the first, which has nowhere
- * to go.
+ * to go, and the last, which has already written the completion flag.
+ *
+ * The setup screens slide, because they are steps in a sequence. The completion
+ * screen fades: it is an arrival, not another step, and a horizontal push would
+ * imply there is more of the form behind it.
  */
 export default function OnboardingLayout() {
   return (
@@ -22,7 +26,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="features" />
       <Stack.Screen name="auth" />
       <Stack.Screen name="steps" />
-      <Stack.Screen name="complete" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="complete" options={{ gestureEnabled: false, animation: 'fade' }} />
     </Stack>
   );
 }
