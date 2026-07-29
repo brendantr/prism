@@ -1,6 +1,7 @@
 # Sprint: ui-ux-expansion
 
-- **Status:** Implemented, pending review. Simulator/device rendering not done — see Validation.
+- **Status:** Implemented and rendered on a simulator, pending review. No tap input was exercised —
+  see "Still not verified" under Validation.
 - **Date:** 2026-07-29
 - **Branch:** `ui-ux-foundation` (continues the branch; see "Why the same branch")
 - **Type:** UI/UX expansion. Frontend only. No schema, migration, RLS, repository,
@@ -203,7 +204,7 @@ Reviewable at the branch level. A criterion is met only with evidence.
 
 ## What shipped
 
-Nine commits on `ui-ux-foundation`, after `791d19a`:
+Twelve commits on `ui-ux-foundation`, after `791d19a`:
 
 | Commit | Group | Surface |
 | --- | --- | --- |
@@ -216,6 +217,9 @@ Nine commits on `ui-ux-foundation`, after `791d19a`:
 | `0fb665d` | 8 | Five-destination tab bar; Progress and Body hidden with a back affordance |
 | `4ecd400` | 7 | Skippable setup steps, choices summary, `FadeIn` |
 | `9b4a767` | — | Touch-target fix found by the S-19 audit |
+| `3bde4c0` | — | This record's first validation write-up |
+| `f31f56f` | — | Social placeholder feed cut (owner decision) |
+| `d59f8f1` | — | Two layout fixes found by rendering on a simulator |
 
 ### Deviations from the planned sequence
 
@@ -237,6 +241,11 @@ Recorded rather than quietly absorbed:
    one caller.
 5. **S-12 was corrected mid-sprint** because the criterion as written described the code incorrectly.
    See the criterion for the full note.
+6. **The Social placeholder feed was cut after the sprint was first reported done** (`f31f56f`),
+   resolving what had been logged as follow-up 6. See "Design decisions".
+7. **Two layout fixes landed after simulator rendering** (`d59f8f1`), and one of them touches a
+   pre-existing defect on Progress. Neither was in the planned scope; both were defects in this
+   sprint's own output that only a rendered screen could expose. See "Validation".
 
 ## Design decisions
 
@@ -250,9 +259,13 @@ Recorded rather than quietly absorbed:
 - **Grouping is a segmented control, filters are chips.** Grouping is one-of-N and changes the
   list's shape; filtering is many-of-N and changes its contents. Giving them the same control would
   make them look interchangeable.
-- **Sample social content is labelled twice** — once at the section level and once per item. One
-  label is a caption someone scrolls past; the pattern PRism already rejected in `PhasePanel` is
-  content that *looks* real, and a label only prevents that if it travels with the item.
+- **Social shows no invented activity at all.** A first draft carried a placeholder feed with
+  self-describing placeholder identities, labelled at the section level and again per row. It was cut
+  (owner decision, 2026-07-29, commit `f31f56f`): needing three disclaimers to make rows honest was
+  the argument that the rows were the problem, and this is the position PRism already took in
+  `PhasePanel`. What remains is the "nothing here is live" notice, the three intent rows, and a
+  shareable-card layout preview built from a record the lifter actually set and marked "Not posted" —
+  so the only data on the screen is their own.
 - **The window selector states its period in the copy**, not just in the control. A number read
   aloud by a screen reader, or glanced at after the control has scrolled away, has to carry its own
   period.
@@ -283,17 +296,71 @@ the 44pt floor. All other new interactive elements meet it — `ListRow` at 56pt
 at 108pt, `SearchField`'s clear control at 32pt plus 10pt `hitSlop`, and every `Button` at `size="sm"`
 or larger.
 
-**Not verified, and not claimed:**
+### Rendered verification (2026-07-29, iPhone 17 Pro simulator, iOS 26.4)
 
-- **No screen was rendered in a simulator or on a device.** No component-test framework exists —
-  deliberately, per the readiness sprint's Decision 6 — so layout correctness at iPhone sizes,
-  scroll behaviour on the restructured screens, and the appearance of the five-item tab bar are
-  unverified.
-- **The `href: null` navigation assumption** stated in the IA section above is unverified at runtime.
-  The bundle builds and the option is typed, but "a hidden bar item is still navigable and
-  `router.back()` returns to the previous destination" has not been observed. The
-  `canGoBack()` fallback means a failure degrades to a button that lands on Insights.
-- **The reduce-motion path in `FadeIn`** has not been exercised with the setting enabled.
+The screens **were** rendered, which the first version of this section said had not happened. Setup:
+a debug build of the existing `ios/` project installed on a freshly created simulator; navigation
+driven by `xcrun simctl openurl` deep links against the `prism` scheme; every screenshot taken with
+`xcrun simctl io … screenshot`, which reads the device framebuffer directly.
+
+**Simulator launch, fixed.** `expo run:ios` built and installed cleanly and then failed at the launch
+step. Three causes, in order:
+
+1. `expo run:ios` opens a dev-client deep link pointing at the LAN address of a Metro server. A Metro
+   instance was already bound to port 8081 from an earlier session, so the CLI's own server never
+   started and `simctl openurl` timed out — `NSPOSIXErrorDomain code 60`, not the reported 115.
+2. The device had been booted with `simctl boot` without waiting on `simctl bootstatus`, so
+   SpringBoard was still initialising. Its app icons were rendering as grey placeholders.
+3. `CoreSimulatorService` itself was wedged: after a full boot, both `simctl launch` and
+   `simctl openurl` still hung indefinitely on a freshly created device.
+
+The sequence that works, and was used for everything below: `killall -9
+com.apple.CoreSimulator.CoreSimulatorService` → boot → **`simctl bootstatus` and wait** → `simctl
+install` → `simctl launch`. Launch then returned a PID immediately.
+
+**What was observed:**
+
+| Check | Result |
+| --- | --- |
+| S-1 tab bar | Exactly five items, in order — Today, Exercises, Insights, Social, Plans — each with a glyph *and* an uppercase label, the active one violet with the cyan dot. Progress and Body absent. |
+| S-2 `href: null` | Deep-linking to `/progress` and `/body` renders both screens **with no tab highlighted**, because neither has a bar item. Both draw the `Screen` back chevron at the top left. |
+| S-4 Today hierarchy | The first screenful is `TodayHero` (readiness 75 · Good, sessions 2/4, volume 43.4k kg ↑81%, "Lower — Hinge · 5 lifts · ~39m") immediately followed by the session card with the only filled button. No section rule between them. |
+| S-7 Exercises | Search, `MUSCLE / KIT / A–Z` segmented control, both chip rows, "43 exercises", `FAVOURITES 4` and `CHEST 6` section headers with counts, rows with cue chevron and violet star. |
+| S-11 Insights | `7 DAYS / 4 WEEKS / 12 WEEKS` with 4 weeks selected; the period restated in prose as "LAST 4 WEEKS" on the card, the section eyebrow, and the highlight sentence ("Volume up 6% on the 4 weeks before"). |
+| S-13 Social | Notice, three intent rows, and the record card — `ESTIMATED 1RM`, `NOT POSTED` chip, `101 kg`, `Barbell Row`, `9 reps · Yesterday`. No placeholder feed, confirming `f31f56f`. |
+| S-19 44pt target | **Measured**, not eyeballed. In the 3× framebuffer the selected segment spans rows 481–612 = 132px = **exactly 44.0pt**; the track spans 474–619 = 146px = 48.67pt (48pt plus two hairline borders), with the 2pt padding measuring exactly 6px per side. Commit `9b4a767` is confirmed in the rendered build. |
+| `FadeIn` reduce-motion | With `com.apple.Accessibility ReduceMotionEnabled` set true and the app relaunched, the welcome screen renders fully — content at full opacity, no stuck-invisible state, which is the failure mode the `progress.setValue(1)` branch could have introduced. The app process independently confirmed it read the setting, via a Reanimated reduced-motion notice in the JS log that appears only when it is on. |
+
+**Two defects found and fixed** (`d59f8f1`) — both invisible to typecheck and to `expo export`:
+
+- **Exercises:** the two filter chip rows were vertically clipped. A horizontal `ScrollView` in a
+  column flex parent competes with the list below it for vertical space and loses.
+- **`StatBlock`:** a long value wrapped — "143.7k" broke after "143.7" in the Insights three-column
+  summary. The value now scales rather than wraps, and the unit holds its width. The same change
+  fixes a **pre-existing** clip on Progress, where "35.9k kg/wk" rendered as "35.9k kg/w"; fixed in
+  the shared primitive with `progress.tsx` untouched.
+
+Both were re-rendered after the fix and confirmed: chip rows fully visible, "143.7k kg" and
+"35.9k kg/wk" each complete on one line.
+
+**Still not verified, and not claimed:**
+
+- **No tap was ever delivered.** Navigation was driven entirely by deep links. Tapping the back
+  chevron, the tab bar items, a segment, a filter chip, a row expansion, the "log this lift" action,
+  and the onboarding Skip control are all **unexercised**. Coordinate clicking through the Simulator
+  window was attempted and abandoned: the machine had other applications in front of the simulator,
+  including a modal dialog, and a misdirected click would have acted on them. A UI-driving tool
+  (`idb`, or an XCUITest target) is the right way to close this and is not installed.
+- **The `href: null` back affordance renders and is reachable; its `onPress` was not tapped.** The
+  `canGoBack()` fallback is therefore still unproven at runtime.
+- **Onboarding's skip path and choices summary were not seen.** Reaching the tab shell required
+  marking onboarding complete, and with no tap available that was done by writing the
+  `prism.onboarding.v1` key into the app container's AsyncStorage manifest — a local test fixture
+  mirroring exactly what `onboardingStore.persist()` writes. The steps screen and the completion
+  summary were consequently never rendered.
+- **One device, one size, default text size.** iPhone 17 Pro at 402×874pt only. The narrow-device
+  case (iPhone SE) and large accessibility text sizes remain unchecked, and the tab bar's five 9.5pt
+  labels are exactly what that check was for.
 - **Nothing about originality is independently audited.** As `Docs/architecture.md` already notes,
   the originality position is stated, not verified. This sprint added the R-001 exclusion list and
   the reasoning behind each decision; it did not run a comparison against any product.
@@ -306,11 +373,23 @@ or larger.
 3. Per-exercise detail screen — history, best sets, rep-range breakdown — once Progress grows its
    per-exercise view (R-001 open question 3).
 4. Carry forward the predecessor sprint's four follow-ups; none is addressed here.
-5. Render the restructured screens on a device and record the result, closing the gap this sprint's
-   validation section leaves open. Specifically: the five-item bar at 9.5pt labels on the narrowest
-   supported device, the `href: null` navigation assumption, `FadeIn` with reduce-motion enabled, and
-   the Exercises section list at large accessibility text sizes.
-6. Decide whether the Social tab's placeholder feed earns its place, or whether the shell should be
-   the notice, the intent rows, and the real-data card preview alone. It is the one piece of this
-   sprint that shows content resembling activity that never happened, and it is labelled three ways
-   because of it.
+5. ~~Render the restructured screens on a device.~~ **Done, partially** — see "Rendered verification".
+   What remains of it: the five-item bar on the narrowest supported device, the Exercises section list
+   at large accessibility text sizes, and a real device rather than a simulator.
+6. ~~Decide whether the Social placeholder feed earns its place.~~ **Resolved** — cut in `f31f56f`.
+7. **Install a UI-driving tool and re-verify with taps.** Everything behind a tap is still unexercised:
+   the two back affordances and their `canGoBack()` fallback, tab-bar switching, segment and chip
+   selection, row expansion, "log this lift", and onboarding's Skip and choices summary. Either `idb`
+   or an XCUITest target would do it; coordinate clicking through the Simulator window is not an
+   acceptable substitute, for the reason recorded in Validation.
+8. **Decide on the sprint-document naming collision.** Every other record in `Docs/sprints/` is named
+   for the branch it ran on, and this one is not: the file is `2026-07-29-ui-ux-expansion.md` but the
+   branch is `ui-ux-foundation`, so the name implies a `ui-ux-expansion` branch that has never
+   existed. It also shares a date prefix with `2026-07-29-ui-ux-foundation.md`. Both records are
+   accurate and cross-linked, and the "Why the same branch" section states the relationship, so this
+   is a convention drift rather than a factual error. Options: rename this file to
+   `2026-07-29-ui-ux-foundation-expansion.md` to restore the branch-name convention, keep it as-is and
+   document that a sprint record is named for the sprint rather than the branch, or open a
+   `ui-ux-expansion` branch retroactively (not recommended — the commits are already on
+   `ui-ux-foundation`). No naming rule is written down anywhere today; whichever is chosen belongs in
+   `Docs/agents.md`.
