@@ -5,6 +5,7 @@ import type {
   MuscleGroup,
   MuscleRecovery,
   Profile,
+  ReadinessBand,
   ReadinessFactor,
   ReadinessResult,
   Workout,
@@ -25,6 +26,11 @@ import type {
  *   CONSISTENCY 10%  Sessions completed this week against the user's own target.
  *
  * Like the recovery estimate, this is a heuristic. It is labelled as one.
+ *
+ * A factor with no usable input is EXCLUDED, not scored. It never contributes a
+ * neutral stand-in value: the remaining weights are re-normalised around it. If
+ * both the training-load and check-in signals are missing, no score is produced
+ * at all -- see `computeReadiness`.
  */
 
 export const READINESS_WEIGHTS = {
@@ -53,32 +59,72 @@ export interface ReadinessInput {
 
 export function computeReadiness(input: ReadinessInput): ReadinessResult {
   const now = input.now ?? new Date();
-  const factors: ReadinessFactor[] = [
+  const evaluated: ReadinessFactor[] = [
     recoveryFactor(input),
     workloadFactor(input.workouts, now),
     wellbeingFactor(input.latestCheckIn, now),
     consistencyFactor(input.profile, input.workouts, now),
   ];
 
+  const missingKey = (key: ReadinessFactor['key']) =>
+    evaluated.some((f) => f.key === key && !f.sufficient);
+
+  const sufficientWeight = evaluated
+    .filter((f) => f.sufficient)
+    .reduce((sum, f) => sum + f.weight, 0);
+
+  /*
+   * The one case we refuse to put a number on. Recovery and consistency alone
+   * describe what the body has absorbed and what the calendar says -- neither
+   * knows how the lifter has actually trained lately or how they feel today.
+   * Publishing a score off those two would be the neutral-default problem in a
+   * new costume, so we say we do not know instead.
+   */
+  const insufficient = (missingKey('workload') && missingKey('wellbeing')) || sufficientWeight <= 0;
+
+  const factors: ReadinessFactor[] = evaluated.map((f) => ({
+    ...f,
+    weight: insufficient || !f.sufficient ? 0 : f.weight / sufficientWeight,
+  }));
+
+  if (insufficient) {
+    return { score: null, band: null, factors, confidence: 'insufficient' };
+  }
+
   const weighted = factors.reduce((sum, f) => sum + f.score * f.weight, 0);
   const score = Math.round(clamp(weighted, 0, 1) * 100);
 
-  return { score, band: bandFor(score), factors };
+  return {
+    score,
+    band: bandFor(score),
+    factors,
+    confidence: factors.every((f) => f.sufficient) ? 'full' : 'partial',
+  };
 }
 
-export function bandFor(score: number): ReadinessResult['band'] {
+export function bandFor(score: number): ReadinessBand {
   if (score >= 85) return 'peak';
   if (score >= 68) return 'good';
   if (score >= 48) return 'moderate';
   return 'low';
 }
 
-export const BAND_COPY: Record<ReadinessResult['band'], { title: string; guidance: string }> = {
+export const BAND_COPY: Record<ReadinessBand, { title: string; guidance: string }> = {
   peak: { title: 'Peak', guidance: 'Green light for top sets. Chase the load.' },
   good: { title: 'Good', guidance: 'Train as planned. Push the last set if it moves well.' },
   moderate: { title: 'Moderate', guidance: 'Hit your work, cap RPE around 8, skip the grinders.' },
   low: { title: 'Low', guidance: 'Trim a set or two and keep the bar speed honest.' },
 };
+
+/** Copy for the states where readiness is partial or cannot be scored at all. */
+export const INSUFFICIENT_COPY = {
+  title: 'Not enough recent input',
+  body: "Add a check-in and keep logging sessions to make today's guidance more useful.",
+  /** Shown alongside a score that was computed from fewer than all four factors. */
+  partial: 'Based on available inputs',
+  /** Marks a single factor that was excluded from the composite. */
+  factorExcluded: 'Not counted',
+} as const;
 
 // --- Individual factors ----------------------------------------------------
 
@@ -97,7 +143,14 @@ function recoveryFactor({ recovery, targetMuscles }: ReadinessInput): ReadinessF
         ? 'Everything today’s session targets is estimated recovered.'
         : 'Whole-body recovery estimate looks clear.';
 
-  return { key: 'recovery', label: 'Muscle recovery', score: clamp(score, 0, 1), weight: READINESS_WEIGHTS.recovery, detail };
+  return {
+    key: 'recovery',
+    label: 'Muscle recovery',
+    score: clamp(score, 0, 1),
+    weight: READINESS_WEIGHTS.recovery,
+    detail,
+    sufficient: true,
+  };
 }
 
 /**
@@ -111,12 +164,14 @@ function workloadFactor(workouts: Workout[], now: Date): ReadinessFactor {
   const chronicWeekly = chronicTotal / 4;
 
   if (chronicWeekly < 1) {
+    // No usable trend. Excluded rather than scored -- see `computeReadiness`.
     return {
       key: 'workload',
       label: 'Training load',
-      score: 0.7,
+      score: 0,
       weight: READINESS_WEIGHTS.workload,
       detail: 'Not enough history yet to judge your load trend.',
+      sufficient: false,
     };
   }
 
@@ -138,53 +193,99 @@ function workloadFactor(workouts: Workout[], now: Date): ReadinessFactor {
     detail = `A sharp spike — ${pct(ratio)} of your 4-week average. Consider backing off.`;
   }
 
-  return { key: 'workload', label: 'Training load', score, weight: READINESS_WEIGHTS.workload, detail };
+  return {
+    key: 'workload',
+    label: 'Training load',
+    score,
+    weight: READINESS_WEIGHTS.workload,
+    detail,
+    sufficient: true,
+  };
 }
 
 /**
+ * The four check-in fields, each with the share of the wellbeing score it
+ * carries. Sleep and energy are "higher is better"; soreness and stress are
+ * inverted.
+ *
+ * These shares are the original `positives * 0.65 + (1 - negatives) * 0.35`
+ * formula written out per field: with all four answered they reproduce it
+ * exactly. Written this way, an unanswered field can simply drop out and the
+ * rest re-normalise, instead of being filled in with a value the lifter never
+ * gave us.
+ */
+const WELLBEING_FIELDS = [
+  { field: 'sleepQuality', name: 'sleep', label: 'Sleep quality', share: 0.325, inverted: false },
+  { field: 'energy', name: 'energy', label: 'Energy', share: 0.325, inverted: false },
+  { field: 'soreness', name: 'soreness', label: 'Soreness', share: 0.175, inverted: true },
+  { field: 'stress', name: 'stress', label: 'Stress', share: 0.175, inverted: true },
+] as const;
+
+/**
  * Latest check-in, but only if it is recent. A three-day-old "slept great"
- * tells us nothing about this morning, so stale check-ins decay to neutral.
+ * tells us nothing about this morning, so a stale check-in is not counted --
+ * which the copy has always said, and now the arithmetic agrees.
  */
 function wellbeingFactor(checkIn: CheckIn | null, now: Date): ReadinessFactor {
+  const base = {
+    key: 'wellbeing',
+    label: 'Check-in',
+    weight: READINESS_WEIGHTS.wellbeing,
+  } as const;
+  const allFields = WELLBEING_FIELDS.map((f) => f.label);
+
   if (!checkIn) {
     return {
-      key: 'wellbeing',
-      label: 'Check-in',
-      score: 0.7,
-      weight: READINESS_WEIGHTS.wellbeing,
+      ...base,
+      score: 0,
       detail: 'No check-in logged. Add one for a sharper score.',
+      sufficient: false,
+      missing: allFields,
     };
   }
 
   const hoursOld = (now.getTime() - new Date(checkIn.checkedInAt).getTime()) / HOUR;
   if (hoursOld > 36) {
     return {
-      key: 'wellbeing',
-      label: 'Check-in',
-      score: 0.7,
-      weight: READINESS_WEIGHTS.wellbeing,
+      ...base,
+      score: 0,
       detail: `Your last check-in is ${Math.round(hoursOld / 24)} days old — not counting it.`,
+      sufficient: false,
+      missing: allFields,
     };
   }
 
-  // sleep + energy are "higher is better"; soreness + stress are inverted.
-  const positives = (norm(checkIn.sleepQuality) + norm(checkIn.energy)) / 2;
-  const negatives = (norm(checkIn.soreness) + norm(checkIn.stress)) / 2;
-  const score = clamp(positives * 0.65 + (1 - negatives) * 0.35, 0, 1);
+  const answered = WELLBEING_FIELDS.filter((f) => checkIn[f.field] != null).map((f) => ({
+    name: f.name,
+    share: f.share,
+    // Non-null by the filter above.
+    v: f.inverted ? 1 - norm(checkIn[f.field] as number) : norm(checkIn[f.field] as number),
+  }));
+  const missing = WELLBEING_FIELDS.filter((f) => checkIn[f.field] == null).map((f) => f.label);
 
-  const weakest = [
-    { name: 'sleep', v: norm(checkIn.sleepQuality) },
-    { name: 'energy', v: norm(checkIn.energy) },
-    { name: 'soreness', v: 1 - norm(checkIn.soreness) },
-    { name: 'stress', v: 1 - norm(checkIn.stress) },
-  ].sort((a, b) => a.v - b.v)[0];
+  if (answered.length === 0) {
+    return {
+      ...base,
+      score: 0,
+      detail: 'No check-in logged. Add one for a sharper score.',
+      sufficient: false,
+      missing,
+    };
+  }
+
+  const totalShare = answered.reduce((sum, f) => sum + f.share, 0);
+  const score = clamp(answered.reduce((sum, f) => sum + f.v * f.share, 0) / totalShare, 0, 1);
+
+  const weakest = [...answered].sort((a, b) => a.v - b.v)[0];
 
   const detail =
     score >= 0.75
       ? 'This morning’s check-in came back strong.'
       : `Check-in flags ${weakest.name} as the limiter today.`;
 
-  return { key: 'wellbeing', label: 'Check-in', score, weight: READINESS_WEIGHTS.wellbeing, detail };
+  return missing.length > 0
+    ? { ...base, score, detail, sufficient: true, missing }
+    : { ...base, score, detail, sufficient: true };
 }
 
 function consistencyFactor(profile: Profile, workouts: Workout[], now: Date): ReadinessFactor {
@@ -198,7 +299,14 @@ function consistencyFactor(profile: Profile, workouts: Workout[], now: Date): Re
       ? `All ${target} planned sessions are in. Anything now is a bonus.`
       : `${done} of ${target} sessions done — ${remaining} to go this week.`;
 
-  return { key: 'consistency', label: 'Consistency', score, weight: READINESS_WEIGHTS.consistency, detail };
+  return {
+    key: 'consistency',
+    label: 'Consistency',
+    score,
+    weight: READINESS_WEIGHTS.consistency,
+    detail,
+    sufficient: true,
+  };
 }
 
 // --- Helpers ---------------------------------------------------------------

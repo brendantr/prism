@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, Card, Chip, Screen, SectionHeader, Text } from '@/components/ui';
+import { CheckInPrompt } from '@/components/today/CheckInPrompt';
 import { ReadinessCard } from '@/components/today/ReadinessCard';
 import { SessionCard } from '@/components/today/SessionCard';
 import { WeekCard } from '@/components/today/WeekCard';
@@ -19,6 +20,7 @@ import { MUSCLE_META } from '@/domain/muscles';
 import {
   selectCompletedWorkouts,
   selectLatestCheckIn,
+  selectTodaysCheckIn,
   useTrainingStore,
 } from '@/store/trainingStore';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
@@ -45,6 +47,7 @@ export default function TodayScreen() {
   const personalRecords = useTrainingStore((s) => s.personalRecords);
   const completed = useTrainingStore(useShallow(selectCompletedWorkouts));
   const latestCheckIn = useTrainingStore(selectLatestCheckIn);
+  const todaysCheckIn = useTrainingStore(selectTodaysCheckIn);
 
   const activeWorkout = useActiveWorkoutStore((s) => s.workout);
   const startWorkout = useActiveWorkoutStore((s) => s.start);
@@ -167,6 +170,7 @@ export default function TodayScreen() {
       ) : null}
 
       {readiness ? <ReadinessCard readiness={readiness} /> : null}
+      <CheckInPrompt profileId={profile.id} checkIn={todaysCheckIn} />
 
       <SectionHeader title="Today's session" eyebrow="Scheduled" />
       {today ? (

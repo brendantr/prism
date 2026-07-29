@@ -167,13 +167,37 @@ export interface CheckIn {
   id: string;
   profileId: string;
   checkedInAt: string;
-  /** 1-5 scales, self-reported each morning. Feed the readiness estimate. */
-  sleepQuality: number;
-  energy: number;
-  soreness: number;
-  stress: number;
+  /**
+   * 1-5 scales, self-reported each morning. Feed the readiness estimate.
+   *
+   * Every field is answered independently: `null` means the user has not
+   * provided it. A null is never defaulted to a neutral or zero value -- not
+   * when stored, and not by any factor that reads it.
+   */
+  sleepQuality: number | null;
+  energy: number | null;
+  soreness: number | null;
+  stress: number | null;
   note: string | null;
 }
+
+/** Fields a check-in submission is allowed to leave out entirely. */
+type CheckInOptional = 'sleepQuality' | 'energy' | 'soreness' | 'stress' | 'note';
+
+/**
+ * A check-in submission, which may cover only part of the record.
+ *
+ * Three states have to stay distinguishable all the way down to storage:
+ *
+ *   property omitted           leave whatever is already stored alone
+ *   property present, 1-5      overwrite with that answer
+ *   property present, null     clear the stored answer
+ *
+ * The third is why this type exists. Collapsing null into "absent" would make
+ * an erased answer come back on the next read.
+ */
+export type CheckInPatch = Omit<CheckIn, CheckInOptional> &
+  Partial<Pick<CheckIn, CheckInOptional>>;
 
 export interface PersonalRecord {
   id: string;
@@ -210,21 +234,43 @@ export interface MuscleRecovery {
   status: 'fresh' | 'ready' | 'moderate' | 'fatigued' | 'depleted';
 }
 
+export type ReadinessBand = 'low' | 'moderate' | 'good' | 'peak';
+
 export interface ReadinessFactor {
   key: 'recovery' | 'workload' | 'wellbeing' | 'consistency';
   label: string;
-  /** 0-1 contribution before weighting. */
+  /** 0-1 contribution before weighting. Not meaningful when `sufficient` is false. */
   score: number;
+  /**
+   * The weight actually applied on this evaluation: 0 when `sufficient` is
+   * false, otherwise the base weight re-normalised across the factors that do
+   * have data. `READINESS_WEIGHTS` itself never changes.
+   */
   weight: number;
   /** Plain-language explanation shown in the "why" sheet. */
   detail: string;
+  /** false = no usable input; the factor was excluded from the composite. */
+  sufficient: boolean;
+  /** Inputs the user has not provided, when some or all are missing. */
+  missing?: string[];
 }
 
 export interface ReadinessResult {
-  /** 0-100. Explicitly an estimate; the UI must label it as one. */
-  score: number;
-  band: 'low' | 'moderate' | 'good' | 'peak';
+  /**
+   * 0-100. Explicitly an estimate; the UI must label it as one.
+   *
+   * Null when there is too little input to publish a number honestly. A null
+   * score is not a zero score, and must never be rendered as one.
+   */
+  score: number | null;
+  band: ReadinessBand | null;
   factors: ReadinessFactor[];
+  /**
+   * `full`         every factor had usable input.
+   * `partial`      at least one factor was excluded; weights re-normalised.
+   * `insufficient` too little input to publish a score at all.
+   */
+  confidence: 'full' | 'partial' | 'insufficient';
 }
 
 export interface LoadSuggestion {

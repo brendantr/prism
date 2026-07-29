@@ -18,6 +18,7 @@ import {
 import type {
   BodyMeasurement,
   CheckIn,
+  CheckInPatch,
   Exercise,
   PersonalRecord,
   Profile,
@@ -49,7 +50,8 @@ export interface Repository {
   saveWorkout(workout: Workout): Promise<void>;
   deleteWorkout(id: string): Promise<void>;
   listCheckIns(): Promise<CheckIn[]>;
-  saveCheckIn(checkIn: CheckIn): Promise<void>;
+  /** Accepts a partial submission; see `CheckInPatch` for omit/clear semantics. */
+  saveCheckIn(patch: CheckInPatch): Promise<void>;
   listMeasurements(): Promise<BodyMeasurement[]>;
   listPersonalRecords(): Promise<PersonalRecord[]>;
   savePersonalRecords(records: PersonalRecord[]): Promise<void>;
@@ -149,9 +151,21 @@ class DemoRepository implements Repository {
     return [...byId.values()].sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
   }
 
-  async saveCheckIn(checkIn: CheckIn): Promise<void> {
+  /**
+   * One check-in per calendar day, built up a few taps at a time.
+   *
+   * A later submission on the same day merges into the existing record instead
+   * of adding a second one -- matching the `check_ins_one_per_day` unique index
+   * the Postgres schema already enforces, and keeping `selectLatestCheckIn`
+   * from picking a thin afternoon entry over a fuller morning one.
+   */
+  async saveCheckIn(patch: CheckInPatch): Promise<void> {
     await this.hydrate();
-    this.userCheckIns = [...this.userCheckIns.filter((c) => c.id !== checkIn.id), checkIn];
+    const today = (await this.listCheckIns()).find((c) =>
+      sameCalendarDay(c.checkedInAt, patch.checkedInAt),
+    );
+    const record = mergeCheckIn(today ? today : blankCheckIn(patch), patch);
+    this.userCheckIns = [...this.userCheckIns.filter((c) => c.id !== record.id), record];
     await AsyncStorage.setItem(STORAGE_KEYS.checkIns, JSON.stringify(this.userCheckIns));
   }
 
@@ -296,7 +310,8 @@ class SupabaseRepository implements Repository {
     return (data ?? []).map(toCheckIn);
   }
 
-  async saveCheckIn(checkIn: CheckIn): Promise<void> {
+  async saveCheckIn(checkIn: CheckInPatch): Promise<void> {
+    assertCompleteCheckIn(checkIn);
     const { error } = await getSupabase().from('check_ins').upsert({
       id: checkIn.id,
       profile_id: checkIn.profileId,
@@ -383,6 +398,80 @@ function toRoutine(row: any): Routine {
       }))
       .sort((a: any, b: any) => a.dayIndex - b.dayIndex),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Check-in helpers
+// ---------------------------------------------------------------------------
+
+/** The four self-reported scales, all independently optional. */
+const CHECK_IN_SCALES = ['sleepQuality', 'energy', 'soreness', 'stress'] as const;
+
+function sameCalendarDay(a: string, b: string): boolean {
+  const x = new Date(a);
+  const y = new Date(b);
+  return (
+    x.getFullYear() === y.getFullYear() &&
+    x.getMonth() === y.getMonth() &&
+    x.getDate() === y.getDate()
+  );
+}
+
+/**
+ * Patch semantics, keyed on whether the property is present at all:
+ *
+ *   omitted        keep the stored answer
+ *   1-5            overwrite the stored answer
+ *   null           clear the stored answer
+ *
+ * `in` is doing the real work here. `??` (or any other undefined/null fallback)
+ * would treat a deliberate clear as if the lifter had simply not answered, and
+ * the old value would reappear on the next read.
+ */
+function mergeCheckIn(existing: CheckIn, patch: CheckInPatch): CheckIn {
+  const merged: CheckIn = { ...existing, checkedInAt: patch.checkedInAt };
+
+  for (const field of CHECK_IN_SCALES) {
+    if (!(field in patch)) continue;
+    const value = patch[field];
+    merged[field] = value === undefined ? null : value;
+  }
+  if ('note' in patch) {
+    merged.note = patch.note === undefined ? null : patch.note;
+  }
+
+  return merged;
+}
+
+/** A record with nothing answered yet, for a day with no check-in so far. */
+function blankCheckIn(patch: CheckInPatch): CheckIn {
+  return {
+    id: patch.id,
+    profileId: patch.profileId,
+    checkedInAt: patch.checkedInAt,
+    sleepQuality: null,
+    energy: null,
+    soreness: null,
+    stress: null,
+    note: null,
+  };
+}
+
+/**
+ * `check_ins` still declares all four scales `not null` (0001_init.sql), and
+ * this sprint does not touch migrations. So a partial check-in cannot be stored
+ * against Postgres yet -- fail before the write rather than letting the driver
+ * surface a constraint violation from halfway through it.
+ */
+function assertCompleteCheckIn(patch: CheckInPatch): asserts patch is CheckIn {
+  // `== null` covers both an omitted field and an explicitly cleared one --
+  // Postgres rejects either, so both are refused here before any write.
+  const missing = CHECK_IN_SCALES.filter((field) => patch[field] == null);
+  if (missing.length > 0) {
+    throw new Error(
+      `Partial check-ins are not yet supported by the Supabase schema (missing: ${missing.join(', ')}).`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

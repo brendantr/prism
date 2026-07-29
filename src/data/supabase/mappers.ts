@@ -146,10 +146,10 @@ export function toCheckIn(row: any): CheckIn {
     id: row.id,
     profileId: row.profile_id,
     checkedInAt: row.checked_in_at,
-    sleepQuality: row.sleep_quality,
-    energy: row.energy,
-    soreness: row.soreness,
-    stress: row.stress,
+    sleepQuality: row.sleep_quality ?? null,
+    energy: row.energy ?? null,
+    soreness: row.soreness ?? null,
+    stress: row.stress ?? null,
     note: row.note ?? null,
   };
 }
