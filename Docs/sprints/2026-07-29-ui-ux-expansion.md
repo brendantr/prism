@@ -1,6 +1,6 @@
 # Sprint: ui-ux-expansion
 
-- **Status:** Planned — target and success criteria fixed before code
+- **Status:** Implemented, pending review. Simulator/device rendering not done — see Validation.
 - **Date:** 2026-07-29
 - **Branch:** `ui-ux-foundation` (continues the branch; see "Why the same branch")
 - **Type:** UI/UX expansion. Frontend only. No schema, migration, RLS, repository,
@@ -161,8 +161,15 @@ Reviewable at the branch level. A criterion is met only with evidence.
   the existing highlights.
 - **S-11.** The window selector changes the summary and the muscle breakdown, and the selected
   window is stated in the copy so a number is never ambiguous about its period.
-- **S-12.** The muscle breakdown states its target as the user's own weekly set target and makes no
-  health, risk, or injury claim.
+- **S-12.** The muscle breakdown states the basis of its target and makes no health, risk, or injury
+  claim.
+
+  > **Criterion corrected during implementation (2026-07-29).** As written before code, S-12 said
+  > "states its target as the user's own weekly set target." That was wrong about the code:
+  > `MUSCLE_META[m].weeklySetTarget` is a fixed per-muscle reference midpoint for an intermediate
+  > lifter, not a value the user sets. Meeting the criterion as originally worded would have required
+  > shipping false copy. The delivered copy names the target's actual basis and adds that it is a
+  > volume-planning reference, not a health threshold and not a figure that must be hit.
 
 ### Social
 
@@ -194,6 +201,43 @@ Reviewable at the branch level. A criterion is met only with evidence.
 - **S-22.** `git diff main...HEAD -- supabase/ src/data/ src/domain/calc/` is empty for this
   sprint's commits.
 
+## What shipped
+
+Nine commits on `ui-ux-foundation`, after `791d19a`:
+
+| Commit | Group | Surface |
+| --- | --- | --- |
+| `68dc882` | 1 | This record and research note R-001 |
+| `c4ffaeb` | 2 | `SegmentedControl`, `SearchField`, `ListRow`, `EmptyState`; `Screen.onBack`; picker adopts `SearchField` |
+| `5426146` | 3 | Today restructured; `TodayHero`, `QuickAccess`; `WeekCard` reports the four-week average |
+| `b7cc874` | 4 | `app/(tabs)/exercises.tsx` |
+| `5f0f135` | 5 | Insights layered; period selector, muscle balance, links into Progress and Body |
+| `0a66546` | 6 | `app/(tabs)/social.tsx`, `src/content/social.ts` |
+| `0fb665d` | 8 | Five-destination tab bar; Progress and Body hidden with a back affordance |
+| `4ecd400` | 7 | Skippable setup steps, choices summary, `FadeIn` |
+| `9b4a767` | — | Touch-target fix found by the S-19 audit |
+
+### Deviations from the planned sequence
+
+Recorded rather than quietly absorbed:
+
+1. **Each new screen registers its own tab in the same commit.** Planned group 8 was going to do all
+   tab-bar work at once, but expo-router auto-registers any file under `app/(tabs)/`, so a screen
+   committed without a `Tabs.Screen` entry would have shown up as an unlabelled lowercase route name.
+   Groups 4 and 6 therefore each add their own bar item, and group 8 does the reorder, the icons, and
+   the `href: null` hiding. Every commit leaves a working bar; the bar is briefly six and then seven
+   items before group 8 sets it to five.
+2. **Group 8 landed before group 7.** Both are independent; doing the bar first meant the seven-item
+   intermediate state lasted one commit instead of two.
+3. **`FadeIn` shipped in group 7, not group 2.** It is a shared primitive and lives in
+   `src/components/ui/`, but it was written for the onboarding transitions and has no other caller
+   yet, so it is committed with the work that needed it.
+4. **`WeekCard`'s props changed** — `volumeThisWeek`/`volumeDelta` became `volumeAverage`. Not listed
+   in scope, but the alternative was showing the same week-volume figure twice on one screen. It has
+   one caller.
+5. **S-12 was corrected mid-sprint** because the criterion as written described the code incorrectly.
+   See the criterion for the full note.
+
 ## Design decisions
 
 - **The summary block carries no CTA.** Today's hero states where the lifter stands; the session card
@@ -218,20 +262,41 @@ Reviewable at the branch level. A criterion is met only with evidence.
 
 ## Validation
 
-To be completed before this sprint is reported done. Every row records the command actually run and
-its actual result.
+Commands actually run on the final commit of this sprint, with their actual results.
 
 | Command | Result |
 | --- | --- |
-| `npm run typecheck` | *pending* |
-| `npm test` | *pending* |
-| `npx expo export --platform ios` | *pending* |
-| `git diff --cached --check` (per commit) | *pending* |
+| `npm run typecheck` | Pass, exit 0 |
+| `npm test` | Pass — 78/78, 4 suites. No suite added, removed, or weakened |
+| `npx expo export --platform ios` | Pass — single iOS bundle, 5.1 MB |
+| `git diff --cached --check` | Clean on every commit in this sprint |
+| `git diff 791d19a..HEAD --stat -- supabase/ src/data/ src/domain/` | Empty — S-22 holds, and no domain file was touched either |
 
-**Not verified, and not claimed:** no screen is rendered in a simulator or on a device as part of
-this sprint, and no component-test framework exists (deliberate — see the readiness sprint's
-Decision 6). Layout correctness at iPhone sizes, the `href: null` navigation assumption above, and
-scroll-position behaviour on the restructured screens are manual-only and outstanding.
+**Design-system audit (S-18).** Grepping every `.ts`/`.tsx` file changed in this sprint, excluding
+`src/theme/`, for hex literals and `fontSize:` returns exactly one hit: the pre-existing
+`fontSize: 9.5` tab-label override in `app/(tabs)/_layout.tsx`, which predates this sprint and was
+not introduced or moved by it. No new hardcoded colour or font size was added.
+
+**Accessibility audit (S-19).** One real defect found and fixed (`9b4a767`): `SegmentedControl`
+subtracted the track's padding from the segment's `minHeight`, leaving each choice 40pt tall against
+the 44pt floor. All other new interactive elements meet it — `ListRow` at 56pt, `QuickAccess` tiles
+at 108pt, `SearchField`'s clear control at 32pt plus 10pt `hitSlop`, and every `Button` at `size="sm"`
+or larger.
+
+**Not verified, and not claimed:**
+
+- **No screen was rendered in a simulator or on a device.** No component-test framework exists —
+  deliberately, per the readiness sprint's Decision 6 — so layout correctness at iPhone sizes,
+  scroll behaviour on the restructured screens, and the appearance of the five-item tab bar are
+  unverified.
+- **The `href: null` navigation assumption** stated in the IA section above is unverified at runtime.
+  The bundle builds and the option is typed, but "a hidden bar item is still navigable and
+  `router.back()` returns to the previous destination" has not been observed. The
+  `canGoBack()` fallback means a failure degrades to a button that lands on Insights.
+- **The reduce-motion path in `FadeIn`** has not been exercised with the setting enabled.
+- **Nothing about originality is independently audited.** As `Docs/architecture.md` already notes,
+  the originality position is stated, not verified. This sprint added the R-001 exclusion list and
+  the reasoning behind each decision; it did not run a comparison against any product.
 
 ## Follow-ups
 
@@ -242,4 +307,10 @@ scroll-position behaviour on the restructured screens are manual-only and outsta
    per-exercise view (R-001 open question 3).
 4. Carry forward the predecessor sprint's four follow-ups; none is addressed here.
 5. Render the restructured screens on a device and record the result, closing the gap this sprint's
-   validation section leaves open.
+   validation section leaves open. Specifically: the five-item bar at 9.5pt labels on the narrowest
+   supported device, the `href: null` navigation assumption, `FadeIn` with reduce-motion enabled, and
+   the Exercises section list at large accessibility text sizes.
+6. Decide whether the Social tab's placeholder feed earns its place, or whether the shell should be
+   the notice, the intent rows, and the real-data card preview alone. It is the one piece of this
+   sprint that shows content resembling activity that never happened, and it is labelled three ways
+   because of it.
