@@ -30,6 +30,25 @@ If Expo complains about dependency versions on your SDK, run:
 npx expo install --fix
 ```
 
+### Resume the iOS simulator quickly
+
+When you close a previous run and want to get back to the app fast:
+
+```bash
+cd /Users/architek/Developer/prism
+export PATH="/opt/homebrew/opt/node@18/bin:$PATH"
+open -a Simulator
+npx expo start
+```
+
+Then in the Expo terminal, press `i` to launch the app in the simulator.
+
+If you want to launch directly to a specific simulator device:
+
+```bash
+npx expo run:ios --device "iPhone 15"
+```
+
 ### Other commands
 
 | Command | What it does |
