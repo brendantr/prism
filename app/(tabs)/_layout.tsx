@@ -29,6 +29,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="exercises"
+        options={{
+          title: 'Exercises',
+          tabBarAccessibilityLabel: 'Exercise library',
+          tabBarIcon: ({ color: c, focused }) => <TabIcon name="barbell" c={c} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="progress"
         options={{
           title: 'Progress',

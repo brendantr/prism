@@ -1,0 +1,422 @@
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  Button,
+  Chip,
+  EmptyState,
+  ListRow,
+  Screen,
+  SearchField,
+  SegmentedControl,
+  Text,
+  type SegmentedOption,
+} from '@/components/ui';
+import { MUSCLE_META, REGION_LABEL, type MuscleRegion } from '@/domain/muscles';
+import {
+  EQUIPMENT,
+  MUSCLE_GROUPS,
+  type Equipment,
+  type Exercise,
+  type MuscleGroup,
+} from '@/domain/types';
+import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
+import { useTrainingStore } from '@/store/trainingStore';
+import { color, opacity, space } from '@/theme';
+
+/**
+ * EXERCISES
+ * =========
+ * Browsing the catalogue as a destination in its own right, rather than only as
+ * a modal reached mid-session.
+ *
+ * Three ideas, in order of importance:
+ *
+ *   1. **Filters compose.** Text, region, equipment and favourites narrow the
+ *      same set rather than replacing each other, so nothing a lifter has
+ *      already typed is silently discarded by tapping a chip.
+ *   2. **Grouping is separate from filtering.** A segmented control changes what
+ *      the list *is* (sections by muscle, by equipment, alphabetical); chips
+ *      change what it *contains*. Different controls because different jobs.
+ *   3. **Two taps to training.** Open a row, tap the action, and you are in the
+ *      logger -- through exactly the same active-workout calls the rest of the
+ *      app uses, not a second way to create a session.
+ *
+ * The mid-session picker (`app/workout/picker.tsx`) stays as it is. Its job is
+ * "add this to the session I am in", which wants a flat list and an instant
+ * add, not sections and a detail expansion.
+ */
+
+const REGIONS: MuscleRegion[] = ['push', 'pull', 'legs', 'core'];
+
+type GroupBy = 'muscle' | 'equipment' | 'name';
+
+const GROUP_OPTIONS: SegmentedOption<GroupBy>[] = [
+  { value: 'muscle', label: 'Muscle', accessibilityLabel: 'Group by muscle' },
+  { value: 'equipment', label: 'Kit', accessibilityLabel: 'Group by equipment' },
+  { value: 'name', label: 'A–Z', accessibilityLabel: 'Group alphabetically' },
+];
+
+/**
+ * Display names for the equipment union. The chip rows can lean on `Chip`'s
+ * uppercasing, but a section heading needs real sentence casing.
+ */
+const EQUIPMENT_LABEL: Record<Equipment, string> = {
+  barbell: 'Barbell',
+  dumbbell: 'Dumbbell',
+  machine: 'Machine',
+  cable: 'Cable',
+  bodyweight: 'Bodyweight',
+  kettlebell: 'Kettlebell',
+  band: 'Band',
+  smith: 'Smith machine',
+};
+
+interface Section {
+  key: string;
+  title: string;
+  data: Exercise[];
+}
+
+export default function ExercisesScreen() {
+  const router = useRouter();
+
+  const exercises = useTrainingStore((s) => s.exercises);
+  const favourites = useTrainingStore((s) => s.favouriteExerciseIds);
+  const toggleFavourite = useTrainingStore((s) => s.toggleFavourite);
+  const profile = useTrainingStore((s) => s.profile);
+
+  const activeWorkout = useActiveWorkoutStore((s) => s.workout);
+  const startWorkout = useActiveWorkoutStore((s) => s.start);
+  const addExercise = useActiveWorkoutStore((s) => s.addExercise);
+
+  const [query, setQuery] = useState('');
+  const [region, setRegion] = useState<MuscleRegion | null>(null);
+  const [equipment, setEquipment] = useState<Equipment | null>(null);
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupBy>('muscle');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const filterCount = (region ? 1 : 0) + (equipment ? 1 : 0) + (favouritesOnly ? 1 : 0);
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const regionMuscles: Set<MuscleGroup> | null = region
+      ? new Set(MUSCLE_GROUPS.filter((m) => MUSCLE_META[m].region === region))
+      : null;
+
+    return exercises.filter((e) => {
+      if (favouritesOnly && !favourites.includes(e.id)) return false;
+      if (equipment && e.equipment !== equipment) return false;
+      if (regionMuscles && !e.primaryMuscles.some((m) => regionMuscles.has(m))) return false;
+      if (needle) {
+        const haystack = `${e.name} ${e.equipment} ${e.primaryMuscles.join(' ')}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [exercises, query, region, equipment, favouritesOnly, favourites]);
+
+  const sections = useMemo(() => buildSections(filtered, groupBy, favourites), [filtered, groupBy, favourites]);
+
+  const clearFilters = () => {
+    setQuery('');
+    setRegion(null);
+    setEquipment(null);
+    setFavouritesOnly(false);
+  };
+
+  /**
+   * Straight into the logger. Reuses the existing active-workout calls so this
+   * screen adds an entry point, not a second way to build a session.
+   */
+  const logExercise = (exercise: Exercise) => {
+    if (!profile) return;
+    if (!activeWorkout) {
+      startWorkout({ profileId: profile.id, title: 'Open session', routineDay: null });
+    }
+    addExercise(exercise.id, { sets: 3, reps: 8, rest: 120 });
+    router.push('/workout/active');
+  };
+
+  return (
+    <Screen scroll={false} eyebrow="Every movement PRism knows" title="Exercises">
+      <SearchField
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search by name, muscle or kit"
+        accessibilityLabel="Search exercises by name, muscle or equipment"
+        style={styles.search}
+      />
+
+      <View style={styles.group}>
+        <SegmentedControl
+          options={GROUP_OPTIONS}
+          value={groupBy}
+          onChange={setGroupBy}
+          accessibilityLabel="Group exercises by"
+        />
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Chip
+          label="Favourites"
+          icon="star"
+          tone="violet"
+          selected={favouritesOnly}
+          onPress={() => setFavouritesOnly((v) => !v)}
+        />
+        {REGIONS.map((r) => (
+          <Chip
+            key={r}
+            label={REGION_LABEL[r]}
+            selected={region === r}
+            onPress={() => setRegion(region === r ? null : r)}
+          />
+        ))}
+      </ScrollView>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {EQUIPMENT.map((eq) => (
+          <Chip
+            key={eq}
+            label={eq}
+            tone="cyan"
+            accessibilityLabel={EQUIPMENT_LABEL[eq]}
+            selected={equipment === eq}
+            onPress={() => setEquipment(equipment === eq ? null : eq)}
+          />
+        ))}
+      </ScrollView>
+
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ListHeaderComponent={
+          <Text variant="eyebrow" tone="faint" style={styles.count}>
+            {`${filtered.length} ${filtered.length === 1 ? 'exercise' : 'exercises'}`}
+            {filterCount > 0 ? ` · ${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}` : ''}
+          </Text>
+        }
+        ListEmptyComponent={
+          <EmptyState
+            title="Nothing matches those filters"
+            body="Try a muscle name like “lats”, or clear what you have set."
+            actionLabel={filterCount > 0 || query.length > 0 ? 'Clear filters' : undefined}
+            onAction={filterCount > 0 || query.length > 0 ? clearFilters : undefined}
+          />
+        }
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHead}>
+            <Text variant="eyebrow" tone="muted">
+              {section.title}
+            </Text>
+            <Text variant="eyebrow" tone="faint">
+              {section.data.length}
+            </Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <ExerciseItem
+            exercise={item}
+            expanded={expandedId === item.id}
+            isFavourite={favourites.includes(item.id)}
+            hasActiveWorkout={activeWorkout != null}
+            onToggleExpanded={() => setExpandedId((id) => (id === item.id ? null : item.id))}
+            onToggleFavourite={() => toggleFavourite(item.id)}
+            onLog={() => logExercise(item)}
+          />
+        )}
+      />
+    </Screen>
+  );
+}
+
+// --- Row -------------------------------------------------------------------
+
+interface ExerciseItemProps {
+  exercise: Exercise;
+  expanded: boolean;
+  isFavourite: boolean;
+  hasActiveWorkout: boolean;
+  onToggleExpanded: () => void;
+  onToggleFavourite: () => void;
+  onLog: () => void;
+}
+
+/**
+ * A result row, which expands in place rather than pushing a detail screen.
+ * Browsing is a comparison task -- losing the list to read one cue means
+ * navigating back to compare against the next candidate.
+ */
+function ExerciseItem({
+  exercise,
+  expanded,
+  isFavourite,
+  hasActiveWorkout,
+  onToggleExpanded,
+  onToggleFavourite,
+  onLog,
+}: ExerciseItemProps) {
+  const primary = exercise.primaryMuscles.map((m) => MUSCLE_META[m].label);
+  const secondary = exercise.secondaryMuscles.map((m) => MUSCLE_META[m].label);
+
+  return (
+    <View style={styles.item}>
+      <ListRow
+        title={exercise.name}
+        subtitle={`${EQUIPMENT_LABEL[exercise.equipment]} · ${primary.join(', ')}`}
+        onPress={onToggleExpanded}
+        accessibilityLabel={`${exercise.name}. ${EQUIPMENT_LABEL[exercise.equipment]}, targets ${primary.join(
+          ', ',
+        )}. ${expanded ? 'Collapse' : 'Expand'} for details`}
+        style={styles.itemRow}
+        trailing={
+          <View style={styles.trailing}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${isFavourite ? 'Remove' : 'Add'} ${exercise.name} ${
+                isFavourite ? 'from' : 'to'
+              } favourites`}
+              accessibilityState={{ selected: isFavourite }}
+              onPress={onToggleFavourite}
+              hitSlop={10}
+              style={({ pressed }) => [styles.star, pressed && { opacity: opacity.pressed }]}
+            >
+              <Ionicons
+                name={isFavourite ? 'star' : 'star-outline'}
+                size={17}
+                color={isFavourite ? color.violetBright : color.textFaint}
+              />
+            </Pressable>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={15}
+              color={color.textFaint}
+            />
+          </View>
+        }
+      />
+
+      {expanded ? (
+        <View style={styles.detail}>
+          {exercise.cue ? (
+            <Text variant="bodySm" tone="secondary" style={styles.cue}>
+              {exercise.cue}
+            </Text>
+          ) : null}
+
+          <View style={styles.muscleRow}>
+            {primary.map((label) => (
+              <Chip key={label} label={label} tone="violet" />
+            ))}
+            {secondary.map((label) => (
+              <Chip key={label} label={label} accessibilityLabel={`${label}, assisting`} />
+            ))}
+          </View>
+
+          <Button
+            label={hasActiveWorkout ? 'Add to current session' : 'Start a session with this'}
+            variant="secondary"
+            size="sm"
+            icon="add"
+            onPress={onLog}
+            style={styles.action}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// --- Grouping --------------------------------------------------------------
+
+/**
+ * Section the filtered results along the chosen axis.
+ *
+ * Favourites are lifted into their own leading section on every axis: a lifter
+ * who has starred a movement is usually looking for that movement, and making
+ * them find it under "Quads" defeats the point of starring it.
+ */
+function buildSections(exercises: Exercise[], groupBy: GroupBy, favourites: string[]): Section[] {
+  if (exercises.length === 0) return [];
+
+  const byName = (a: Exercise, b: Exercise) => a.name.localeCompare(b.name);
+
+  const starred = exercises.filter((e) => favourites.includes(e.id)).sort(byName);
+  const rest = exercises.filter((e) => !favourites.includes(e.id));
+
+  const sections: Section[] = [];
+  if (starred.length > 0) sections.push({ key: 'favourites', title: 'Favourites', data: starred });
+
+  if (groupBy === 'muscle') {
+    // MUSCLE_GROUPS order is anatomical rather than alphabetical, which keeps
+    // push, pull and leg work adjacent instead of interleaved.
+    for (const muscle of MUSCLE_GROUPS) {
+      const data = rest.filter((e) => e.primaryMuscles[0] === muscle).sort(byName);
+      if (data.length > 0) {
+        sections.push({ key: muscle, title: MUSCLE_META[muscle].label, data });
+      }
+    }
+  } else if (groupBy === 'equipment') {
+    for (const eq of EQUIPMENT) {
+      const data = rest.filter((e) => e.equipment === eq).sort(byName);
+      if (data.length > 0) sections.push({ key: eq, title: EQUIPMENT_LABEL[eq], data });
+    }
+  } else {
+    const letters = new Map<string, Exercise[]>();
+    for (const e of rest) {
+      const letter = e.name.charAt(0).toUpperCase();
+      letters.set(letter, [...(letters.get(letter) ?? []), e]);
+    }
+    for (const letter of [...letters.keys()].sort()) {
+      sections.push({ key: letter, title: letter, data: (letters.get(letter) ?? []).sort(byName) });
+    }
+  }
+
+  return sections;
+}
+
+const styles = StyleSheet.create({
+  search: { marginHorizontal: space.lg },
+  group: { marginHorizontal: space.lg, marginTop: space.md },
+  filterRow: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.xs },
+  list: { paddingTop: space.base, paddingBottom: space.xxl },
+  count: { paddingHorizontal: space.lg, paddingBottom: space.sm },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    backgroundColor: color.bg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.line,
+  },
+  item: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line },
+  itemRow: { paddingHorizontal: space.lg },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  star: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  detail: {
+    paddingHorizontal: space.lg,
+    paddingBottom: space.base,
+    gap: space.md,
+  },
+  cue: { lineHeight: 19 },
+  muscleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
+  action: { alignSelf: 'flex-start' },
+});
