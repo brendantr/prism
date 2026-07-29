@@ -61,6 +61,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="social"
+        options={{
+          title: 'Social',
+          tabBarAccessibilityLabel: 'Training with others',
+          tabBarIcon: ({ color: c, focused }) => <TabIcon name="people" c={c} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="plans"
         options={{
           title: 'Plans',
