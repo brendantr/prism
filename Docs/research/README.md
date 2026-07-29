@@ -27,4 +27,8 @@ Everything in this directory is a **hypothesis**, not a requirement. A research 
 
 Any uncertainty about whether an observation crosses from "general pattern" into "copying a distinctive element" must be raised to the engineer/owner before it informs any implementation decision — see the stop conditions in `Docs/agents.md`.
 
-No research notes exist in this directory yet.
+## Notes in this directory
+
+| ID | Note | Informs |
+| --- | --- | --- |
+| R-001 | [Information architecture of a mature strength-training logger](R-001-primary-surface-information-architecture.md) | Sprint [`2026-07-29-ui-ux-expansion`](../sprints/2026-07-29-ui-ux-expansion.md) |
