@@ -3,10 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Chip, ListRow, Screen, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
-import { PLANNED_SURFACES, SAMPLE_ACTIVITY, SOCIAL } from '@/content/social';
+import { PLANNED_SURFACES, SOCIAL } from '@/content/social';
 import { useTrainingStore } from '@/store/trainingStore';
 import { formatRelativeDay, formatVolume } from '@/utils/format';
-import { color, radius, space } from '@/theme';
+import { color, space } from '@/theme';
 
 /**
  * SOCIAL
@@ -18,15 +18,16 @@ import { color, radius, space } from '@/theme';
  * built: there is no account, no network call, and no persisted state behind
  * this screen, and the first card on it says so.
  *
- * Two kinds of content sit below that notice, and they are labelled differently
- * on purpose:
+ * Nothing on this screen depicts activity that did not happen. An earlier draft
+ * carried a placeholder feed -- invented rows with placeholder identities,
+ * labelled three ways -- and it was cut (owner decision, 2026-07-29): a screen
+ * of invented people reads as real activity no matter how it is captioned, which
+ * is the failure mode `PhasePanel` already exists to avoid, and the card preview
+ * below already carries the visual weight the feed was there to provide.
  *
- *   - The card preview is built from a record the lifter **actually set**. It is
- *     real data in a layout that is not connected to anything.
- *   - The feed rows are placeholder content with placeholder identities, and
- *     carry a badge each as well as a warning above the section. A screen full
- *     of invented people reads as real activity, which is the failure mode
- *     `PhasePanel` already exists to avoid.
+ * So the only data on the screen is the lifter's own: the card preview is built
+ * from a record they actually set, rendered in a layout that is wired to
+ * nothing and marked as such.
  */
 export default function SocialScreen() {
   const profile = useTrainingStore((s) => s.profile);
@@ -102,25 +103,6 @@ export default function SocialScreen() {
         </Card>
       )}
 
-      <SectionHeader title={SOCIAL.sampleTitle} eyebrow={SOCIAL.sampleEyebrow} />
-      <Text variant="bodySm" tone="caution" style={styles.warning}>
-        {SOCIAL.sampleWarning}
-      </Text>
-      <Card style={styles.gutter} padding="base">
-        {SAMPLE_ACTIVITY.map((item, i) => (
-          <ListRow
-            key={item.id}
-            title={item.headline}
-            subtitle={`${item.who} · ${item.handle} · ${item.when}. ${item.detail}`}
-            icon={item.icon}
-            iconTone="neutral"
-            divided={i > 0}
-            accessibilityLabel={`${SOCIAL.sampleBadge}. ${item.headline}. ${item.who}, ${item.when}. ${item.detail}`}
-            trailing={<Chip label={SOCIAL.sampleBadge} tone="coral" />}
-          />
-        ))}
-      </Card>
-
       <SectionHeader title="Coming next" eyebrow="Roadmap" />
       <PhasePanel
         phase={7}
@@ -149,12 +131,4 @@ const styles = StyleSheet.create({
   cardValue: { marginTop: space.md, marginBottom: space.xs },
   cardMeta: { marginTop: space.xs },
   note: { marginHorizontal: space.lg, marginTop: space.md, lineHeight: 18 },
-  warning: {
-    marginHorizontal: space.lg,
-    marginBottom: space.md,
-    padding: space.md,
-    borderRadius: radius.sm,
-    backgroundColor: color.neutralWash,
-    lineHeight: 18,
-  },
 });
