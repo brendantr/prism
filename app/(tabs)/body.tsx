@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Card, Screen, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
@@ -13,10 +14,13 @@ import type { MuscleRecovery } from '@/domain/types';
  * BODY (Phase 3)
  *
  * The recovery model is already live and drives the readiness score, so this
- * tab shows its full output as a ranked list today. The original SVG body-map
+ * screen shows its full output as a ranked list today. The original SVG body-map
  * illustration that renders the same data anatomically arrives in Phase 3.
+ *
+ * Not a bar item: reached from Insights or Today, so it renders its own way back.
  */
 export default function BodyScreen() {
+  const router = useRouter();
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const exerciseById = useTrainingStore((s) => s.exerciseById);
   const now = useMemo(() => new Date(), []);
@@ -26,8 +30,12 @@ export default function BodyScreen() {
     [history, exerciseById, now],
   );
 
+  // Deep-linking straight here leaves nothing to pop, so the fallback is an
+  // explicit destination rather than a button that does nothing.
+  const back = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/insights'));
+
   return (
-    <Screen eyebrow="Estimate, not measurement" title="Body">
+    <Screen eyebrow="Estimate, not measurement" title="Body" onBack={back}>
       <Card style={styles.gutter} padding="lg">
         <Text variant="bodySm" tone="muted" style={styles.explainer}>
           {RECOVERY_MODEL_EXPLANATION}

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Card, LinearSpectrum, Screen, SectionHeader, StatBlock, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { e1rmSeries } from '@/domain/calc/prs';
@@ -13,11 +14,14 @@ import { color, space } from '@/theme';
  * PROGRESS (Phase 2)
  *
  * Phase 1 ships the numbers that the calculation engine already produces, so
- * this tab is useful today rather than empty. The full charting surface --
+ * this screen is useful today rather than empty. The full charting surface --
  * interactive e1RM/volume charts, PR history and per-exercise detail -- lands
  * in Phase 2 on top of the same `e1rmSeries` / `volumeByDay` selectors.
+ *
+ * Not a bar item: reached from Insights or Today, so it renders its own way back.
  */
 export default function ProgressScreen() {
+  const router = useRouter();
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const profile = useTrainingStore((s) => s.profile);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
@@ -50,12 +54,16 @@ export default function ProgressScreen() {
       .filter((v): v is NonNullable<typeof v> => v != null);
   }, [history, exerciseById]);
 
-  if (!profile || !headline) return <Screen title="Progress" />;
+  // Deep-linking straight here leaves nothing to pop, so the fallback is an
+  // explicit destination rather than a button that does nothing.
+  const back = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/insights'));
+
+  if (!profile || !headline) return <Screen title="Progress" onBack={back} />;
 
   const peak = Math.max(...keyLifts.map((l) => Math.abs(l.change)), 0.01);
 
   return (
-    <Screen eyebrow="Every angle" title="Progress">
+    <Screen eyebrow="Every angle" title="Progress" onBack={back}>
       <Card variant="raised" padding="xl" spectral style={styles.gutter}>
         <View style={styles.statRow}>
           <StatBlock
