@@ -57,6 +57,82 @@ If Metro misbehaves, restart it with a clean cache:
 npx expo start --clear
 ```
 
+#### When the simulator will not launch the app
+
+Verified on macOS 26 / Xcode 26.4 (2026-07-29). `expo run:ios` can build and
+install cleanly and still fail to launch, in three ways that look alike from the
+terminal. Work through them in this order.
+
+**1. Something else already holds port 8081.** `expo run:ios` finishes by
+opening a dev-client deep link that points at a Metro server it expects to have
+started itself. If another Expo instance is already bound to 8081, the CLI skips
+starting its own, the link points nowhere reachable, and `simctl openurl` times
+out with `NSPOSIXErrorDomain code 60`. Check first:
+
+```bash
+lsof -nP -iTCP:8081 -sTCP:LISTEN     # who owns the port
+curl -s http://localhost:8081/status # "packager-status:running" if Metro is up
+```
+
+If Metro is already running and healthy, keep it and launch against
+`localhost` rather than the LAN address the CLI chose.
+
+**2. The device is booted but not finished booting.** `simctl boot` returns
+immediately; SpringBoard keeps initialising for another minute or so, and until
+it is done, launches hang and the home screen shows grey placeholder icons.
+Always wait on `bootstatus` — this is the step most often skipped:
+
+```bash
+xcrun simctl bootstatus <udid> -b
+```
+
+**3. `CoreSimulatorService` is wedged.** If `simctl launch` and `simctl openurl`
+still hang indefinitely on a *freshly created* device, the service itself is
+stuck. Killing it is safe — it relaunches on demand — but it shuts down every
+running simulator:
+
+```bash
+xcrun simctl shutdown all
+killall -9 com.apple.CoreSimulator.CoreSimulatorService
+```
+
+**The full sequence that works**, once the app has been built at least once:
+
+```bash
+# 0. one healthy Metro on 8081 (reuse an existing one rather than fighting it)
+npx expo start --dev-client
+
+# 1. clear a wedged service
+xcrun simctl shutdown all
+killall -9 com.apple.CoreSimulator.CoreSimulatorService
+
+# 2. a known-clean device
+UDID=$(xcrun simctl create "PRism-Verify" "iPhone 17 Pro" \
+  com.apple.CoreSimulator.SimRuntime.iOS-26-4)
+
+# 3. boot, and WAIT for it
+xcrun simctl boot "$UDID"
+xcrun simctl bootstatus "$UDID" -b
+open -a Simulator --args -CurrentDeviceUDID "$UDID"
+
+# 4. install the build product, then launch
+xcrun simctl install "$UDID" \
+  ~/Library/Developer/Xcode/DerivedData/PRism-*/Build/Products/Debug-iphonesimulator/PRism.app
+xcrun simctl launch "$UDID" app.prism.trainer   # returns a PID when it works
+```
+
+Useful afterwards — both read the device framebuffer directly, so they work
+regardless of which window is in front:
+
+```bash
+xcrun simctl io "$UDID" screenshot shot.png
+xcrun simctl openurl "$UDID" "prism:///insights"   # deep-link a route
+```
+
+A deep link sent while the app is already frontmost raises an
+"Open in PRism?" confirmation. Terminate the app first and the cold start skips
+it. Clean up a throwaway device with `xcrun simctl delete "$UDID"`.
+
 ### Other commands
 
 | Command | What it does |
