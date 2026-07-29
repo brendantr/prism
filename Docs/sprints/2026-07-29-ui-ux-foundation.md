@@ -39,6 +39,15 @@ missing primitives were built.
 - Screens: splash, welcome, feature carousel, auth, four-step setup, completion.
 - First-launch gating in `app/_layout.tsx`, driven by a persisted flag.
 - All onboarding copy centralised in `src/content/onboarding.ts`.
+- `src/domain/authValidation.ts` and its test suite
+  (`src/domain/__tests__/authValidation.test.ts`): pure, presentation-only
+  credential validation (email shape, length-only password policy) consumed by
+  the auth screen. No account is created, no request is sent, no backend is
+  touched — see "Explicitly out of scope" below. Covered by tests because it is
+  a pure function, independent of any screen.
+- Dev-only "Reset onboarding" affordance in `app/(tabs)/index.tsx`, gated
+  behind `__DEV__` and excluded from release builds, so the onboarding flow can
+  be replayed during review without reinstalling.
 
 ## Explicitly out of scope
 
@@ -49,7 +58,10 @@ missing primitives were built.
   persisted in `onboardingStore` but deliberately not written through
   `trainingStore.updateProfile`, which would change data the rest of the app
   already reads. See "Follow-ups".
-- Any change to calculations, schema, migrations, tests, or dependencies.
+- Any change to training calculations, schema, migrations, or dependencies.
+  (One test suite was added, for the new pure `authValidation.ts` module
+  above — that is the one exception, and it touches no existing calculation,
+  schema, or migration.)
 - Final production copy. Everything in `src/content/onboarding.ts` is
   first-pass and expected to be rewritten.
 
@@ -88,7 +100,7 @@ Sanitised observation, recorded in the required form:
 | Command | Result |
 | --- | --- |
 | `npm run typecheck` | Pass, exit 0 |
-| `npm test` | Pass — 65/65, 3 suites (unchanged by this sprint) |
+| `npm test` | Pass — 78/78, 4 suites (new suite: `authValidation.test.ts`) |
 | `npx expo export --platform ios` | Pass |
 
 Not verified: no screen was rendered in a simulator or on device as part of this
