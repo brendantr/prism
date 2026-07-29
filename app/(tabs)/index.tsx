@@ -24,6 +24,7 @@ import {
   useTrainingStore,
 } from '@/store/trainingStore';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
+import { useOnboardingStore } from '@/store/onboardingStore';
 import { formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
 import { color, space } from '@/theme';
@@ -278,6 +279,17 @@ export default function TodayScreen() {
       <Text variant="eyebrow" tone="faint" style={styles.version}>
         {`PRism v${Constants.expoConfig?.version ?? '0.0.0'}`}
       </Text>
+
+      {/* Dev-only: replays onboarding on next launch. Never built into a release. */}
+      {__DEV__ ? (
+        <Button
+          label="Reset onboarding"
+          variant="ghost"
+          size="sm"
+          onPress={() => void useOnboardingStore.getState().reset()}
+          style={styles.devReset}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -354,4 +366,5 @@ const styles = StyleSheet.create({
   },
   prText: { flex: 1 },
   version: { textAlign: 'center', marginTop: space.xl },
+  devReset: { alignSelf: 'center', marginTop: space.sm },
 });
