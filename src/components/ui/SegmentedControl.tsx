@@ -85,9 +85,9 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    // The track is only as tall as one segment, so this is what guarantees the
-    // 44pt target for every choice in the group.
-    minHeight: a11y.minTouch - space.xs,
+    // The segment is the pressable, not the track, so the 44pt floor has to sit
+    // here. The track ends up 4pt taller than that, which is the padding.
+    minHeight: a11y.minTouch,
     paddingHorizontal: space.sm,
     borderRadius: radius.sm,
     alignItems: 'center',
