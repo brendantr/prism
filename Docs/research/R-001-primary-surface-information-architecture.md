@@ -5,7 +5,7 @@
 - **Author:** Engineer/owner + AI agent
 - **Protocol:** [`Docs/research/README.md`](README.md), policy [ADR-0003](../decisions/ADR-0003-reference-research-policy.md)
 - **Status:** Hypothesis. Accepted as an input to sprint
-  [`2026-07-29-ui-ux-expansion`](../sprints/2026-07-29-ui-ux-expansion.md); acceptance covers the
+  [`2026-07-29-ui-ux-foundation-expansion`](../sprints/2026-07-29-ui-ux-foundation-expansion.md); acceptance covers the
   PRism decisions recorded below and nothing further.
 
 ## Scope of this note
@@ -70,9 +70,12 @@ product's screen.
   differentiator for PRism is an open product question (see below), separate from whether the
   navigation slot should be reserved now.
 - **PRism decision:** Ship the tab as a shell with an explicit, on-screen statement that nothing in
-  it is live and that every example item is local sample content. No account, no network, no
-  fabricated activity presented as real. This keeps PRism's existing anti-fake-skeleton posture
-  (`src/components/ui/PhasePanel.tsx`) intact while reserving the slot.
+  it is live. No account, no network, and — as finally shipped — no depiction of activity that did
+  not happen at all. The first draft included a labelled placeholder feed; it was cut (owner
+  decision, 2026-07-29), because needing three layers of disclaimer to make invented rows honest was
+  the argument that the rows were the problem. What holds the slot is the notice, three statements of
+  intent, and a card layout built from a record the lifter actually set. This keeps PRism's existing
+  anti-fake-skeleton posture (`src/components/ui/PhasePanel.tsx`) intact while reserving the slot.
 
 ### O-5. First-run is a guided sequence with a short path to something worth looking at
 

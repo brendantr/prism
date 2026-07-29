@@ -1,4 +1,4 @@
-# Sprint: ui-ux-expansion
+# Sprint: ui-ux-foundation-expansion
 
 - **Status:** Implemented and rendered on a simulator, pending review. No tap input was exercised —
   see "Still not verified" under Validation.
@@ -382,14 +382,10 @@ Both were re-rendered after the fix and confirmed: chip rows fully visible, "143
    selection, row expansion, "log this lift", and onboarding's Skip and choices summary. Either `idb`
    or an XCUITest target would do it; coordinate clicking through the Simulator window is not an
    acceptable substitute, for the reason recorded in Validation.
-8. **Decide on the sprint-document naming collision.** Every other record in `Docs/sprints/` is named
-   for the branch it ran on, and this one is not: the file is `2026-07-29-ui-ux-expansion.md` but the
-   branch is `ui-ux-foundation`, so the name implies a `ui-ux-expansion` branch that has never
-   existed. It also shares a date prefix with `2026-07-29-ui-ux-foundation.md`. Both records are
-   accurate and cross-linked, and the "Why the same branch" section states the relationship, so this
-   is a convention drift rather than a factual error. Options: rename this file to
-   `2026-07-29-ui-ux-foundation-expansion.md` to restore the branch-name convention, keep it as-is and
-   document that a sprint record is named for the sprint rather than the branch, or open a
-   `ui-ux-expansion` branch retroactively (not recommended — the commits are already on
-   `ui-ux-foundation`). No naming rule is written down anywhere today; whichever is chosen belongs in
-   `Docs/agents.md`.
+8. ~~Decide on the sprint-document naming collision.~~ **Resolved** (owner decision, 2026-07-29). This
+   record was originally `2026-07-29-ui-ux-expansion.md`, naming a sprint whose branch has never
+   existed — the work runs on `ui-ux-foundation`. It is now
+   `2026-07-29-ui-ux-foundation-expansion.md`, and the sprint is `ui-ux-foundation-expansion`, so the
+   name carries the branch it continues. The rule that was missing is now written down in
+   `Docs/agents.md` ("Sprint record naming"). Commit messages made before the rename still cite the
+   old path; Git history is not rewritten for a documentation rename.

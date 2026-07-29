@@ -31,4 +31,4 @@ Any uncertainty about whether an observation crosses from "general pattern" into
 
 | ID | Note | Informs |
 | --- | --- | --- |
-| R-001 | [Information architecture of a mature strength-training logger](R-001-primary-surface-information-architecture.md) | Sprint [`2026-07-29-ui-ux-expansion`](../sprints/2026-07-29-ui-ux-expansion.md) |
+| R-001 | [Information architecture of a mature strength-training logger](R-001-primary-surface-information-architecture.md) | Sprint [`2026-07-29-ui-ux-foundation-expansion`](../sprints/2026-07-29-ui-ux-foundation-expansion.md) |
