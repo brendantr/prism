@@ -3,10 +3,15 @@ import { setVolume, setsVolume, isVolumeSet } from '../volume';
 import { evaluateSetForPr, detectWorkoutPrs, bestsFromHistory, e1rmSeries } from '../prs';
 import { estimatedRecoveryWindowHours, estimateRecovery, recoveryStatus } from '../recovery';
 import { recommendNextLoad, loadIncrementKg, roundToIncrement, comparableSessions } from '../loadRecommendation';
-import { completedThisWeek, computeReadiness, startOfIsoWeek } from '../readiness';
+import {
+  completedThisWeek,
+  computeReadiness,
+  startOfIsoWeek,
+  READINESS_WEIGHTS,
+} from '../readiness';
 import { EXERCISE_BY_ID } from '@/data/exerciseLibrary';
 import { generateDemoData } from '@/data/demoSeed';
-import type { Exercise, Profile, Workout, WorkoutSet } from '../../types';
+import type { CheckIn, Exercise, Profile, Workout, WorkoutSet } from '../../types';
 
 // --- Fixtures --------------------------------------------------------------
 
@@ -297,14 +302,45 @@ describe('readiness score', () => {
     createdAt: '2026-01-01T00:00:00Z',
   };
 
-  it('stays within 0-100 and exposes all four factors', () => {
-    const result = computeReadiness({
+  const NOW = new Date('2026-06-10T09:00:00Z');
+
+  let checkInSeq = 0;
+  function checkIn(partial: Partial<CheckIn> = {}): CheckIn {
+    return {
+      id: `ci${checkInSeq++}`,
+      profileId: 'p1',
+      checkedInAt: '2026-06-10T07:00:00.000Z',
+      sleepQuality: 4,
+      energy: 4,
+      soreness: 2,
+      stress: 2,
+      note: null,
+      ...partial,
+    };
+  }
+
+  /** Enough 28-day volume that the workload factor has a trend to judge. */
+  const HISTORY = [
+    workout([set()], { id: 'h1', startedAt: '2026-05-18T18:00:00.000Z' }),
+    workout([set()], { id: 'h2', startedAt: '2026-05-25T18:00:00.000Z' }),
+    workout([set()], { id: 'h3', startedAt: '2026-06-01T18:00:00.000Z' }),
+  ];
+
+  /** A lifter with both history and a fresh check-in: every factor has data. */
+  const fullyFed = (overrides: Partial<Parameters<typeof computeReadiness>[0]> = {}) =>
+    computeReadiness({
       profile,
-      workouts: [],
-      recovery: estimateRecovery([], EXERCISE_BY_ID),
+      workouts: HISTORY,
+      recovery: estimateRecovery(HISTORY, EXERCISE_BY_ID, NOW),
       targetMuscles: [],
-      latestCheckIn: null,
+      latestCheckIn: checkIn(),
+      now: NOW,
+      ...overrides,
     });
+
+  it('stays within 0-100 and exposes all four factors', () => {
+    const result = fullyFed();
+    expect(result.confidence).toBe('full');
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
     expect(result.factors).toHaveLength(4);
@@ -312,37 +348,213 @@ describe('readiness score', () => {
   });
 
   it('weights sum to 1', () => {
-    const result = computeReadiness({
-      profile,
-      workouts: [],
-      recovery: estimateRecovery([], EXERCISE_BY_ID),
-      targetMuscles: [],
-      latestCheckIn: null,
-    });
+    const result = fullyFed();
     expect(result.factors.reduce((s, f) => s + f.weight, 0)).toBeCloseTo(1, 6);
   });
 
   it('scores a rested lifter above a fatigued one', () => {
-    const now = new Date('2026-06-10T09:00:00Z');
-    const yesterday = workout([set()], { startedAt: '2026-06-09T18:00:00.000Z' });
+    const yesterday = workout([set()], { id: 'y', startedAt: '2026-06-09T18:00:00.000Z' });
+    const fatiguedHistory = [...HISTORY, yesterday];
 
-    const rested = computeReadiness({
+    const rested = fullyFed({ targetMuscles: ['chest'] });
+    const fatigued = fullyFed({
+      targetMuscles: ['chest'],
+      workouts: fatiguedHistory,
+      recovery: estimateRecovery(fatiguedHistory, EXERCISE_BY_ID, NOW),
+    });
+
+    // Both sides have full data, so this compares scores, not confidence.
+    expect(rested.confidence).toBe('full');
+    expect(fatigued.confidence).toBe('full');
+    expect(rested.score!).toBeGreaterThan(fatigued.score!);
+  });
+
+  // --- Honest insufficiency (ADR-0002 Phase A, invariant I-18) --------------
+
+  it('publishes no score when both training load and check-in are missing', () => {
+    const result = computeReadiness({
       profile,
       workouts: [],
-      recovery: estimateRecovery([], EXERCISE_BY_ID, now),
-      targetMuscles: ['chest'],
+      recovery: estimateRecovery([], EXERCISE_BY_ID, NOW),
+      targetMuscles: [],
       latestCheckIn: null,
-      now,
+      now: NOW,
     });
-    const fatigued = computeReadiness({
+
+    expect(result.score).toBeNull();
+    expect(result.band).toBeNull();
+    expect(result.confidence).toBe('insufficient');
+    // Still explains itself: all four factors are reported, none counted.
+    expect(result.factors).toHaveLength(4);
+    expect(result.factors.every((f) => f.weight === 0)).toBe(true);
+    expect(result.factors.every((f) => f.detail.length > 0)).toBe(true);
+  });
+
+  it('never substitutes the old neutral 0.7 for a missing factor', () => {
+    const result = computeReadiness({
       profile,
-      workouts: [yesterday],
-      recovery: estimateRecovery([yesterday], EXERCISE_BY_ID, now),
-      targetMuscles: ['chest'],
+      workouts: [],
+      recovery: estimateRecovery([], EXERCISE_BY_ID, NOW),
+      targetMuscles: [],
       latestCheckIn: null,
-      now,
+      now: NOW,
     });
-    expect(rested.score).toBeGreaterThan(fatigued.score);
+    const excluded = result.factors.filter((f) => !f.sufficient);
+    expect(excluded.map((f) => f.key).sort()).toEqual(['wellbeing', 'workload']);
+    expect(excluded.every((f) => f.score !== 0.7)).toBe(true);
+  });
+
+  it('excludes a single insufficient factor and re-normalises the rest', () => {
+    // History present (workload has data), no check-in (wellbeing does not).
+    const result = computeReadiness({
+      profile,
+      workouts: HISTORY,
+      recovery: estimateRecovery(HISTORY, EXERCISE_BY_ID, NOW),
+      targetMuscles: [],
+      latestCheckIn: null,
+      now: NOW,
+    });
+
+    expect(result.score).not.toBeNull();
+    expect(result.confidence).toBe('partial');
+
+    const by = (key: string) => result.factors.find((f) => f.key === key)!;
+    expect(by('wellbeing').sufficient).toBe(false);
+    expect(by('wellbeing').weight).toBe(0);
+
+    // The survivors keep their relative proportions, re-scaled to sum to 1.
+    const surviving = 1 - READINESS_WEIGHTS.wellbeing;
+    expect(by('recovery').weight).toBeCloseTo(READINESS_WEIGHTS.recovery / surviving, 12);
+    expect(by('workload').weight).toBeCloseTo(READINESS_WEIGHTS.workload / surviving, 12);
+    expect(by('consistency').weight).toBeCloseTo(READINESS_WEIGHTS.consistency / surviving, 12);
+    expect(result.factors.reduce((s, f) => s + f.weight, 0)).toBeCloseTo(1, 12);
+  });
+
+  it('judges the workload trend at the history threshold, not below it', () => {
+    // chronicWeekly = 28-day volume / 4. Exactly 1 is enough; just under is not.
+    const at = (weightKg: number, reps: number) =>
+      computeReadiness({
+        profile,
+        workouts: [workout([set({ weightKg, reps })], { startedAt: '2026-06-01T18:00:00.000Z' })],
+        recovery: estimateRecovery([], EXERCISE_BY_ID, NOW),
+        targetMuscles: [],
+        latestCheckIn: checkIn(),
+        now: NOW,
+      }).factors.find((f) => f.key === 'workload')!;
+
+    expect(at(1, 4).sufficient).toBe(true); // volume 4 -> chronicWeekly 1
+    expect(at(1, 3).sufficient).toBe(false); // volume 3 -> chronicWeekly 0.75
+  });
+
+  it('counts a check-in up to 36 hours old and no further', () => {
+    const wellbeingAt = (checkedInAt: string) =>
+      computeReadiness({
+        profile,
+        workouts: HISTORY,
+        recovery: estimateRecovery(HISTORY, EXERCISE_BY_ID, NOW),
+        targetMuscles: [],
+        latestCheckIn: checkIn({ checkedInAt }),
+        now: NOW,
+      }).factors.find((f) => f.key === 'wellbeing')!;
+
+    // NOW is 2026-06-10T09:00Z.
+    expect(wellbeingAt('2026-06-08T21:00:00.000Z').sufficient).toBe(true); // exactly 36h
+    expect(wellbeingAt('2026-06-08T20:59:00.000Z').sufficient).toBe(false); // 36h 1m
+    expect(wellbeingAt('2026-06-10T07:00:00.000Z').sufficient).toBe(true); // this morning
+  });
+
+  // --- Data-present behaviour is unchanged ---------------------------------
+
+  it('reproduces the pre-change wellbeing score for a fully answered check-in', () => {
+    // The formula this factor used before per-field weighting was introduced.
+    const legacyWellbeing = (c: CheckIn) => {
+      const n = (v: number) => Math.min(1, Math.max(0, (v - 1) / 4));
+      const positives = (n(c.sleepQuality!) + n(c.energy!)) / 2;
+      const negatives = (n(c.soreness!) + n(c.stress!)) / 2;
+      return Math.min(1, Math.max(0, positives * 0.65 + (1 - negatives) * 0.35));
+    };
+
+    for (const c of [
+      checkIn({ sleepQuality: 5, energy: 5, soreness: 1, stress: 1 }),
+      checkIn({ sleepQuality: 1, energy: 1, soreness: 5, stress: 5 }),
+      checkIn({ sleepQuality: 3, energy: 4, soreness: 2, stress: 5 }),
+      checkIn({ sleepQuality: 4, energy: 2, soreness: 3, stress: 1 }),
+    ]) {
+      const factor = fullyFed({ latestCheckIn: c }).factors.find((f) => f.key === 'wellbeing')!;
+      expect(factor.sufficient).toBe(true);
+      expect(factor.missing).toBeUndefined();
+      expect(factor.score).toBeCloseTo(legacyWellbeing(c), 12);
+    }
+  });
+
+  it('reproduces the pre-change composite when every factor has data', () => {
+    const result = fullyFed({ targetMuscles: ['chest'] });
+    expect(result.confidence).toBe('full');
+
+    // With nothing excluded, re-normalisation is a no-op: the applied weights
+    // are the base weights, so this is the original composite arithmetic.
+    const expected = Math.round(
+      Math.min(
+        1,
+        Math.max(
+          0,
+          result.factors.reduce((sum, f) => sum + f.score * READINESS_WEIGHTS[f.key], 0),
+        ),
+      ) * 100,
+    );
+    expect(result.score).toBe(expected);
+    for (const f of result.factors) {
+      expect(f.weight).toBeCloseTo(READINESS_WEIGHTS[f.key], 12);
+    }
+  });
+
+  // --- Partial check-ins ---------------------------------------------------
+
+  it('scores a partial check-in from only the fields the lifter answered', () => {
+    const factor = fullyFed({
+      latestCheckIn: checkIn({ sleepQuality: 5, energy: null, soreness: null, stress: null }),
+    }).factors.find((f) => f.key === 'wellbeing')!;
+
+    expect(factor.sufficient).toBe(true);
+    // Sleep at 5/5 is the only input, so it is the whole score -- not diluted
+    // by a neutral stand-in for the three unanswered fields.
+    expect(factor.score).toBeCloseTo(1, 12);
+    expect(factor.missing).toEqual(['Energy', 'Soreness', 'Stress']);
+  });
+
+  it('distinguishes a partial check-in from a fully answered one', () => {
+    const partial = fullyFed({
+      latestCheckIn: checkIn({ sleepQuality: 4, energy: null, soreness: null, stress: null }),
+    }).factors.find((f) => f.key === 'wellbeing')!;
+    const complete = fullyFed({
+      latestCheckIn: checkIn({ sleepQuality: 4, energy: 1, soreness: 5, stress: 5 }),
+    }).factors.find((f) => f.key === 'wellbeing')!;
+
+    expect(partial.missing).toHaveLength(3);
+    expect(complete.missing).toBeUndefined();
+    expect(partial.score).not.toBeCloseTo(complete.score, 6);
+  });
+
+  it('treats an unanswered field as absent, never as a neutral or zero value', () => {
+    const soreOnly = fullyFed({
+      latestCheckIn: checkIn({ sleepQuality: null, energy: null, soreness: 5, stress: null }),
+    }).factors.find((f) => f.key === 'wellbeing')!;
+
+    // Soreness at its worst is 0 on its own scale; a zero-filled sleep/energy
+    // would drag this down further, and a neutral fill would prop it up.
+    expect(soreOnly.score).toBeCloseTo(0, 12);
+    expect(soreOnly.sufficient).toBe(true);
+    expect(soreOnly.missing).toEqual(['Sleep quality', 'Energy', 'Stress']);
+  });
+
+  it('treats a check-in with nothing answered as no check-in at all', () => {
+    const factor = fullyFed({
+      latestCheckIn: checkIn({ sleepQuality: null, energy: null, soreness: null, stress: null }),
+    }).factors.find((f) => f.key === 'wellbeing')!;
+
+    expect(factor.sufficient).toBe(false);
+    expect(factor.score).not.toBe(0.7);
+    expect(factor.missing).toHaveLength(4);
   });
 
   it('counts only sessions inside the reference week, not everything after it', () => {

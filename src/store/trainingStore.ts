@@ -139,3 +139,16 @@ export function selectCompletedWorkouts(s: TrainingState): Workout[] {
 export function selectLatestCheckIn(s: TrainingState): CheckIn | null {
   return s.checkIns.length > 0 ? s.checkIns[s.checkIns.length - 1] : null;
 }
+
+/** Today's check-in, if one exists. There is at most one per calendar day. */
+export function selectTodaysCheckIn(s: TrainingState): CheckIn | null {
+  const latest = selectLatestCheckIn(s);
+  if (!latest) return null;
+  const at = new Date(latest.checkedInAt);
+  const now = new Date();
+  const sameDay =
+    at.getFullYear() === now.getFullYear() &&
+    at.getMonth() === now.getMonth() &&
+    at.getDate() === now.getDate();
+  return sameDay ? latest : null;
+}
