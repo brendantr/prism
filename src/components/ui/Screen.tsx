@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
-import { color, space } from '@/theme';
+import { a11y, color, opacity, space } from '@/theme';
 
 export interface ScreenProps extends Pick<ScrollViewProps, 'refreshControl' | 'onScroll' | 'scrollEventThrottle'> {
   children?: ReactNode;
@@ -12,6 +13,14 @@ export interface ScreenProps extends Pick<ScrollViewProps, 'refreshControl' | 'o
   title?: string;
   eyebrow?: string;
   headerRight?: ReactNode;
+  /**
+   * Renders a back affordance above the header block.
+   *
+   * Needed by screens that are reachable but not present in the tab bar: with
+   * no bar item and no navigation header, the only way back would be a
+   * platform gesture that does not exist on every platform.
+   */
+  onBack?: () => void;
   /** Extra bottom padding, e.g. to clear a floating action bar. */
   bottomInset?: number;
 }
@@ -26,10 +35,25 @@ export function Screen({
   title,
   eyebrow,
   headerRight,
+  onBack,
   bottomInset = 0,
   ...scrollProps
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
+
+  const back = onBack ? (
+    <View style={styles.backRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        onPress={onBack}
+        hitSlop={10}
+        style={({ pressed }) => [styles.back, pressed && { opacity: opacity.pressed }]}
+      >
+        <Ionicons name="chevron-back" size={20} color={color.text} />
+      </Pressable>
+    </View>
+  ) : null;
 
   const header =
     title || eyebrow ? (
@@ -56,6 +80,7 @@ export function Screen({
   if (!scroll) {
     return (
       <View style={[styles.canvas, { paddingTop }]}>
+        {back}
         {header}
         <View style={styles.flex}>{children}</View>
       </View>
@@ -70,6 +95,7 @@ export function Screen({
       keyboardShouldPersistTaps="handled"
       {...scrollProps}
     >
+      {back}
       {header}
       {children}
     </ScrollView>
@@ -84,6 +110,13 @@ const styles = StyleSheet.create({
     backgroundColor: color.bg,
   },
   flex: { flex: 1 },
+  backRow: { paddingHorizontal: SCREEN_PADDING - space.md },
+  back: {
+    width: a11y.minTouch,
+    height: a11y.minTouch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-end',
