@@ -162,6 +162,7 @@ export default function ExercisesScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
         contentContainerStyle={styles.filterRow}
         keyboardShouldPersistTaps="handled"
       >
@@ -185,6 +186,7 @@ export default function ExercisesScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
         contentContainerStyle={styles.filterRow}
         keyboardShouldPersistTaps="handled"
       >
@@ -394,6 +396,13 @@ function buildSections(exercises: Exercise[], groupBy: GroupBy, favourites: stri
 const styles = StyleSheet.create({
   search: { marginHorizontal: space.lg },
   group: { marginHorizontal: space.lg, marginTop: space.md },
+  /**
+   * A horizontal ScrollView inside a column flex parent will fight the list
+   * below it for vertical space and end up compressed -- which clipped the
+   * chips in both filter rows. Pinning the height to the chip's own 26pt plus
+   * the row's top padding takes them out of that negotiation entirely.
+   */
+  filterScroll: { flexGrow: 0, flexShrink: 0, height: 26 + space.md },
   filterRow: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.xs },
   list: { paddingTop: space.base, paddingBottom: space.xxl },
   count: { paddingHorizontal: space.lg, paddingBottom: space.sm },
