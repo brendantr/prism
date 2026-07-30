@@ -1,8 +1,9 @@
 # Sprint: security-foundation
 
-- **Status:** Complete — SEC-1 and SEC-2 fully met; SEC-3's code change is in with one runtime
-  confirmation blocked on a native rebuild that needs owner approval (see that task). Success
-  outcomes below were written before any code was changed.
+- **Status:** **Complete.** All three tasks met their success outcomes, and the two runtime checks
+  that were blocked at the end of the first session now pass on a device (see "Runtime
+  verification"). One limitation is recorded rather than closed: SEC-1's Keychain path cannot be
+  exercised until authentication exists. Success outcomes below were written before any code changed.
 - **Date:** 2026-07-29
 - **Branch:** `security-foundation` (new branch off `main` — no UI branch is reused; see "Why a new branch")
 - **Type:** Security hardening. Client-side only. **No schema, migration, or RLS change in this
@@ -156,7 +157,7 @@ the end of this document.
 
 ### SEC-3 — Make the auth UI honest until real auth exists
 
-**Status:** ☑ **Code done** (`app/onboarding/auth.tsx`) · ⚠ **runtime confirmation blocked** — see below
+**Status:** ☑ **Done — confirmed on device.** See "Runtime verification" below.
 
 **Audit finding:** MEDIUM — `app/onboarding/auth.tsx:102-119` sets `textContentType="newPassword"`
 and `autoComplete` on a password field whose submit handler only calls `router.push()`. This was
@@ -179,7 +180,7 @@ not exist, and the screen's own notice ("Accounts are not connected yet") contra
 
 | # | Outcome | Status |
 | --- | --- | --- |
-| 1 | No "Save Password?" prompt on submit | ⚠ **Blocked on runtime confirmation** — code change made, cannot be observed without a native rebuild |
+| 1 | No "Save Password?" prompt on submit | ☑ **Confirmed on device** — see "Runtime verification" |
 | 2 | Behaviour matches the screen's own copy | ☑ Autofill association removed from both fields; the password is also cleared from component state on submit |
 | 3 | No new dependency, `authValidation.ts` untouched | ☑ `git diff` touches one file, `app/onboarding/auth.tsx` |
 | 4 | "Later" path and layout unchanged | ☑ No structural or style change — only `textContentType` / `autoComplete` values and one `setPassword('')` |
@@ -194,26 +195,9 @@ Additionally, `submit()` now clears the password from state before navigating. E
 screen mounted beneath the pushed one, so the credential would otherwise sit in memory for the rest of
 the session having already served its only purpose (local validation).
 
-**Why outcome 1 is blocked, and not simply unverified.** Confirming the prompt is gone means running
-the app and submitting the form. SEC-1 and SEC-2 each added a native module (`expo-secure-store`,
-`expo-crypto`) whose pods are **not** in the existing `ios/` project — confirmed by inspecting
-`ios/Pods`. The installed simulator build therefore cannot load them, and `expo-crypto` resolves its
-native module at import time, so the app would fail on boot rather than reaching the auth screen.
-
-Making it runnable requires `pod install` against `ios/`, and `CLAUDE.md` gates native project changes
-behind explicit engineer/owner approval. That approval was not part of this sprint's scope, so the
-rebuild was **not** performed. This is a stop-and-ask, not an oversight.
-
-Note also that a passing `expo export` does **not** substitute: it bundles JavaScript only and never
-exercises a native module, so it cannot detect a missing pod. Stated here so the green validation row
-above is not read as more than it is.
-
-**Confidence in the fix, absent that check:** high but not certain. The prompt was directly observed
-under the old props during the UI verification sprint, and `textContentType="none"` +
-`autoComplete="off"` is the documented way to opt out of AutoFill. What cannot be ruled out from
-static inspection is iOS applying its own heuristic to a `secureTextEntry` field sitting next to an
-email field regardless of the declared content type. That is precisely what the runtime check would
-settle.
+**Outcome 1 was initially blocked** on a native rebuild (the two new native modules' pods were absent
+from `ios/`, so the installed build could not boot this branch). Owner approval to rebuild was given
+on 2026-07-30 and the check now passes — see the next section.
 
 ---
 
@@ -233,30 +217,94 @@ settle.
 - **The unmerged `ui-ux-foundation-cleanup` work** (Stepper deletion, `CheckIn.note` comment). That
   branch was never merged and `Stepper.tsx` is still on `main`. Out of scope here; not reopened.
 
-## Native rebuild required before this branch runs
+## Runtime verification (2026-07-30, iPhone 17 Pro simulator, iOS 26.4)
 
-Both new dependencies are native modules. `ios/` and `android/` are gitignored and regenerated, so
-nothing in this branch's diff touches them — but **the branch cannot run on the current simulator
-build until pods are installed**:
+Owner approval for the native rebuild was given, so the checks that were blocked at the end of the
+previous session were carried out.
 
-```bash
-npx pod-install          # or: cd ios && pod install
-npx expo run:ios         # rebuild with the two new modules linked
+### Rebuild
+
+`npx pod-install` → **105 pods installed**, both new modules present in `ios/Podfile.lock`
+(`ExpoCrypto (57.0.1)`, `ExpoSecureStore (57.0.1)`). `npx expo run:ios --device "iPhone 17 Pro"` →
+**Build Succeeded, 0 errors, 1 warning**, installed and launched. Nothing in the repo diff changed —
+`ios/` is gitignored, and `git status` stayed clean throughout.
+
+**One environment hiccup, not a code fault.** The first launch showed React Native's *"No script URL
+provided"* screen. Cause: `expo run:ios` had been started as a background command, and Metro is its
+child — when the command exited, Metro died with it, leaving port 8081 empty. This is the README's
+documented failure mode #1 reached by a new route. Fix: start Metro independently
+(`npx expo start --dev-client`), relaunch the app. It then bundled and rendered normally. Worth noting
+because it looks exactly like a broken build and is not one.
+
+**Both native modules load.** The app boots to the welcome screen, which is itself a meaningful
+result: `expo-crypto` and `expo-secure-store` are imported at module scope on the boot path
+(`id.ts`, and `repository.ts` → `client.ts` → `secureStorage.ts`). A missing or unlinked pod would
+have failed at import, before any screen rendered.
+
+### SEC-3 — "Save Password?" prompt: **GONE**
+
+Replayed the exact flow that produced the sheet before: *I already have an account* → sign-in mode →
+type `test@example.com` → type `abc` → **Sign in**.
+
+| Check | Before (UI verification sprint) | After |
+| --- | --- | --- |
+| Immediately after submit | Step 1 of 4, clean | Step 1 of 4, clean |
+| ~1 min after submit | **"Save Password?" sheet** | **No sheet** — 12-element accessibility tree, full Step 1 |
+| Accessibility tree during | collapsed to a single `Application` node (system alert layer on top) | intact, all Step 1 controls addressable |
+
+The delayed re-check matters and was deliberate: in the original observation the sheet did **not**
+appear in the screenshot taken right after submit — it surfaced about a minute later. Checking only
+immediately would have produced a false pass. Confirmed clean at submit + 45s, with the simulator
+clock running 11:59 → 12:01.
+
+The tree-collapse signal is the strongest evidence: an iOS system alert takes over the accessibility
+layer, which is precisely what was seen before and is absent now.
+
+### SEC-2 — device CSPRNG: **PASS**
+
+Follow-up 2 asked for real ids from the real generator. Rather than adding a debug affordance, two
+full sessions were logged through the UI and the ids were read back out of the app container's
+AsyncStorage (`RCTAsyncLocalStorage_V1`), so these are values the shipped code actually persisted.
+
+```
+total ids:             28   (2 workouts, 7 workout_exercises, 19 sets)
+distinct:              28
+malformed (not v4):     0
+version nibbles:       {'4'}          (spec: '4')
+variant nibbles:       ['8','9','a','b']  (spec: subset of 8/9/a/b)
+distinct 32-bit heads: 28 / 28
 ```
 
-Not run here: `CLAUDE.md` requires explicit owner approval before native project changes. Until it
-happens, everything in this branch is validated statically (typecheck, unit tests, JS bundle) and
-nothing is validated on a device.
+All 28 distinct, all well-formed v4. Two details worth calling out: the version nibble is `4` on every
+id, and **all four** legal variant nibbles appear across the sample — which is what a real random
+source produces and what a stub returning a constant, or the `undefined` the jest preset returns,
+would not. This closes the gap the unit suite could not reach by construction.
+
+### SEC-1 — what could and could not be exercised
+
+The Keychain adapter's **read/write path was not exercised at runtime, and this is not fixable in this
+sprint.** It only runs when Supabase writes a session, and no session can exist while authentication
+is unimplemented and demo mode is on. What the rebuild does establish is that `expo-secure-store`
+links and loads on device. The adapter's behaviour remains covered by its 6 unit tests, including both
+partial-write failure modes.
+
+Stated plainly so the sprint is not read as claiming more than it verified: **SEC-1 is
+test-verified and load-verified, not session-verified.** The first real sign-in is what will exercise
+it, and that belongs to the backend sprint.
 
 ## Follow-ups
 
 1. **Web session storage is still `localStorage`** and therefore XSS-readable. `app.json` declares a
    web target but PRism does not ship one. If web ever becomes real, it needs its own decision rather
    than inheriting the native fallback.
-2. **Device-side CSPRNG unexercised.** `jest-expo` stubs expo-crypto, so the suite proves delegation
-   but never runs the real generator. One simulator check — mint a few ids, confirm well-formed and
-   distinct — closes it. Gated behind the native rebuild above.
-3. **SEC-3 outcome 1 unconfirmed** — see that task. Same gate.
+2. ~~Device-side CSPRNG unexercised.~~ **Resolved 2026-07-30** — 28 ids from two real logged sessions,
+   all distinct and well-formed v4. See "Runtime verification".
+3. ~~SEC-3 outcome 1 unconfirmed.~~ **Resolved 2026-07-30** — prompt confirmed gone, including on the
+   delayed re-check that caught it originally.
+3a. **SEC-1's Keychain read/write path is still unexercised at runtime**, and cannot be until
+   authentication exists — no session means nothing calls the adapter. Covered by unit tests and
+   confirmed to load on device. The first real sign-in in the backend sprint is the check that closes
+   it.
 4. **Carried from the audit, deliberately not addressed here** (both need migration approval):
    unbounded attacker-controlled `display_name` in `handle_new_user()`
    (`supabase/migrations/0001_init.sql:252-260`, no length constraint on a client-supplied value),
@@ -283,3 +331,8 @@ Updated as work lands. Newest last.
 - **2026-07-29** — SEC-3 code landed. Autofill association removed from both credential fields and the
   password dropped from state on submit. Runtime confirmation blocked on a native rebuild that needs
   owner approval; recorded rather than worked around.
+- **2026-07-30** — Owner approved the native rebuild. Pods installed (105), build succeeded, both new
+  modules linked and loading on device. SEC-3's "Save Password?" prompt confirmed **gone**, including
+  on the delayed re-check that is what caught it in the first place. SEC-2 confirmed against the real
+  device CSPRNG: 28 ids from two logged sessions, all distinct and well-formed v4. Follow-ups 2 and 3
+  closed; SEC-1's session path noted as unexercisable until auth exists (3a). Sprint complete.
