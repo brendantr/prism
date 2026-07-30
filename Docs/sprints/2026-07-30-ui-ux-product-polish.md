@@ -1,6 +1,9 @@
 # Sprint: ui-ux-product-polish
 
-- **Status:** In progress. Success criteria below were written before any code changed.
+- **Status:** **Complete on code and static validation; simulator validation BLOCKED.** All three
+  tasks met their success criteria. The changed screens were **not** rendered on a device — see
+  "Simulator validation, blocked" — so no visual claim is made about them. Criteria were written
+  before any code changed.
 - **Date:** 2026-07-30
 - **Branch:** `ui-ux-product-polish` (new branch off `main` at `c4c3e68`; no earlier UI branch reused)
 - **Type:** UI/UX. Frontend only. No schema, migration, RLS, or repository-contract change.
@@ -116,7 +119,26 @@ file mocks `expo-crypto` with Node's CSPRNG. Future store tests will need the sa
 4. On error, the screen says so and offers a retry — it never renders as "empty".
 5. The screen's title and chrome stay put across state changes, so nothing jumps.
 
-**Out of scope:** per-screen bespoke skeletons; offline detection//queueing (needs backend work).
+**Out of scope:** per-screen bespoke skeletons; offline detection/queueing (needs backend work).
+
+**Outcome — met, 5/5 by inspection; not visually verified.**
+
+| # | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | One shared primitive | `src/components/ui/ScreenState.tsx`. Today was migrated onto it too, so its bespoke loading/error pair is gone and all seven screens now share one |
+| 2 | All six adopt it | `exercises`, `insights`, `plans`, `progress`, `body`, `social` — each greps to 2 `ScreenState` references (import + use) |
+| 3 | No unverified emptiness while loading | Each screen returns early on `status !== 'ready'`, so no list, count or "0 exercises" renders before the data exists |
+| 4 | Errors say so and offer retry | The error branch shows the store's own message and a "Try again" wired to `refresh()` — never the empty state |
+| 5 | Chrome does not jump | Each screen defines one `header` object and spreads it into every branch, so title and eyebrow cannot drift between states |
+
+**A layout trap worth recording.** The centred states need `Screen`'s non-scrolling branch:
+`scroll={true}` puts children in a `ScrollView` contentContainer where `flex: 1` does not fill, so a
+centred state would have collapsed. Every state branch passes `scroll={false}`.
+
+**Insights gained a genuine empty state.** It previously returned `<Screen title="Insights" />` — a
+bare title over blank space — whenever `profile` or `summary` was missing. That is now split: not
+loaded yet → `ScreenState`; loaded with nothing to derive → an `EmptyState` saying insights appear
+after a session or two. A new lifter's first visit no longer looks like a broken screen.
 
 ---
 
@@ -134,7 +156,17 @@ file mocks `expo-crypto` with Node's CSPRNG. Future store tests will need the sa
 **Out of scope:** removing `profileId` from the domain type — demo mode legitimately needs it, and the
 type mirrors the schema.
 
----
+**Outcome — met, 3/3.**
+
+| # | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | No UI authorization gate on client ownership | `grep -rnE "profileId ===\|profile\.id ===\|isOwner\|canEdit\|canDelete\|permission"` over `app/` and `src/components/` returns **nothing**, before and after this sprint |
+| 2 | Remaining sites marked non-authoritative | Documented on the **contract** — `activeWorkoutStore.start`'s params and `CheckInPromptProps.profileId` — rather than as comments at six call sites, so every caller inherits the meaning |
+| 3 | UX-1/UX-2 introduced none | Diffing added lines for ownership identifiers returns only test fixtures and the doc comments themselves |
+
+**This task changed no behaviour, and that is the correct result.** The assumption already held. The
+work was verifying it rather than assuming it, and then writing it down where the next person will
+meet it — a type signature, not a sprint document they may never open.
 
 ## Validation steps
 
@@ -165,3 +197,58 @@ Newest last.
   findings recorded above, sprint document written with success criteria fixed before any code change.
 - **2026-07-30** — UX-1 done. `finish()` is pure, the save has a `catch`, and a failed write now keeps
   the session on screen with a retry instead of destroying it. Suite 98 → 103, 8 → 9 suites.
+
+## Simulator validation, blocked
+
+**The changed screens were not rendered on a device this sprint, and nothing here claims they were.**
+
+The app was rebuilt-free (no native change, so the existing build applies) and launched on the
+iPhone 17 Pro simulator, but never loaded a JS bundle: the dev client showed its splash, Metro logged
+no bundle request, and `idb ui describe-all` returned a single `Application` node throughout. The
+documented recovery from `README.md` was applied in full — `simctl shutdown all`, killing
+`CoreSimulatorService`, a clean boot waited out with `bootstatus`, then relaunch, then the dev-client
+deep link (`app.prism.trainer://expo-development-client/?url=…`). None of it produced a bundle
+request.
+
+This is **environment instability, not a code fault**, and it is the same class of problem the two
+previous sprints hit and documented. It was not worth more of the sprint's time, and it is recorded
+rather than worked around or quietly dropped.
+
+**What this means for confidence:**
+
+- **UX-1 is well covered without a device.** Its behaviour change is in the store and is asserted by
+  5 unit tests, including the finish-twice retry path.
+- **UX-3 changed no runtime behaviour**, so there is nothing to see.
+- **UX-2 is the exposure.** Its ready-path edits are structural (`<Screen eyebrow= title=>` became
+  `<Screen {...header}>`, which is equivalent) and typecheck plus a clean iOS bundle cover the
+  mechanics — but *how the new loading and error states actually look* is unverified. The centred
+  layout inside `Screen`'s non-scrolling branch in particular deserves eyes before this is trusted.
+
+**To close it:** launch via `npx expo run:ios` — which is what has reliably worked in this repo, since
+it owns the Metro handshake — then visit each of the seven screens, and force the error branch by
+temporarily throwing inside `trainingStore.load`.
+
+## Final validation
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Pass, exit 0 |
+| `npm test` | Pass — **103/103, 9 suites** (was 98/8 at branch point) |
+| `npx expo export --platform ios` | Pass — single iOS bundle, 5.1 MB |
+| No client-side ownership gate | `grep` returns nothing |
+| Render the changed screens | **Blocked** — see above |
+| Working tree | Clean |
+
+## What remains open
+
+1. **Simulator validation of UX-2** — the one real gap this sprint leaves. See above.
+2. **Sessions cannot be exercised.** Assumption 3 (missing/expired/loading sessions) is designed for
+   but untestable end to end: authentication does not exist. Anything built here for session state is
+   a contract, not a verified flow.
+3. **RLS enforcement still unverified** (`I-1`); migration `0002` still **unapplied**. UX-1 makes the
+   UI behave correctly *when* a write is rejected; it cannot prove the server will reject the right
+   things.
+4. **Multi-record workout writes are still not atomic** (`I-2`, `G-2`). UX-1 stops the *client*
+   compounding a partial write by discarding the local copy — the server-side gap is untouched.
+5. **No offline queue.** A failed save is now honest and retryable by hand, but nothing retries for
+   the lifter, and nothing survives them force-quitting the app.
