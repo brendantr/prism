@@ -1,6 +1,8 @@
 # Sprint: security-foundation
 
-- **Status:** In progress. Success outcomes below were written before any code was changed.
+- **Status:** Complete — SEC-1 and SEC-2 fully met; SEC-3's code change is in with one runtime
+  confirmation blocked on a native rebuild that needs owner approval (see that task). Success
+  outcomes below were written before any code was changed.
 - **Date:** 2026-07-29
 - **Branch:** `security-foundation` (new branch off `main` — no UI branch is reused; see "Why a new branch")
 - **Type:** Security hardening. Client-side only. **No schema, migration, or RLS change in this
@@ -154,7 +156,7 @@ the end of this document.
 
 ### SEC-3 — Make the auth UI honest until real auth exists
 
-**Status:** ☐ Not started
+**Status:** ☑ **Code done** (`app/onboarding/auth.tsx`) · ⚠ **runtime confirmation blocked** — see below
 
 **Audit finding:** MEDIUM — `app/onboarding/auth.tsx:102-119` sets `textContentType="newPassword"`
 and `autoComplete` on a password field whose submit handler only calls `router.push()`. This was
@@ -172,6 +174,46 @@ not exist, and the screen's own notice ("Accounts are not connected yet") contra
    This task changes how the field integrates with the OS, not what counts as valid.
 4. The existing "Later" escape hatch still works, and the layout is unchanged.
 5. `npm run typecheck`, `npm test`, and `npx expo export --platform ios` all pass.
+
+**Outcome — 4/5 met, 1 blocked.**
+
+| # | Outcome | Status |
+| --- | --- | --- |
+| 1 | No "Save Password?" prompt on submit | ⚠ **Blocked on runtime confirmation** — code change made, cannot be observed without a native rebuild |
+| 2 | Behaviour matches the screen's own copy | ☑ Autofill association removed from both fields; the password is also cleared from component state on submit |
+| 3 | No new dependency, `authValidation.ts` untouched | ☑ `git diff` touches one file, `app/onboarding/auth.tsx` |
+| 4 | "Later" path and layout unchanged | ☑ No structural or style change — only `textContentType` / `autoComplete` values and one `setPassword('')` |
+| 5 | Validation green | ☑ `typecheck` pass · `npm test` 88/88 · `expo export --platform ios` pass |
+
+**What changed.** Both fields move from `textContentType="emailAddress"` / `"newPassword"|"password"`
+and `autoComplete="email"` to `textContentType="none"` / `autoComplete="off"`. iOS raises the save
+sheet when it sees an AutoFill-associated username/password *pair* submitted together, so both fields
+had to change, not just the password one. `secureTextEntry` stays — masking is correct regardless.
+
+Additionally, `submit()` now clears the password from state before navigating. Expo Router keeps this
+screen mounted beneath the pushed one, so the credential would otherwise sit in memory for the rest of
+the session having already served its only purpose (local validation).
+
+**Why outcome 1 is blocked, and not simply unverified.** Confirming the prompt is gone means running
+the app and submitting the form. SEC-1 and SEC-2 each added a native module (`expo-secure-store`,
+`expo-crypto`) whose pods are **not** in the existing `ios/` project — confirmed by inspecting
+`ios/Pods`. The installed simulator build therefore cannot load them, and `expo-crypto` resolves its
+native module at import time, so the app would fail on boot rather than reaching the auth screen.
+
+Making it runnable requires `pod install` against `ios/`, and `CLAUDE.md` gates native project changes
+behind explicit engineer/owner approval. That approval was not part of this sprint's scope, so the
+rebuild was **not** performed. This is a stop-and-ask, not an oversight.
+
+Note also that a passing `expo export` does **not** substitute: it bundles JavaScript only and never
+exercises a native module, so it cannot detect a missing pod. Stated here so the green validation row
+above is not read as more than it is.
+
+**Confidence in the fix, absent that check:** high but not certain. The prompt was directly observed
+under the old props during the UI verification sprint, and `textContentType="none"` +
+`autoComplete="off"` is the documented way to opt out of AutoFill. What cannot be ruled out from
+static inspection is iOS applying its own heuristic to a `secureTextEntry` field sitting next to an
+email field regardless of the declared content type. That is precisely what the runtime check would
+settle.
 
 ---
 
@@ -191,9 +233,53 @@ not exist, and the screen's own notice ("Accounts are not connected yet") contra
 - **The unmerged `ui-ux-foundation-cleanup` work** (Stepper deletion, `CheckIn.note` comment). That
   branch was never merged and `Stepper.tsx` is still on `main`. Out of scope here; not reopened.
 
+## Native rebuild required before this branch runs
+
+Both new dependencies are native modules. `ios/` and `android/` are gitignored and regenerated, so
+nothing in this branch's diff touches them — but **the branch cannot run on the current simulator
+build until pods are installed**:
+
+```bash
+npx pod-install          # or: cd ios && pod install
+npx expo run:ios         # rebuild with the two new modules linked
+```
+
+Not run here: `CLAUDE.md` requires explicit owner approval before native project changes. Until it
+happens, everything in this branch is validated statically (typecheck, unit tests, JS bundle) and
+nothing is validated on a device.
+
+## Follow-ups
+
+1. **Web session storage is still `localStorage`** and therefore XSS-readable. `app.json` declares a
+   web target but PRism does not ship one. If web ever becomes real, it needs its own decision rather
+   than inheriting the native fallback.
+2. **Device-side CSPRNG unexercised.** `jest-expo` stubs expo-crypto, so the suite proves delegation
+   but never runs the real generator. One simulator check — mint a few ids, confirm well-formed and
+   distinct — closes it. Gated behind the native rebuild above.
+3. **SEC-3 outcome 1 unconfirmed** — see that task. Same gate.
+4. **Carried from the audit, deliberately not addressed here** (both need migration approval):
+   unbounded attacker-controlled `display_name` in `handle_new_user()`
+   (`supabase/migrations/0001_init.sql:252-260`, no length constraint on a client-supplied value),
+   and foreign-key checks bypassing RLS on `exercises` (`:113`, `:148`), which lets a reference from
+   another user's row block a delete. Both belong with the backend sprint.
+5. **Client-supplied `profile_id` on writes** (`repository.ts:317,355`, `mappers.ts:133`). Safe today
+   — every affected table has `with check (profile_id = auth.uid())` — but ownership should come from
+   the session, not client state. Belongs with the backend sprint that touches those write paths.
+6. **`npm audit` reports 36 vulnerabilities** (11 moderate, 25 high) across 874 packages. Pre-existing
+   and not introduced by this sprint's two additions; not triaged here because dependency upgrades are
+   their own approval gate under `CLAUDE.md`. Worth a dedicated pass before launch.
+
 ## Progress log
 
 Updated as work lands. Newest last.
 
 - **2026-07-29** — Branch opened, sprint document written with success outcomes fixed before any code
   change.
+- **2026-07-29** — SEC-1 landed (`9aaf7a0`). Keychain-backed session storage with byte-aware chunking
+  and a commit-marker write order. 6 new tests; suite 78 → 84.
+- **2026-07-29** — SEC-2 landed (`56a479e`). `Math.random()` replaced with `Crypto.randomUUID()`; no
+  call site moved. 4 new tests; suite 84 → 88. Test asserts CSPRNG delegation after the planned
+  entropy assertion proved untestable under the preset.
+- **2026-07-29** — SEC-3 code landed. Autofill association removed from both credential fields and the
+  password dropped from state on submit. Runtime confirmation blocked on a native rebuild that needs
+  owner approval; recorded rather than worked around.
