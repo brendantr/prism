@@ -4,6 +4,7 @@
 #
 #   assets/brand/prism-logo-source.(svg|png)   ->   assets/brand/app-icon.png
 #                                                   assets/brand/adaptive-icon.png
+#                                                   assets/brand/splash-icon.png
 #
 # Same input and flags always produce the same output, so the icons can be
 # rebuilt from source rather than being hand-made files nobody can reproduce.
@@ -12,7 +13,7 @@
 #   sips          ships with macOS
 #   rsvg-convert  only needed when the source is an SVG (brew install librsvg)
 #
-# WHY TWO OUTPUTS
+# WHY THREE OUTPUTS
 #   iOS masks the icon to a squircle and expects full-bleed art, so `app-icon`
 #   fills the canvas with the brand background and insets the mark slightly.
 #
@@ -22,7 +23,15 @@
 #   therefore scales the mark smaller and pads the rest. Handing Android the iOS
 #   icon is what produces the classic clipped-logo launcher bug.
 #
-#   The padding is filled with the brand background rather than transparency.
+#   `splash-icon` is different again: it is drawn centred on a solid
+#   `backgroundColor`, so an opaque image shows as a rectangle unless its own
+#   background matches that colour exactly -- and the artwork's does not (it is
+#   #030305 at the corners, #020204 mid-field). Its background is therefore
+#   keyed to transparent instead. That was the old placeholder's bug: a flat
+#   #0B0B12 square on a #07070B background, i.e. a small black box on launch.
+#
+#   The padding on the icons is filled with the brand background rather than
+#   transparency.
 #   Expo composites the foreground over `adaptiveIcon.backgroundColor`, which is
 #   the same #07070B, so the result is identical to transparent padding while
 #   keeping this script to tools that are already on the machine.
@@ -141,6 +150,12 @@ echo "source: ${SOURCE#$ROOT/}"
 echo "generated:"
 emit "$BRAND_DIR/app-icon.png"      "$IOS_SCALE"     "ios"
 emit "$BRAND_DIR/adaptive-icon.png" "$ANDROID_SCALE" "android"
+
+# Splash: the cropped mark at native resolution with its background keyed out,
+# so nothing rectangular appears against the splash `backgroundColor`. No
+# scaling here -- the crop is already larger than the 180pt @3x it renders at,
+# and resampling would only soften the shield outline.
+python3 "$ROOT/scripts/alpha-key.py" "$MASTER" "$BRAND_DIR/splash-icon.png"
 
 # The source is only ever read. Guard against a future edit writing over it.
 for generated in "$BRAND_DIR/app-icon.png" "$BRAND_DIR/adaptive-icon.png"; do

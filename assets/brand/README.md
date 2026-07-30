@@ -13,6 +13,7 @@ together:
 | `prism-logo-source.svg` *(preferred)* or `.png` | The artwork. Never modified by tooling. | Committed by hand |
 | `app-icon.png` | 1024×1024 iOS icon master → `expo.icon` | Generated |
 | `adaptive-icon.png` | 1024×1024 Android foreground → `expo.android.adaptiveIcon.foregroundImage` | Generated |
+| `splash-icon.png` | 720×720 **transparent-background** mark → `expo-splash-screen` `image` | Generated |
 
 ## Regenerating
 
@@ -38,7 +39,7 @@ scripts/generate-app-icons.sh --ios-scale 0.86 --android-scale 0.62
 Once the correct crop box is known, record it as the `CROP` default inside the
 script so a plain run stays reproducible.
 
-## Why two outputs rather than one
+## Why three outputs rather than one
 
 They are not interchangeable, and reusing the iOS icon for Android is a common
 way to ship a clipped logo.
@@ -50,7 +51,14 @@ way to ship a clipped logo.
   `adaptive-icon.png` scales the mark to sit inside that safe zone and pads out
   the rest.
 
-Padding uses the brand background `#07070B` rather than transparency. Expo
+- **Splash** is drawn centred on a solid `backgroundColor`, so an opaque image
+  shows as a rectangle unless its own background matches that colour *exactly* —
+  and the artwork's does not (`#030305` at the corners, `#020204` mid-field).
+  Its background is therefore keyed to transparent by `scripts/alpha-key.py`.
+  This was the old placeholder's bug: a flat `#0B0B12` square on a `#07070B`
+  background, i.e. the "small black box on launch".
+
+Icon padding uses the brand background `#07070B` rather than transparency. Expo
 composites the foreground over `adaptiveIcon.backgroundColor`, which is the same
 colour, so the result matches transparent padding while keeping the script to
 tools already present on macOS (`sips`, plus `rsvg-convert` for SVG sources).
