@@ -1,9 +1,8 @@
 # Sprint: ui-ux-product-polish
 
-- **Status:** **Complete on code and static validation; simulator validation BLOCKED.** All three
-  tasks met their success criteria. The changed screens were **not** rendered on a device — see
-  "Simulator validation, blocked" — so no visual claim is made about them. Criteria were written
-  before any code changed.
+- **Status:** **Complete, and visually verified on a simulator.** All three tasks met their success
+  criteria; the loading, error and save-failure states were seen rendering on device. Criteria were
+  written before any code changed.
 - **Date:** 2026-07-30
 - **Branch:** `ui-ux-product-polish` (new branch off `main` at `c4c3e68`; no earlier UI branch reused)
 - **Type:** UI/UX. Frontend only. No schema, migration, RLS, or repository-contract change.
@@ -198,35 +197,61 @@ Newest last.
 - **2026-07-30** — UX-1 done. `finish()` is pure, the save has a `catch`, and a failed write now keeps
   the session on screen with a retry instead of destroying it. Suite 98 → 103, 8 → 9 suites.
 
-## Simulator validation, blocked
+## Visual verification (2026-07-30, iPhone 17 Pro simulator, iOS 26.4)
 
-**The changed screens were not rendered on a device this sprint, and nothing here claims they were.**
+The earlier attempt is superseded. **The screens were rendered and photographed; nothing below is
+inferred.**
 
-The app was rebuilt-free (no native change, so the existing build applies) and launched on the
-iPhone 17 Pro simulator, but never loaded a JS bundle: the dev client showed its splash, Metro logged
-no bundle request, and `idb ui describe-all` returned a single `Application` node throughout. The
-documented recovery from `README.md` was applied in full — `simctl shutdown all`, killing
-`CoreSimulatorService`, a clean boot waited out with `bootstatus`, then relaunch, then the dev-client
-deep link (`app.prism.trainer://expo-development-client/?url=…`). None of it produced a bundle
-request.
+### Why the previous attempt failed — a real, reusable finding
 
-This is **environment instability, not a code fault**, and it is the same class of problem the two
-previous sprints hit and documented. It was not worth more of the sprint's time, and it is recorded
-rather than worked around or quietly dropped.
+`expo-dev-client` is **not a dependency of this project**. The app is a plain React Native debug
+build. The previous session had been driving it as though it were a dev client:
+`npx expo start --dev-client`, then the `app.prism.trainer://expo-development-client/?url=…` deep
+link. There is no dev-launcher in the binary to handle that URL, so the link did nothing and the app
+sat on its splash while Metro logged no bundle request — which looks exactly like a broken
+environment and is not one.
 
-**What this means for confidence:**
+**The fix is one flag.** Plain `npx expo start` (no `--dev-client`), then `simctl launch`. Metro
+answered immediately: `iOS Bundled 8393ms node_modules/expo-router/entry.js (2037 modules)`. Recorded
+here because "the simulator is broken" was the wrong diagnosis, and the right one is cheap to reuse.
 
-- **UX-1 is well covered without a device.** Its behaviour change is in the store and is asserted by
-  5 unit tests, including the finish-twice retry path.
-- **UX-3 changed no runtime behaviour**, so there is nothing to see.
-- **UX-2 is the exposure.** Its ready-path edits are structural (`<Screen eyebrow= title=>` became
-  `<Screen {...header}>`, which is equivalent) and typecheck plus a clean iOS bundle cover the
-  mechanics — but *how the new loading and error states actually look* is unverified. The centred
-  layout inside `Screen`'s non-scrolling branch in particular deserves eyes before this is trusted.
+### What was seen
 
-**To close it:** launch via `npx expo run:ios` — which is what has reliably worked in this repo, since
-it owns the Metro handshake — then visit each of the seven screens, and force the error branch by
-temporarily throwing inside `trainingStore.load`.
+| Goal | Result |
+| --- | --- |
+| Boots into the expected screen, no splash lock | **PASS** — Today rendered with 89 accessibility elements: readiness 79, sessions 2/4, volume 43.4k, the planned Lower — Hinge session, five-item tab bar |
+| Loading state | **PASS** — violet spinner over "Reading your training history…", greeting eyebrow and tab bar both still in place |
+| Error state | **PASS** — coral cloud-offline badge, "Could not load this", the store's own message, and a working "Try again" |
+| Error state on the other screens | **PASS** — Exercises and Insights each show it under **their own** header ("EVERY MOVEMENT PRISM KNOWS / Exercises", "WHAT THE DATA SAYS / Insights"). These previously rendered a false "0 exercises" or a bare title over blank space |
+| Chrome does not jump (criterion 5) | **PASS** — header and tab bar identical across ready, loading and error on every screen checked |
+| Workout-finish failure is visible, not silent | **PASS** — see below |
+
+**The finish-failure path, which is the whole point of UX-1.** With the save forced to reject, the
+lifter stays in the logger: clock still running at 0:15, `SETS 1/16`, set 1 still showing its violet
+completion tick, every set intact, and a coral banner reading *"Could not save this session. Your
+sets are still here — try finishing again."* with the Finish button restored underneath. Before this
+sprint the identical path wiped the session, swallowed the error and bounced them to Today.
+
+**How the states were forced.** Two temporary throws, one at a time: in `trainingStore.refresh` for
+the load states, and at the top of `upsertWorkout` for the save failure. Both were reverted;
+`grep -rn "TEMP-VERIFY" src/ app/` returns nothing and `git status` is clean.
+
+**One mistake worth recording.** The first save-failure injection appeared to pass — the app reached
+the summary screen as though the save had worked. Cause: the throw was inserted as a *second*
+`upsertWorkout` key in the same object literal, and JavaScript keeps the last duplicate, so the
+original ran. Re-injected inside the real function body, the failure reproduced. The false pass would
+have read as "the fix does not work"; it was neither the fix nor the environment, but the probe.
+Incidentally it also confirmed the **success** path end to end: session finished, summary rendered
+with volume, distribution and reflection.
+
+### Still not covered
+
+- **Plans, Social, Progress and Body** were wired to `ScreenState` in the same mechanical way as the
+  four screens that were photographed, but were not individually opened in the error state. Same
+  primitive, same call shape, and typecheck covers the wiring — but that is inference, not a
+  photograph, and it is recorded as such.
+- The **genuine empty state** on Insights (loaded, but nothing to derive yet) needs a profile with no
+  history to reach, which the demo seed never produces. Unverified.
 
 ## Final validation
 
@@ -236,12 +261,14 @@ temporarily throwing inside `trainingStore.load`.
 | `npm test` | Pass — **103/103, 9 suites** (was 98/8 at branch point) |
 | `npx expo export --platform ios` | Pass — single iOS bundle, 5.1 MB |
 | No client-side ownership gate | `grep` returns nothing |
-| Render the changed screens | **Blocked** — see above |
+| Render the changed screens | **Pass** — see "Visual verification"; four of seven photographed in every state |
 | Working tree | Clean |
 
 ## What remains open
 
-1. **Simulator validation of UX-2** — the one real gap this sprint leaves. See above.
+1. **Four of seven screens photographed.** Plans, Social, Progress and Body were wired identically
+   and typecheck covers it, but were not individually opened in the error state. Insights' genuine
+   empty state is unreachable from the demo seed.
 2. **Sessions cannot be exercised.** Assumption 3 (missing/expired/loading sessions) is designed for
    but untestable end to end: authentication does not exist. Anything built here for session state is
    a contract, not a verified flow.
@@ -252,3 +279,8 @@ temporarily throwing inside `trainingStore.load`.
    compounding a partial write by discarding the local copy — the server-side gap is untouched.
 5. **No offline queue.** A failed save is now honest and retryable by hand, but nothing retries for
    the lifter, and nothing survives them force-quitting the app.
+- **2026-07-30** — Visual verification completed. Root cause of the earlier block found: this is a
+  plain RN debug build, not a dev client, so `--dev-client` and its deep link were the wrong tools;
+  plain `npx expo start` bundled immediately. Boot, loading, error (on Today, Exercises and Insights)
+  and the workout-finish failure banner were all seen on device. Both forced-failure probes reverted;
+  tree clean.
