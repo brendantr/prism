@@ -155,9 +155,17 @@ Reviewable at the branch level. A criterion is met only with evidence.
 
 - **S-7.** Text search, region filter, equipment filter, and favourites filter compose rather than
   replace each other, and grouping is user-selectable across at least two axes.
-- **S-8.** A result row reaches a logging action in at most two taps, and starting a session from
-  Exercises produces the same active-workout state as the existing open-session path — no new
-  workout-creation code path. Evidence: both call `useActiveWorkoutStore.start` / `addExercise`.
+- **S-8.** **Met by code inspection, not exercised.** A result row reaches a logging action in at most
+  two taps, and starting a session from Exercises produces the same active-workout state as the
+  existing open-session path — no new workout-creation code path. Evidence: `logExercise` in
+  `app/(tabs)/exercises.tsx` calls the same `useActiveWorkoutStore.start` / `addExercise` the Today
+  screen's open-session path calls, and adds no third code path.
+
+  What was *not* done: the row's expansion and its action button were confirmed to render and to
+  carry the right labels by tap (T13), but the button was never followed through into
+  `workout/active`, so the resulting workout state was never observed. This criterion therefore rests
+  on reading the code, and is recorded that way rather than as verified behaviour. Closing it needs
+  one more tap plus an assertion on the logger's contents — see follow-up 9.
 - **S-9.** The no-results state is a real empty state with a way out, not a blank list.
 
 ### Insights
@@ -395,12 +403,13 @@ segmented-control option as **44.0pt** tall.
 **Still not verified, and not claimed:**
 
 - **Typing was never verified.** `idb ui text` does not reach text fields on this iOS 26 simulator
-  (the companion build is from 2022), so the auth fields, the exercise search box, and the check-in
-  note were only ever tapped, never filled. The search *filter* logic is therefore unexercised, as is
-  any keyboard-avoidance behaviour.
+  (the companion build is from 2022, and enabling the hardware keyboard did not help), so the auth
+  fields, the exercise search box, and the check-in note were only ever tapped, never filled. The
+  search *filter* logic is therefore unexercised, as is any keyboard-avoidance behaviour. Tracked as
+  follow-up 9, with the options and their costs.
 - **"Log this lift" was not followed into the logger.** The expanded row's action button renders and
-  is labelled; tapping it through to `workout/active` was not done, so the claim in S-8 that it
-  reuses the existing active-workout path rests on reading the code, not on running it.
+  is labelled (T13); tapping it through to `workout/active` was not done, so S-8 is recorded as met by
+  code inspection rather than exercised. Tracked as follow-up 10.
 - **One device, one size, default text size.** iPhone 17 Pro at 402×874pt only. The narrow-device
   case (iPhone SE) and large accessibility text sizes remain unchecked, and the tab bar's five 9.5pt
   labels are exactly what that check was for.
@@ -421,9 +430,19 @@ segmented-control option as **44.0pt** tall.
    at large accessibility text sizes, and a real device rather than a simulator.
 6. ~~Decide whether the Social placeholder feed earns its place.~~ **Resolved** — cut in `f31f56f`.
 7. ~~Install a UI-driving tool and re-verify with taps.~~ **Done** — `idb` installed, fourteen
-   interaction groups tapped, three defects found and fixed (`d7a9846`). What remains of it: text
-   entry, which `idb ui text` cannot deliver to this iOS 26 simulator, and following "log this lift"
-   through into the logger.
+   interaction groups tapped, three defects found and fixed (`d7a9846`). Two gaps it left are now
+   follow-ups 9 and 10.
+9. **Verify text entry, which the current tooling cannot reach.** `idb ui text` does not deliver
+   keystrokes to text fields on the iOS 26 simulator — the Homebrew `idb-companion` is a 2022 build
+   (1.1.8), and enabling the simulator's hardware keyboard did not help. Everything behind typing is
+   therefore unverified: the Exercises search field and so the whole text-filter path, the auth
+   email/password fields and their validation error states beyond the one observed incidentally, and
+   the check-in note. Options, in rough order of cost: wait for or build a newer `idb-companion`; add
+   an XCUITest target, which types natively but means touching `ios/` and so needs approval per
+   `CLAUDE.md`; or drive text through a debug-only affordance that pre-fills the fields. Until one of
+   these lands, treat any claim about search or credential input as code-inspection only.
+10. **Follow "log this lift" into the logger and assert the resulting workout**, closing S-8 as
+    exercised rather than inspected.
 8. ~~Decide on the sprint-document naming collision.~~ **Resolved** (owner decision, 2026-07-29). This
    record was originally `2026-07-29-ui-ux-expansion.md`, naming a sprint whose branch has never
    existed — the work runs on `ui-ux-foundation`. It is now
