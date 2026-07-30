@@ -12,6 +12,18 @@
  *
  * What this still does NOT cover, and is not claimed: signing in for real.
  * Nothing here obtains a token from a server. See the sprint record.
+ *
+ * WHY A TRANSPORT IS INJECTED
+ * ---------------------------
+ * `createClient()` resolves a WebSocket implementation eagerly, so on a Node
+ * runtime without a global `WebSocket` it cannot be constructed at all -- which
+ * made this suite pass locally (Node 22+) and fail on CI purely on runtime
+ * version. `OFFLINE_REALTIME_OPTIONS` removes that dependency.
+ *
+ * It changes nothing about what is asserted below. PRism's session handling
+ * never opens a socket, and the injected transport throws if anything tries to
+ * construct it, so this stays a real client exercising real auth code rather
+ * than a fake standing in for one. See `support/realtimeTransport.ts`.
  */
 
 jest.mock(
@@ -36,6 +48,7 @@ jest.mock('expo-secure-store', () => ({
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { secureSessionStorage } from '../secureStorage';
+import { OFFLINE_REALTIME_OPTIONS } from './support/realtimeTransport';
 
 const STORAGE_KEY = 'sb-prism-auth-token';
 
@@ -75,6 +88,9 @@ function makeClient(): SupabaseClient {
       persistSession: true,
       detectSessionInUrl: false,
     },
+    // Keeps the client constructible on a Node runtime with no global
+    // WebSocket. Not used by any auth path -- see the file header.
+    ...OFFLINE_REALTIME_OPTIONS,
   });
 }
 

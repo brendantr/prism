@@ -100,6 +100,49 @@ fail-closes to `null` on unparseable JSON — which is the same posture the adap
    deliberately does **not** assert `error === null`, because whether the server was reachable is not
    the security question.
 
+**Follow-up, 2026-07-30 — CI test lane, not a product regression.**
+
+`sessionFlow.test.ts` began failing in CI with `Node.js detected but native WebSocket not found.`
+**Nothing about PRism's session handling changed or regressed.** The cause is entirely in the test
+runtime: `createClient()` builds a `RealtimeClient` eagerly, and that resolves a WebSocket at
+construction time (`RealtimeClient.js`: `transport = options?.transport ?? getWebSocketConstructor()`).
+Node 22+ has a global `WebSocket`; older runtimes do not — so the suite passed locally and failed on
+CI purely on Node version.
+
+Reproduced deterministically by deleting `globalThis.WebSocket` before the import, and confirmed by
+causation rather than correlation: removing the fix reproduces the error, restoring it returns 5/5.
+
+**Fix — inject the transport, do not weaken the assertions.** The suite now spreads
+`OFFLINE_REALTIME_OPTIONS` (`__tests__/support/realtimeTransport.ts`) into `createClient`. Every
+session assertion is untouched; it is still a *real* Supabase client running *real* auth code against
+the Keychain adapter.
+
+The injected transport **throws if constructed**, which is the important detail. Verified against
+this library version: no auth path ever constructs it — a client built with a throwing constructor
+still completes `createClient()` and `auth.getSession()`. So it is a tripwire, not a fake. If a
+future test starts exercising realtime it fails loudly instead of passing against a stub pretending
+to work.
+
+**Long-term approach — two lanes.**
+
+| Lane | Command | Contract |
+| --- | --- | --- |
+| Unit (default) | `npm test` | Hermetic: no network, no database, no runtime networking features. Must pass on any Node version. |
+| Integration | `npm run test:integration` | Real project, real WebSocket, real server-issued session. Excluded from the default run via `jest.testPathIgnorePatterns`. |
+
+`sessionFlow.integration.test.ts` already exists and holds the four checks the unit lane *cannot*
+answer, as `it.todo`: a server-issued session surviving a round trip through the Keychain adapter,
+refresh-token rotation, server-side sign-out, and **RLS rejecting a forged `profile_id`** — which
+`ownership.test.ts` currently takes on trust because there is no database to ask.
+
+It skips rather than fails when `PRISM_INTEGRATION_SUPABASE_URL` / `..._ANON_KEY` are absent: a red
+suite for missing infrastructure trains people to ignore red suites. Those names are deliberately not
+the `EXPO_PUBLIC_*` ones, so a developer's app config can never silently point a test suite at their
+own project. Verified in both states — skipped when unset, active when set.
+
+This is the lane that closes when the database hookup lands, and it is the natural home for verifying
+`0002` and `I-1` at that point.
+
 ---
 
 ### SB-2 — Server-derived ownership on every write path

@@ -138,7 +138,8 @@ it. Clean up a throwaway device with `xcrun simctl delete "$UDID"`.
 | Command | What it does |
 | --- | --- |
 | `npm start` | Expo dev server |
-| `npm test` | Jest suite for the calculation engine and seed data |
+| `npm test` | Unit suite — hermetic, runs on any Node version |
+| `npm run test:integration` | Integration lane — needs a real Supabase project (see Testing) |
 | `npm run typecheck` | `tsc --noEmit` across the whole project |
 
 ---
@@ -411,9 +412,29 @@ three live highlights, Plans renders the real template structure — plus a
 
 ## Testing
 
+Two lanes, with different contracts.
+
 ```bash
-npm test
+npm test                  # unit: hermetic, no network, no database
+npm run test:integration  # integration: real Supabase project
 ```
+
+**The unit lane must pass on any Node version.** It touches no network, no
+database, and no runtime networking features. That last point is not
+hypothetical: `createClient()` resolves a WebSocket at construction time, so a
+suite that builds a Supabase client fails outright on a Node runtime without a
+global `WebSocket` (Node < 22) while passing on a newer one. Tests that need a
+client therefore inject a stub transport —
+`src/data/supabase/__tests__/support/realtimeTransport.ts`, which explains the
+reasoning and **throws if anything actually tries to use it**, so realtime
+coverage cannot creep into this lane unnoticed.
+
+**The integration lane is where real infrastructure goes.** Files named
+`*.integration.test.ts` are excluded from `npm test`. They skip unless
+`PRISM_INTEGRATION_SUPABASE_URL` and `PRISM_INTEGRATION_SUPABASE_ANON_KEY` are
+set — deliberately not the `EXPO_PUBLIC_*` names, so app config can never point
+a test run at your own project. Use a disposable account; never a real user's
+credentials and never a service-role key (`Docs/invariants.md` I-4, I-5).
 
 The suite covers the calculation engine end to end: Epley including the rep cap
 and inversion, volume with warm-up exclusion, PR detection across both record
