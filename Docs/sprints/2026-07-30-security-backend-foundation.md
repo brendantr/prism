@@ -1,6 +1,9 @@
 # Sprint: security-backend-foundation
 
-- **Status:** In progress. Success outcomes below were written before any code changed.
+- **Status:** **Complete**, with one deliberate hand-off: `0002` is written and reviewed but
+  **not applied**, because no database is reachable here and `CLAUDE.md` gates migrations behind
+  owner approval. Everything else met its success outcome. Outcomes were written before any code
+  changed.
 - **Date:** 2026-07-30
 - **Branch:** `security-backend-foundation` (new branch off `main`; no UI branch reused)
 - **Type:** Backend security hardening. Client write paths + one **authored, unapplied** migration.
@@ -313,3 +316,35 @@ Newest last.
   `search_path = ''`. Identifier cross-check against `0001` passes; `0001` untouched. All three
   functions in the repository reviewed — one is SECURITY DEFINER and it was already safe against
   search_path shadowing, which the audit had overstated; corrected in the record.
+
+## Final validation
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Pass, exit 0 |
+| `npm test` | Pass — **98/98, 8 suites** (was 88/6 at branch point) |
+| `npx expo export --platform ios` | Pass — single iOS bundle, 5.1 MB |
+| `git diff main -- supabase/migrations/0001_init.sql` | Empty — applied migration not rewritten |
+| Migration identifier cross-check | **PASS** — 5 tables, 7 columns, 3 trigger targets all exist in `0001` |
+| Migration **execution** | **Not performed.** No database reachable. This is the sprint's main open risk. |
+| Working tree | Clean |
+
+## What remains open
+
+Ordered by how much it should worry you.
+
+1. **`0002` has never run.** It is careful SQL, cross-checked against `0001`, and it is still
+   unexecuted SQL. The four behavioural checks under SB-3 are the gate, and the trigger touches the
+   normal logging path — a mistake there breaks saving a workout, not just an attack. **Do not treat
+   this sprint as having fixed the two schema findings until it is applied and those checks pass.**
+2. **RLS enforcement is still unverified** (`I-1`). This sprint improved policy-adjacent code and
+   added a trigger; it proved nothing about whether the policies behave, because that needs a
+   database. `Docs/architecture.md` already records this and it stays true.
+3. **Authentication still does not exist.** SB-1 verified the session *storage contract* against the
+   real client. Nothing here obtains a token from a server, and no sign-in flow was built.
+4. **Multi-record workout writes are still not atomic** (`I-2`, `G-2`). `saveWorkout` issues three
+   sequential upserts; a failure between them leaves a partial session. Untouched, still open, and
+   the single largest correctness gap in the data layer.
+5. **The `check_ins` NOT NULL mismatch** persists — partial check-ins cannot reach Postgres
+   (`assertCompleteCheckIn` throws first). A product decision, not addressed here.
+6. **`npm audit` backlog** (36, pre-existing) — untriaged; dependency upgrades are their own gate.
