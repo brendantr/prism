@@ -1,7 +1,10 @@
 # Sprint: ui-ux-foundation-expansion
 
-- **Status:** Implemented, rendered, and tap-verified on a simulator; pending review. Typing was not
-  verified — see "Still not verified" under Validation.
+- **Status:** Implemented, rendered, and tap-verified on a simulator; merged to `main` (PR #7,
+  `75bd7e3`). Typing was not verified at the time this sprint closed — that gap, and S-8, are closed
+  by the follow-up verification sprint,
+  [`2026-07-29-ui-ux-foundation-verification`](2026-07-29-ui-ux-foundation-verification.md). See
+  "Still not verified" under Validation for what this sprint's own testing covered.
 - **Date:** 2026-07-29
 - **Branch:** `ui-ux-foundation` (continues the branch; see "Why the same branch")
 - **Type:** UI/UX expansion. Frontend only. No schema, migration, RLS, repository,
@@ -155,17 +158,18 @@ Reviewable at the branch level. A criterion is met only with evidence.
 
 - **S-7.** Text search, region filter, equipment filter, and favourites filter compose rather than
   replace each other, and grouping is user-selectable across at least two axes.
-- **S-8.** **Met by code inspection, not exercised.** A result row reaches a logging action in at most
-  two taps, and starting a session from Exercises produces the same active-workout state as the
+- **S-8.** **Met, and now exercised, not just inspected.** A result row reaches a logging action in at
+  most two taps, and starting a session from Exercises produces the same active-workout state as the
   existing open-session path — no new workout-creation code path. Evidence: `logExercise` in
   `app/(tabs)/exercises.tsx` calls the same `useActiveWorkoutStore.start` / `addExercise` the Today
   screen's open-session path calls, and adds no third code path.
 
-  What was *not* done: the row's expansion and its action button were confirmed to render and to
-  carry the right labels by tap (T13), but the button was never followed through into
-  `workout/active`, so the resulting workout state was never observed. This criterion therefore rests
-  on reading the code, and is recorded that way rather than as verified behaviour. Closing it needs
-  one more tap plus an assertion on the logger's contents — see follow-up 9.
+  At the time this sprint closed, the row's expansion and its action button had been confirmed to
+  render and to carry the right labels by tap (T13), but the button had never been followed through
+  into `workout/active`, so the resulting workout state had never been observed — this criterion
+  rested on reading the code. That gap is now closed:
+  [`2026-07-29-ui-ux-foundation-verification`](2026-07-29-ui-ux-foundation-verification.md) tapped the
+  button through and observed `workout/active` with the exercise present in an open session.
 - **S-9.** The no-results state is a real empty state with a way out, not a blank list.
 
 ### Insights
@@ -400,16 +404,17 @@ verification, which is why it is fixed here rather than logged.
 Also confirmed independently of the pixel measurement: the accessibility tree reports each
 segmented-control option as **44.0pt** tall.
 
+**Not verified when this sprint closed, since resolved — see follow-ups 9 and 10:**
+
+- ~~Typing was never verified.~~ Resolved by the follow-up verification sprint: the auth fields, the
+  exercise search box, and the workout summary's reflection notes were all tap-verified with real
+  typed input. The check-in note turned out to have no UI at all to type into — see that sprint's
+  "What this is not".
+- ~~"Log this lift" was not followed into the logger.~~ Resolved: tapped through to `workout/active`
+  and the resulting session state was observed directly.
+
 **Still not verified, and not claimed:**
 
-- **Typing was never verified.** `idb ui text` does not reach text fields on this iOS 26 simulator
-  (the companion build is from 2022, and enabling the hardware keyboard did not help), so the auth
-  fields, the exercise search box, and the check-in note were only ever tapped, never filled. The
-  search *filter* logic is therefore unexercised, as is any keyboard-avoidance behaviour. Tracked as
-  follow-up 9, with the options and their costs.
-- **"Log this lift" was not followed into the logger.** The expanded row's action button renders and
-  is labelled (T13); tapping it through to `workout/active` was not done, so S-8 is recorded as met by
-  code inspection rather than exercised. Tracked as follow-up 10.
 - **One device, one size, default text size.** iPhone 17 Pro at 402×874pt only. The narrow-device
   case (iPhone SE) and large accessibility text sizes remain unchecked, and the tab bar's five 9.5pt
   labels are exactly what that check was for.
@@ -432,17 +437,17 @@ segmented-control option as **44.0pt** tall.
 7. ~~Install a UI-driving tool and re-verify with taps.~~ **Done** — `idb` installed, fourteen
    interaction groups tapped, three defects found and fixed (`d7a9846`). Two gaps it left are now
    follow-ups 9 and 10.
-9. **Verify text entry, which the current tooling cannot reach.** `idb ui text` does not deliver
-   keystrokes to text fields on the iOS 26 simulator — the Homebrew `idb-companion` is a 2022 build
-   (1.1.8), and enabling the simulator's hardware keyboard did not help. Everything behind typing is
-   therefore unverified: the Exercises search field and so the whole text-filter path, the auth
-   email/password fields and their validation error states beyond the one observed incidentally, and
-   the check-in note. Options, in rough order of cost: wait for or build a newer `idb-companion`; add
-   an XCUITest target, which types natively but means touching `ios/` and so needs approval per
-   `CLAUDE.md`; or drive text through a debug-only affordance that pre-fills the fields. Until one of
-   these lands, treat any claim about search or credential input as code-inspection only.
-10. **Follow "log this lift" into the logger and assert the resulting workout**, closing S-8 as
-    exercised rather than inspected.
+9. ~~Verify text entry, which the current tooling cannot reach.~~ **Resolved** —
+   [`2026-07-29-ui-ux-foundation-verification`](2026-07-29-ui-ux-foundation-verification.md). `idb ui
+   text` does deliver keystrokes; it just non-deterministically drops a few trailing characters on
+   longer strings, which a verify-and-patch loop against the accessibility tree corrects reliably.
+   The Exercises search field, the auth email/password fields, and the workout summary's reflection
+   notes were all tap-verified with real typed input. The check-in note turned out to have no UI to
+   verify at all — see that record's "What this is not".
+10. ~~Follow "log this lift" into the logger and assert the resulting workout~~, closing S-8 as
+    exercised rather than inspected. **Resolved** —
+    [`2026-07-29-ui-ux-foundation-verification`](2026-07-29-ui-ux-foundation-verification.md): landed
+    on `workout/active` with the exercise present in an open session, observed directly.
 8. ~~Decide on the sprint-document naming collision.~~ **Resolved** (owner decision, 2026-07-29). This
    record was originally `2026-07-29-ui-ux-expansion.md`, naming a sprint whose branch has never
    existed — the work runs on `ui-ux-foundation`. It is now
