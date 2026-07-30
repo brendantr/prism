@@ -6,20 +6,26 @@ export interface WeekCardProps {
   days: DayCell[];
   sessionsDone: number;
   sessionsTarget: number;
-  volumeThisWeek: string;
+  /** Rolling four-week weekly average, already formatted. */
+  volumeAverage: string;
   volumeUnit: string;
-  volumeDelta: { text: string; direction: 'up' | 'down' | 'flat' } | undefined;
   streakWeeks: number;
 }
 
-/** Weekly consistency: the rhythm strip plus the three numbers that frame it. */
+/**
+ * Weekly consistency: the rhythm strip plus the numbers that frame it.
+ *
+ * This card reports the *baseline* -- the four-week average and the streak --
+ * rather than this week's volume, which the Today summary above already owns.
+ * Repeating that figure here would cost a column and add nothing; the average
+ * is what makes the current week readable as high, low, or ordinary.
+ */
 export function WeekCard({
   days,
   sessionsDone,
   sessionsTarget,
-  volumeThisWeek,
+  volumeAverage,
   volumeUnit,
-  volumeDelta,
   streakWeeks,
 }: WeekCardProps) {
   return (
@@ -38,7 +44,7 @@ export function WeekCard({
       </View>
 
       <View style={styles.stats}>
-        <StatBlock label="Volume" value={volumeThisWeek} unit={volumeUnit} delta={volumeDelta} />
+        <StatBlock label="4-week avg" value={volumeAverage} unit={`${volumeUnit}/wk`} />
         <View style={styles.divider} />
         <StatBlock
           label="Streak"

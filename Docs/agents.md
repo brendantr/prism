@@ -45,6 +45,26 @@ An agent stops and asks rather than proceeding when it hits any of the following
 | Database changes | Migrations, RLS policy edits | Explicit engineer/owner approval before writing, per `CLAUDE.md`; never applied silently. |
 | Production/external-service changes | Cloud resource changes, store credentials, RevenueCat config, deploys | Explicit engineer/owner approval; agent does not hold or use privileged credentials (`Docs/invariants.md` I-4). |
 
+## Sprint record naming
+
+Every sprint has exactly one record in `Docs/sprints/`, named `YYYY-MM-DD-<sprint-name>.md`, where
+the date is the day the sprint's record was opened.
+
+- **A record is named for its sprint, and the sprint name is expected to align with the branch the
+  work runs on.** In the ordinary case they are identical: branch `readiness-inputs-and-confidence-foundation`
+  → `2026-07-27-readiness-inputs-and-confidence-foundation.md`. A branch prefix (`docs/`, `feat/`) is
+  dropped from the filename.
+- **A sprint that continues an existing branch is prefixed with that branch's name**, so the record
+  still says which branch it lives on: the expansion of the `ui-ux-foundation` sprint is
+  `2026-07-29-ui-ux-foundation-expansion.md`, not `2026-07-29-ui-ux-expansion.md`. The second form
+  names a branch that does not exist, which is what this rule exists to prevent — it was written
+  after exactly that mistake (see that record's follow-up 8).
+- **A filename never implies a branch that has never existed.** If the sprint name and the branch
+  name have diverged, either rename the record or say so explicitly in a "Why the same branch"
+  section — do not leave the reader to reconcile them.
+- **Renames do not rewrite history.** Commit messages written before a rename keep citing the old
+  path; that is expected, and is not a reason to rewrite Git history for a documentation move.
+
 ## Labeling ambiguity
 
 When a statement could be read as certain but isn't, label it: **fact** (with evidence/citation), **assumption** (stated as such, with what would confirm or refute it), **recommendation** (the agent's judgment, offered not imposed), or **question** (something only the engineer/owner can resolve). This mirrors the fact/inferred/unknown discipline `Docs/architecture.md` already established.

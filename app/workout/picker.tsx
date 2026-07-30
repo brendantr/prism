@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Chip, Text } from '@/components/ui';
+import { Chip, SearchField, Text } from '@/components/ui';
 import { MUSCLE_META, REGION_LABEL, type MuscleRegion } from '@/domain/muscles';
 import { EQUIPMENT, type Equipment, type Exercise, type MuscleGroup } from '@/domain/types';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
 import { useTrainingStore } from '@/store/trainingStore';
-import { a11y, color, opacity, radius, space, type as typeTokens } from '@/theme';
+import { a11y, color, opacity, space } from '@/theme';
 
 /**
  * EXERCISE PICKER
@@ -87,21 +87,13 @@ export default function ExercisePickerScreen() {
         </Pressable>
       </View>
 
-      {/* Search */}
-      <View style={styles.searchWrap}>
-        <Ionicons name="search" size={16} color={color.textFaint} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search exercises"
-          placeholderTextColor={color.textFaint}
-          style={styles.search}
-          autoCorrect={false}
-          accessibilityLabel="Search exercises by name, muscle or equipment"
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-      </View>
+      <SearchField
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search exercises"
+        accessibilityLabel="Search exercises by name, muscle or equipment"
+        style={styles.search}
+      />
 
       {/* Filters */}
       <ScrollView
@@ -227,24 +219,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    marginHorizontal: space.lg,
-    paddingHorizontal: space.base,
-    height: a11y.minTouch + 4,
-    borderRadius: radius.md,
-    backgroundColor: color.inset,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: color.line,
-  },
-  search: {
-    flex: 1,
-    ...(typeTokens.body as object),
-    color: color.text,
-    height: '100%',
-  },
+  search: { marginHorizontal: space.lg },
   filterRow: {
     paddingHorizontal: space.lg,
     paddingTop: space.md,

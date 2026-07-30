@@ -1,0 +1,106 @@
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from './Text';
+import { a11y, color, opacity, radius, space } from '@/theme';
+
+export interface SegmentedOption<T extends string> {
+  value: T;
+  label: string;
+  /** Announced instead of `label` when the visible text is an abbreviation. */
+  accessibilityLabel?: string;
+}
+
+export interface SegmentedControlProps<T extends string> {
+  options: SegmentedOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  /** Wide-tracked caption above the track. Omit when the context is obvious. */
+  label?: string;
+}
+
+/**
+ * One-of-N selector.
+ *
+ * Deliberately distinct from `Chip`: a chip row is many-of-N and changes what a
+ * list *contains*, a segmented control is one-of-N and changes what a list
+ * *is*. Drawing them the same way would make two different behaviours look
+ * interchangeable.
+ *
+ * The selected segment is filled rather than merely tinted, so the current
+ * choice survives being read at arm's length or without colour perception.
+ */
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: SegmentedControlProps<T>) {
+  return (
+    <View>
+      {label ? (
+        <Text variant="eyebrow" tone="faint" style={styles.label}>
+          {label}
+        </Text>
+      ) : null}
+
+      {/*
+        No group-level accessibilityLabel here. A container that carries one
+        needs `accessible` to be exposed at all, and `accessible` collapses the
+        segments into a single element -- the choices stop being individually
+        reachable. Verified absent from the accessibility tree on a simulator
+        (2026-07-29) before it was removed. Context belongs on each option's own
+        `accessibilityLabel` instead, where a screen reader actually reads it.
+      */}
+      <View style={styles.track}>
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityLabel={option.accessibilityLabel ?? option.label}
+              accessibilityState={{ selected }}
+              onPress={() => onChange(option.value)}
+              style={({ pressed }) => [
+                styles.segment,
+                selected && styles.segmentSelected,
+                pressed && !selected && { opacity: opacity.pressed },
+              ]}
+            >
+              <Text variant="eyebrow" tone={selected ? 'primary' : 'muted'} numberOfLines={1}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  label: { marginBottom: space.sm },
+  track: {
+    flexDirection: 'row',
+    padding: space.xxs,
+    gap: space.xxs,
+    borderRadius: radius.md,
+    backgroundColor: color.inset,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+  },
+  segment: {
+    flex: 1,
+    // The segment is the pressable, not the track, so the 44pt floor has to sit
+    // here. The track ends up 4pt taller than that, which is the padding.
+    minHeight: a11y.minTouch,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentSelected: {
+    backgroundColor: color.cardRaised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
+  },
+});

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Card, Screen, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
@@ -13,10 +14,13 @@ import type { MuscleRecovery } from '@/domain/types';
  * BODY (Phase 3)
  *
  * The recovery model is already live and drives the readiness score, so this
- * tab shows its full output as a ranked list today. The original SVG body-map
+ * screen shows its full output as a ranked list today. The original SVG body-map
  * illustration that renders the same data anatomically arrives in Phase 3.
+ *
+ * Not a bar item: reached from Insights or Today, so it renders its own way back.
  */
 export default function BodyScreen() {
+  const router = useRouter();
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const exerciseById = useTrainingStore((s) => s.exerciseById);
   const now = useMemo(() => new Date(), []);
@@ -26,8 +30,19 @@ export default function BodyScreen() {
     [history, exerciseById, now],
   );
 
+  /**
+   * Always returns to Insights, the analytics hub these screens hang off.
+   *
+   * `router.back()` was tried and rejected: verified on a simulator (2026-07-29),
+   * a bottom-tab navigator pops to its initial route rather than to the tab you
+   * arrived from, so "back" from here landed on Today no matter whether you came
+   * from Today or from Insights. A control labelled "back" that ignores history
+   * is worse than one that names a fixed destination, so this names it.
+   */
+  const back = () => router.replace('/(tabs)/insights');
+
   return (
-    <Screen eyebrow="Estimate, not measurement" title="Body">
+    <Screen eyebrow="Estimate, not measurement" title="Body" onBack={back} backLabel="Back to Insights">
       <Card style={styles.gutter} padding="lg">
         <Text variant="bodySm" tone="muted" style={styles.explainer}>
           {RECOVERY_MODEL_EXPLANATION}

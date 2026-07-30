@@ -151,6 +151,8 @@ export const STEPS = {
   },
   primaryCta: 'Continue',
   finalCta: 'Finish setup',
+  /** Every question is skippable; a skipped answer stays unset, not defaulted. */
+  skipLabel: 'Skip',
 } as const;
 
 export const COMPLETE = {
@@ -159,4 +161,19 @@ export const COMPLETE = {
   body:
     'PRism opens on eight weeks of sample training so nothing looks empty. Log a real session whenever you want and it saves on this device.',
   primaryCta: 'Start training',
+  summaryEyebrow: 'What you told us',
+  /** Shown for any question that was skipped. Never a stand-in value. */
+  notSet: 'Not set',
+  /**
+   * Honest about where these answers currently go. The selections are persisted
+   * locally but not applied to the training profile -- see `onboardingStore`.
+   */
+  summaryNote:
+    'Kept on this device. These answers are not applied to your training profile yet, so nothing in the app changes because of them.',
+  summaryLabels: {
+    goal: 'Training for',
+    experience: 'Experience',
+    days: 'Sessions a week',
+    equipment: 'Equipment',
+  },
 } as const;

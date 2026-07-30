@@ -6,6 +6,14 @@ import { color, space, type } from '@/theme';
 /**
  * Tab bar. Five destinations, each with an icon AND a visible text label --
  * icon-only bars fail badly for anyone who has not memorised the glyph set.
+ * Five is the ceiling: a sixth label stops being legible at this font size on a
+ * compact device, and dropping the labels is not a trade we are willing to make.
+ *
+ * Progress and Body are routes here but carry `href: null`, which keeps them out
+ * of the bar while leaving their paths intact. They are the deeper analytics
+ * surfaces, reached from Insights ("Go deeper") and from Today ("Go deeper"),
+ * and each renders its own back affordance because a hidden bar item has no
+ * other way out. Their files stay put so their URLs and imports do not move.
  */
 export default function TabsLayout() {
   return (
@@ -29,27 +37,27 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="progress"
+        name="exercises"
         options={{
-          title: 'Progress',
-          tabBarAccessibilityLabel: 'Progress charts',
-          tabBarIcon: ({ color: c, focused }) => <TabIcon name="trending-up" c={c} focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="body"
-        options={{
-          title: 'Body',
-          tabBarAccessibilityLabel: 'Body map and recovery',
-          tabBarIcon: ({ color: c, focused }) => <TabIcon name="body" c={c} focused={focused} />,
+          title: 'Exercises',
+          tabBarAccessibilityLabel: 'Exercise library',
+          tabBarIcon: ({ color: c, focused }) => <TabIcon name="barbell" c={c} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="insights"
         options={{
           title: 'Insights',
-          tabBarAccessibilityLabel: 'Weekly insights',
+          tabBarAccessibilityLabel: 'Training insights',
           tabBarIcon: ({ color: c, focused }) => <TabIcon name="sparkles" c={c} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="social"
+        options={{
+          title: 'Social',
+          tabBarAccessibilityLabel: 'Training with others',
+          tabBarIcon: ({ color: c, focused }) => <TabIcon name="people" c={c} focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -60,6 +68,10 @@ export default function TabsLayout() {
           tabBarIcon: ({ color: c, focused }) => <TabIcon name="grid" c={c} focused={focused} />,
         }}
       />
+
+      {/* Reachable routes, deliberately not bar items -- see the note above. */}
+      <Tabs.Screen name="progress" options={{ href: null, title: 'Progress' }} />
+      <Tabs.Screen name="body" options={{ href: null, title: 'Body' }} />
     </Tabs>
   );
 }

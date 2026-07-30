@@ -33,11 +33,24 @@ export function StatBlock({ label, value, unit, delta, tone = 'primary', align =
         {label}
       </Text>
       <View style={[styles.valueRow, align === 'center' && styles.center]}>
-        <Text variant="numericLg" tone={tone === 'primary' ? 'primary' : tone}>
+        {/*
+          A stat block is usually one of three in a row, so the column can be
+          narrower than the number it has to hold. Shrink the glyphs rather than
+          wrapping: "143.7k" breaking to a second line moves every row below it,
+          and truncating a number to "143…" is worse than showing it smaller.
+        */}
+        <Text
+          variant="numericLg"
+          tone={tone === 'primary' ? 'primary' : tone}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          style={styles.value}
+        >
           {value}
         </Text>
         {unit ? (
-          <Text variant="label" tone="muted" style={styles.unit}>
+          <Text variant="label" tone="muted" numberOfLines={1} style={styles.unit}>
             {unit}
           </Text>
         ) : null}
@@ -59,6 +72,12 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center' },
   label: { marginBottom: space.xs },
   valueRow: { flexDirection: 'row', alignItems: 'baseline' },
-  unit: { marginLeft: 4 },
+  value: { flexShrink: 1 },
+  /**
+   * The unit keeps its full width and the value scales into what is left.
+   * The other way round truncates "kg" to "k…" -- a short fixed label has no
+   * spare characters to give up, whereas the number can simply be set smaller.
+   */
+  unit: { marginLeft: 4, flexShrink: 0 },
   deltaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
 });

@@ -6,16 +6,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, Card, Chip, Screen, SectionHeader, Text } from '@/components/ui';
 import { CheckInPrompt } from '@/components/today/CheckInPrompt';
+import { QuickAccess } from '@/components/today/QuickAccess';
 import { ReadinessCard } from '@/components/today/ReadinessCard';
 import { SessionCard } from '@/components/today/SessionCard';
+import { TodayHero } from '@/components/today/TodayHero';
 import { WeekCard } from '@/components/today/WeekCard';
 import {
+  BAND_COPY,
+  INSUFFICIENT_COPY,
   computeReadiness,
   completedThisWeek,
   estimateRecovery,
   volumeInWindow,
 } from '@/domain/calc';
-import { lastSessionForDay, resolveTodaySession, weekCells } from '@/domain/schedule';
+import { estimateDayMinutes, lastSessionForDay, resolveTodaySession, weekCells } from '@/domain/schedule';
 import { MUSCLE_META } from '@/domain/muscles';
 import {
   selectCompletedWorkouts,
@@ -25,19 +29,28 @@ import {
 } from '@/store/trainingStore';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
-import { formatRelativeDay, formatVolume } from '@/utils/format';
+import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
 import { color, space } from '@/theme';
 
 /**
  * TODAY
  * =====
- * Answers three questions in order, top to bottom:
- *   1. How am I? (readiness, with its reasoning)
- *   2. What am I doing? (scheduled session, one tap to start)
- *   3. How is the week going? (consistency, volume, streak)
+ * Summary first, then one action, then depth on scroll.
  *
- * Anything that does not serve one of those three lives on another tab.
+ *   1. `TodayHero`     where do I stand -- readiness, sessions, volume, up next
+ *   2. `SessionCard`   the screen's single dominant action
+ *   3. Readiness       the score's full reasoning, and the input that sharpens it
+ *   4. Consistency     the week's rhythm
+ *   5. Recovery / PRs  context worth scrolling for, not worth opening on
+ *   6. `QuickAccess`   the deeper surfaces that are not in the tab bar
+ *
+ * The hero deliberately restates numbers that appear in full further down. That
+ * repetition is the point: the summary is readable in a glance at the top, and
+ * the explanation stays where it belongs instead of being hoisted above the fold.
+ *
+ * No section header sits between the hero and the session card, so the state
+ * block and the start button share the first screenful.
  */
 export default function TodayScreen() {
   const router = useRouter();
@@ -88,6 +101,7 @@ export default function TodayScreen() {
     const change = previousWeek > 0 ? (thisWeek - previousWeek) / previousWeek : 0;
     return {
       thisWeek,
+      weeklyAverage: volumeInWindow(completed, now, 28) / 4,
       delta:
         previousWeek > 0
           ? {
@@ -97,6 +111,9 @@ export default function TodayScreen() {
           : undefined,
     };
   }, [completed, now]);
+
+  // Hoisted so the hero and the week card cannot disagree about the same figure.
+  const sessionsDone = useMemo(() => completedThisWeek(completed, now), [completed, now]);
 
   const streakWeeks = useMemo(() => countStreakWeeks(completed, profile?.trainingDaysPerWeek ?? 3, now), [completed, profile, now]);
 
@@ -170,10 +187,27 @@ export default function TodayScreen() {
         </Pressable>
       ) : null}
 
-      {readiness ? <ReadinessCard readiness={readiness} /> : null}
-      <CheckInPrompt profileId={profile.id} checkIn={todaysCheckIn} />
+      <TodayHero
+        dateLabel={formatDate(now.toISOString())}
+        readinessScore={readiness?.score ?? null}
+        readinessBand={
+          readiness?.band ? BAND_COPY[readiness.band].title : INSUFFICIENT_COPY.title
+        }
+        sessionsDone={sessionsDone}
+        sessionsTarget={profile.trainingDaysPerWeek}
+        volume={formatVolume(volume.thisWeek, profile.unit)}
+        volumeUnit={profile.unit}
+        volumeDelta={volume.delta}
+        upNext={today ? (today.reason === 'rest_day' ? 'Rest day' : today.day.name) : 'No plan active'}
+        upNextDetail={
+          today
+            ? `${today.day.exercises.length} lifts · ~${estimateDayMinutes(today.day)}m`
+            : 'Pick a plan, or log an open session'
+        }
+      />
 
-      <SectionHeader title="Today's session" eyebrow="Scheduled" />
+      <View style={styles.heroGap} />
+
       {today ? (
         <SessionCard
           day={today.day}
@@ -206,20 +240,23 @@ export default function TodayScreen() {
         </Card>
       )}
 
+      <SectionHeader title="Readiness" eyebrow="Estimate" />
+      {readiness ? <ReadinessCard readiness={readiness} /> : null}
+      <CheckInPrompt profileId={profile.id} checkIn={todaysCheckIn} />
+
       <SectionHeader title="Consistency" eyebrow="Rhythm" />
       <WeekCard
         days={week}
-        sessionsDone={completedThisWeek(completed, now)}
+        sessionsDone={sessionsDone}
         sessionsTarget={profile.trainingDaysPerWeek}
-        volumeThisWeek={formatVolume(volume.thisWeek, profile.unit)}
+        volumeAverage={formatVolume(volume.weeklyAverage, profile.unit)}
         volumeUnit={profile.unit}
-        volumeDelta={volume.delta}
         streakWeeks={streakWeeks}
       />
 
       {fatigued.length > 0 ? (
         <>
-          <SectionHeader title="Still recovering" eyebrow="Estimate" />
+          <SectionHeader title="Still recovering" eyebrow="By muscle" />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -275,6 +312,33 @@ export default function TodayScreen() {
           </Card>
         </>
       ) : null}
+
+      <SectionHeader title="Go deeper" eyebrow="More detail" />
+      <QuickAccess
+        items={[
+          {
+            key: 'progress',
+            label: 'Progress',
+            caption: 'Key lifts over time',
+            icon: 'trending-up-outline',
+            onPress: () => router.push('/(tabs)/progress'),
+          },
+          {
+            key: 'body',
+            label: 'Body',
+            caption: 'Recovery by muscle',
+            icon: 'body-outline',
+            onPress: () => router.push('/(tabs)/body'),
+          },
+          {
+            key: 'plans',
+            label: 'Plans',
+            caption: 'Templates and rotation',
+            icon: 'grid-outline',
+            onPress: () => router.push('/(tabs)/plans'),
+          },
+        ]}
+      />
 
       <Text variant="eyebrow" tone="faint" style={styles.version}>
         {`PRism v${Constants.expoConfig?.version ?? '0.0.0'}`}
@@ -351,6 +415,9 @@ const styles = StyleSheet.create({
   },
   resumeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: color.cyanBright },
   resumeText: { flex: 1 },
+  // Separates the summary from the action without a section rule, which would
+  // cost ~90pt of chrome and push the start button off the first screenful.
+  heroGap: { height: space.md },
   railContent: { paddingHorizontal: space.lg, gap: space.md },
   railCard: { width: 170 },
   railValue: { marginTop: space.xs, marginBottom: 2 },
