@@ -127,10 +127,14 @@ export function toWorkout(row: any): Workout {
   };
 }
 
+/**
+ * Note the absent `profile_id`. Ownership is not the mapper's to decide -- the
+ * repository sets it from the signed-in session, so a `Workout` object carrying
+ * someone else's `profileId` cannot smuggle it into a write.
+ */
 export function fromWorkout(w: Workout): Record<string, unknown> {
   return {
     id: w.id,
-    profile_id: w.profileId,
     routine_day_id: w.routineDayId,
     title: w.title,
     status: w.status,

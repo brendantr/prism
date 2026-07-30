@@ -101,7 +101,7 @@ fail-closes to `null` on unparseable JSON — which is the same posture the adap
 
 ### SB-2 — Server-derived ownership on every write path
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** — `repository.ts`, `mappers.ts`, + `src/data/__tests__/ownership.test.ts` (5 tests)
 
 **Audit finding:** LOW (defence-in-depth) — `repository.ts:317,355` and `mappers.ts:133` send
 `profile_id` taken from client state. Postgres currently rejects a forged value because every affected
@@ -127,6 +127,29 @@ in (4).
 
 **Out of scope:** RLS policy text (unchanged this task); multi-record write atomicity — `I-2`/`G-2`
 stays open and is **not** fixed here; demo repository ownership (single-user, no tenancy).
+
+**Outcome — met, 5/5.**
+
+| # | Outcome | Evidence |
+| --- | --- | --- |
+| 1 | Ownership from the session on every write | `saveWorkout`, `saveCheckIn`, `savePersonalRecords` each `await this.uid()` and stamp that. `grep "profile_id:" src/data/` returns three hits, all `profileId` (the session value) |
+| 2 | `deleteWorkout` scoped by owner | `.eq('id', id).eq('profile_id', profileId)` |
+| 3 | `fromWorkout` no longer emits `profile_id` | Removed from the mapper, with a comment saying why |
+| 4 | Hostile case covered | A caller passing a foreign `profileId` still produces a payload carrying the session uid — asserted per path, plus a sweep over everything sent |
+| 5 | Validation green | `typecheck` pass · `npm test` **98/98, 8 suites** · `expo export --platform ios` pass |
+
+**The tests were checked for teeth, not just for green.** Client-supplied ownership was temporarily
+reintroduced on the check-in path; 2 of the 5 tests failed, including the catch-all sweep, and the
+change was then reverted. A test that cannot fail is not evidence.
+
+The batch case is asserted per row rather than on the first, because stamping only `records[0]`
+correctly is a plausible way to reintroduce this and would otherwise pass.
+
+**What this does and does not change.** It changes nothing about what Postgres will accept — a forged
+`profile_id` was already rejected by `with check (profile_id = auth.uid())`. What it changes is how
+many independent things must fail before a cross-tenant write is possible: previously one (the
+policy), now two (the policy *and* the repository). The client no longer expresses identity at all,
+so there is nothing to forge.
 
 ---
 
@@ -216,3 +239,6 @@ Newest last.
 - **2026-07-30** — SB-1 done. 5 integration tests wire the real Supabase client to the Keychain
   adapter. Suite 88 → 93, 6 → 7 suites; `typecheck` clean. Two findings recorded above: local-scope
   sign-out still hits the network, and an offline sign-out still purges the token.
+- **2026-07-30** — SB-2 done. Three write paths and one delete now take ownership from the session;
+  `fromWorkout` no longer carries `profile_id`. Suite 93 → 98, 7 → 8 suites; typecheck and iOS export
+  clean. Tests verified to fail when the old behaviour is reintroduced.
