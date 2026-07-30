@@ -101,7 +101,7 @@ declares a web target but PRism does not ship one; if that changes, web needs it
 
 ### SEC-2 — Replace predictable ID generation with a CSPRNG
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** (`src/utils/id.ts`, + 4 tests)
 
 **Audit finding:** MEDIUM (CWE-338) — `src/utils/id.ts:19,21` builds UUIDs from `Math.random()`, a
 non-cryptographic PRNG whose internal state is recoverable from observed output. These values become
@@ -121,6 +121,34 @@ to pre-insert rows carrying a victim's forthcoming ids under their own `profile_
 4. A test asserts format validity and basic uniqueness, so a future refactor cannot silently
    reintroduce a weak or malformed generator.
 5. `npm run typecheck`, `npm test`, and `npx expo export --platform ios` all pass.
+
+**Outcome — met, 5/5.**
+
+| # | Outcome | Evidence |
+| --- | --- | --- |
+| 1 | CSPRNG-sourced, no `Math.random()` | `id.ts` now delegates to `Crypto.randomUUID()`. `grep -rn "Math.random" src app` returns only comments and one unrelated test fixture (`repository.test.ts:34`, a throwaway sub-id, not a security boundary) |
+| 2 | No call site edited | `newId(prefix?)` signature unchanged; the eight call sites across `activeWorkoutStore.ts`, `CheckInPrompt.tsx` and `workout/active.tsx` are untouched |
+| 3 | Valid RFC 4122 v4 | Regex assertion over 100 samples pins the version and variant nibbles |
+| 4 | Regression-guarding test | 4 tests. The load-bearing one asserts **delegation** — see the deviation note |
+| 5 | Validation green | `typecheck` pass · `npm test` 88/88, 6 suites · `expo export --platform ios` pass |
+
+**Deviation from the plan, recorded rather than absorbed.** Outcome 4 was written expecting a
+statistical check on generated ids. That turned out to be untestable *and* misleading here:
+`jest-expo` auto-stubs expo-crypto's native module, so `Crypto.randomUUID()` returns `undefined`
+under the preset. A sampled-entropy assertion would therefore have been measuring Node's generator
+substituted in by the mock, not the device's — a test that looks like it proves randomness while
+proving nothing about the shipped code.
+
+The suite asserts **delegation** instead: that `newId` routes through the platform CSPRNG at all.
+That is strictly the better guard, because the regression actually worth catching is someone swapping
+`Crypto.randomUUID()` back for `Math.random()` — which this catches and an entropy sample would not
+(a seeded PRNG passes entropy sampling fine). The limitation is stated in the test file header rather
+than papered over.
+
+**Follow-up left open:** the device generator is unexercised by the suite by construction. One
+runtime check on a simulator — log a handful of `newId()` values and confirm they are well-formed and
+distinct — would close it. Carried as follow-up 2, and it is gated behind the native rebuild noted at
+the end of this document.
 
 ---
 
