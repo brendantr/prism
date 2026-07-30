@@ -155,7 +155,8 @@ so there is nothing to forge.
 
 ### SB-3 — Migration 0002: bound `display_name`, close the exercise FK path
 
-**Status:** ☐ Not started
+**Status:** ☑ **Written — ⚠ NOT APPLIED.** `supabase/migrations/0002_security_hardening.sql`.
+Applying it needs engineer/owner approval and a database; neither exists here.
 
 Two audit findings that live in SQL:
 
@@ -185,11 +186,50 @@ constraint that shapes this sprint".
 **Out of scope:** applying the migration anywhere; the `check_ins` NOT NULL / partial-check-in
 mismatch (a separate product decision, `I-7`); any RLS policy rewrite beyond the trigger above.
 
+**Outcome — met, 5/5, with the execution limit stated.**
+
+| # | Outcome | Evidence |
+| --- | --- | --- |
+| 1 | `0002` exists and does all three things | `display_name` bound + normalised; `assert_exercise_visible()` with triggers on three tables; `handle_new_user()` replaced |
+| 2 | `0001` not edited | `git diff main -- supabase/migrations/0001_init.sql` is empty |
+| 3 | Safe to re-run | Constraint added inside a `pg_constraint` guard; `create or replace function`; `drop trigger if exists` before each `create trigger` |
+| 4 | Identifiers cross-checked | Script diffed every `public.<name>`, every column touched, and every trigger target against `0001`. **PASS** — all 5 tables and all 7 columns exist |
+| 5 | Unapplied status stated | This heading, and the file's own header |
+
+**Deviation, recorded rather than absorbed: the trigger covers three tables, not two.** The audit named
+the two `on delete restrict` paths (`workout_exercises`, `routine_exercises`), because those are what
+let a stranger's reference permanently block a delete. `personal_records.exercise_id` is
+`on delete cascade`, so it cannot block anything — but it is the same cross-tenant reference through
+the same RLS-exempt mechanism, and covering it was one extra `create trigger` against the function
+already being written. Leaving a known-open path because its consequence was milder seemed the worse
+call. Flagged here so the wider scope is a decision on the record, not a quiet expansion.
+
+**Normalising existing rows before adding the constraint** is deliberate: adding a validated
+constraint to a table that already violates it fails, and a failure there would leave the rest of the
+migration unapplied. The two `update` statements run first for that reason.
+
+**How it must be validated, since it could not be here.** The SQL has **never been executed**. Nothing
+above is a claim that it runs. Before this is trusted:
+
+```bash
+supabase start                         # needs Docker, absent on this machine
+supabase db reset                      # applies 0001 then 0002 from scratch
+```
+
+and then the behavioural checks that matter, which a syntax check cannot substitute for:
+
+1. Sign up with a 10,000-character `display_name` → profile row created, name stored at 60 chars.
+2. As user A, create a private exercise. As user B, insert a `workout_exercises` row pointing at it →
+   must fail with `42501`, not succeed.
+3. As user A, delete that exercise → must now succeed.
+4. Existing app flows (log a workout, save a PR) still work — the new trigger fires on every
+   `workout_exercises` insert, so a mistake here breaks normal logging, not just the attack.
+
 ---
 
 ### SB-4 — `SECURITY DEFINER` review and `search_path` safety
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** — review below; the one tightening it produced ships in `0002`.
 
 A `SECURITY DEFINER` function runs with its creator's privileges. If its `search_path` is not pinned,
 a caller can create a same-named table or operator in a schema earlier on the path and have the
@@ -203,6 +243,31 @@ shape.
 3. Any weakness found is fixed in `0002` (not `0001`), or explicitly recorded as accepted with reasons.
 
 **Out of scope:** functions that do not yet exist; runtime privilege testing (needs a live database).
+
+**Outcome — met, 3/3.** The repository defines exactly **three** functions. This is the complete list,
+from `grep -nE "create (or replace )?function" supabase/migrations/*.sql` — not a sample.
+
+| Function | Privilege | `search_path` | Assessment |
+| --- | --- | --- | --- |
+| `set_updated_at()` (`0001:236`) | **INVOKER** (no `definer` keyword) | not set | **No escalation path.** It runs as the caller, so a caller who shadows something only shadows it for themselves. Body is `new.updated_at = now()`; `now()` resolves to `pg_catalog.now()` regardless. Left unchanged — pinning it would be noise, not hardening. |
+| `handle_new_user()` (`0001:252`) | **DEFINER** | was `public`, now `''` | Tightened in `0002`. See the correction below. |
+| `assert_exercise_visible()` (new, `0002`) | **INVOKER**, deliberately | `''` | Must see visibility as the caller does, so definer rights would defeat its purpose. Pinned anyway. |
+
+**A correction to the audit, stated plainly because getting this wrong in either direction matters.**
+The audit recommended changing `set search_path = public` to `pg_catalog, public` to prevent operator
+and function shadowing. That recommendation was **cosmetic, not a fix**: PostgreSQL implicitly
+searches `pg_catalog` *first* whenever it is not named explicitly in the path, so
+`search_path = public` was already immune to that class of attack. `handle_new_user` was not
+vulnerable as written.
+
+What `0002` does instead is set `search_path = ''`, the current Supabase recommendation. It removes
+any reliance on that implicit rule and is workable here only because every reference in the function
+is already schema-qualified (`public.profiles`). This is a **tightening of an already-safe function**,
+and is recorded as such rather than as closing a hole.
+
+**The substantive fix in that function is the input handling**, not the path: `display_name` is now
+trimmed, capped at 60, and defaulted — which is also what stops the new length constraint from
+turning a long name into a failed signup.
 
 ---
 
@@ -242,3 +307,9 @@ Newest last.
 - **2026-07-30** — SB-2 done. Three write paths and one delete now take ownership from the session;
   `fromWorkout` no longer carries `profile_id`. Suite 93 → 98, 7 → 8 suites; typecheck and iOS export
   clean. Tests verified to fail when the old behaviour is reintroduced.
+- **2026-07-30** — SB-3 and SB-4 done. `0002_security_hardening.sql` written (**not applied**):
+  `display_name` bounded and normalised, `assert_exercise_visible()` closing the RLS-exempt
+  foreign-key path on three tables, `handle_new_user()` rebuilt with bounded input and
+  `search_path = ''`. Identifier cross-check against `0001` passes; `0001` untouched. All three
+  functions in the repository reviewed — one is SECURITY DEFINER and it was already safe against
+  search_path shadowing, which the audit had overstated; corrected in the record.
