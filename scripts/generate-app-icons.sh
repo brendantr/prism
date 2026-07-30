@@ -43,10 +43,29 @@ BRAND_DIR="$ROOT/assets/brand"
 
 # --- Tunables. Change here, not at the call site, so runs stay reproducible. --
 CANVAS=1024                 # Apple wants a 1024x1024 master; Expo scales the rest.
-BG="07070B"                 # Brand canvas. Matches expo.android.adaptiveIcon.backgroundColor.
-IOS_SCALE="0.88"            # Mark size within the iOS canvas.
-ANDROID_SCALE="0.62"        # Inside Android's ~66% guaranteed-visible safe zone.
-CROP=""                     # "x,y,w,h" applied to the source before scaling.
+
+# The artwork's own background, measured from the source (#030305 at the
+# corners, #020204 mid-field) -- NOT the app canvas #07070B. Padding with the
+# canvas colour leaves a visible frame where it meets the art; measured, that
+# step is #07070B against #020204, which is small but a hard edge.
+BG="030305"
+
+# 1.0 = full bleed, no padding. The white beam runs to the left edge of the
+# crop and the rainbow to the right, so any inset would truncate them against
+# a pad boundary and read as clipping. Letting them run off the icon edge
+# reads as intentional instead.
+IOS_SCALE="1.0"
+
+# Android composites this over `backgroundColor` and may crop to a circle, so
+# only the middle ~66% is guaranteed. 0.62 keeps the shield inside that.
+ANDROID_SCALE="0.62"
+
+# Box around the shield/prism mark in source pixels, excluding the "PRism"
+# wordmark and tagline (which begin at ~y=865). Chosen so the shield centre
+# lands at 50%/50% of the crop: shield spans x 385-875, y 163-830, centre
+# (630, 496); this 720px box is centred on that and is the largest square that
+# stays clear of the wordmark.
+CROP="272,135,720,720"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

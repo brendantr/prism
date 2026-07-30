@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#07070B",
+    "icon": "./assets/brand/app-icon.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.prism.trainer"
@@ -14,6 +15,7 @@
     "android": {
       "package": "app.prism.trainer",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/adaptive-icon.png",
         "backgroundColor": "#07070B"
       }
     },
