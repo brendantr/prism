@@ -47,7 +47,7 @@ as each lands.
 
 ### SEC-1 — Move Supabase session storage off AsyncStorage
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** (`src/data/supabase/secureStorage.ts`, `client.ts`, + 6 tests)
 
 **Audit finding:** HIGH — `src/data/supabase/client.ts:27-35` passes `AsyncStorage` as the Supabase
 auth storage. AsyncStorage is an unencrypted SQLite/plist store in the app container. Supabase
@@ -71,6 +71,31 @@ takeover that survives a password change.
 **Explicit non-goal:** no migration path from AsyncStorage-stored sessions. None can exist — auth has
 never run, so no session has ever been written. Writing migration code for a case that cannot occur
 would be dead code on day one.
+
+**Outcome — met, 6/6.**
+
+| # | Outcome | Evidence |
+| --- | --- | --- |
+| 1 | Keychain-backed adapter, not AsyncStorage | `client.ts:29` now passes `secureSessionStorage`; the `AsyncStorage` import is gone from that file |
+| 2 | Handles >2048-byte values | `secureStorage.ts` packs chunks to a 1800-byte ceiling by **UTF-8 byte length**, not character count. The test's SecureStore mock *throws* above 2048 bytes, so a regression to single-value storage fails the suite rather than only failing on device |
+| 3 | Fail-safe under partial writes | Chunk count is written **last** as a commit marker. Two tests cover it: orphaned chunks with no marker read as `null`, and a missing chunk under a *valid* marker also reads `null` rather than returning a truncated token |
+| 4 | Excluded from iCloud backups | `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` — see the deviation note below |
+| 5 | Web does not crash | `Platform.OS !== 'web'` guard falls back to AsyncStorage, preserving prior web behaviour instead of throwing |
+| 6 | Validation green | `typecheck` pass · `npm test` 84/84, 5 suites (was 78/4) · `expo export --platform ios` pass, 5.1 MB |
+
+**Deviation from the plan, recorded rather than absorbed.** The audit recommended
+`WHEN_UNLOCKED_THIS_DEVICE_ONLY`. The implementation uses `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`
+instead. Reason: the client sets `autoRefreshToken: true`, and a refresh firing while the screen is
+locked cannot read a `WHEN_UNLOCKED` item — it would fail the read and silently sign the user out.
+Both constants are hardware-encrypted at rest and both are device-only, so the backup-extraction path
+in the threat model is closed either way; the difference is only whether a *powered-on, already-once
+-unlocked* device is readable, which is not the scenario this finding was about. The stricter constant
+would trade a real functional failure for no meaningful gain. Documented in the file so the choice is
+not silently reversed.
+
+**Follow-up left open:** web remains on `localStorage` and is therefore XSS-readable. `app.json`
+declares a web target but PRism does not ship one; if that changes, web needs its own decision
+(no real accounts on web, or a different storage strategy). Carried as follow-up 1.
 
 ---
 

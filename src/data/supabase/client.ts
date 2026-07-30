@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { secureSessionStorage } from './secureStorage';
 
 /**
  * Supabase client, created lazily so that demo mode never touches the network
@@ -26,7 +26,9 @@ export function getSupabase(): SupabaseClient {
   if (!client) {
     client = createClient(url, anonKey, {
       auth: {
-        storage: AsyncStorage,
+        // Keychain/Keystore, not AsyncStorage: this holds the refresh token,
+        // and a leaked refresh token outlives a password change.
+        storage: secureSessionStorage,
         autoRefreshToken: true,
         persistSession: true,
         // React Native has no URL bar to parse a session out of.

@@ -31,7 +31,8 @@
           "backgroundColor": "#07070B",
           "imageWidth": 180
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
