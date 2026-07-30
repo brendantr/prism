@@ -49,6 +49,12 @@ export default function AuthScreen() {
     // Nothing is created or sent -- see the notice below. The gate exists so the
     // flow cannot advance on input that would never have been accepted.
     if (!isValidCredentials(found)) return;
+
+    // Expo Router keeps this screen mounted underneath the one being pushed, so
+    // without this the password sits in component state for the rest of the
+    // session. It has already done its only job (local validation) and there is
+    // nothing to authenticate against, so it should not outlive the submit.
+    setPassword('');
     router.push('/onboarding/steps');
   };
 
@@ -95,8 +101,12 @@ export default function AuthScreen() {
             error={errors.email ? AUTH_ERROR_COPY[errors.email] : undefined}
             keyboardType="email-address"
             autoCapitalize="none"
-            autoComplete="email"
-            textContentType="emailAddress"
+            // No autofill association while this form is presentation-only.
+            // iOS offers to save a password when it sees a username/password
+            // pair submitted together, so suppressing it here is half of what
+            // stops the prompt -- see the password field below.
+            autoComplete="off"
+            textContentType="none"
             returnKeyType="next"
           />
           <Input
@@ -112,7 +122,17 @@ export default function AuthScreen() {
             error={errors.password ? AUTH_ERROR_COPY[errors.password] : undefined}
             secureTextEntry
             autoCapitalize="none"
-            textContentType={isSignUp ? 'newPassword' : 'password'}
+            /*
+              Deliberately NOT `newPassword`/`password`. Those opt this field
+              into iOS AutoFill, and submitting the form then raised a native
+              "Save Password?" sheet -- observed on a simulator during the UI
+              verification sprint. That asks the lifter to commit a credential
+              to their keychain for an account this screen cannot create, which
+              flatly contradicts the notice directly below it. Restore these the
+              moment sign-up actually creates an account, and not before.
+            */
+            autoComplete="off"
+            textContentType="none"
             returnKeyType="go"
             onSubmitEditing={submit}
             style={styles.field}
