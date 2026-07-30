@@ -1,7 +1,7 @@
 # Sprint: ui-ux-foundation-expansion
 
-- **Status:** Implemented and rendered on a simulator, pending review. No tap input was exercised —
-  see "Still not verified" under Validation.
+- **Status:** Implemented, rendered, and tap-verified on a simulator; pending review. Typing was not
+  verified — see "Still not verified" under Validation.
 - **Date:** 2026-07-29
 - **Branch:** `ui-ux-foundation` (continues the branch; see "Why the same branch")
 - **Type:** UI/UX expansion. Frontend only. No schema, migration, RLS, repository,
@@ -70,10 +70,14 @@ routes and stay reachable, but leave the tab bar.
 
 **Decision:** hide Progress and Body from the bar with `href: null` rather than moving their files.
 This keeps the diff small and reviewable, keeps their URLs stable, and avoids touching two screens
-whose content is not part of this sprint. **Assumption to verify in a simulator:** a bar item hidden
-this way is still navigable and `router.back()` returns to the previous tab; the back affordance
-falls back to an explicit `replace` into Insights if `canGoBack()` is false, so a failure of that
-assumption degrades to a working button rather than a trap.
+whose content is not part of this sprint.
+
+**Assumption stated here before code, and since FALSIFIED:** "a bar item hidden this way is still
+navigable and `router.back()` returns to the previous tab." The first half held. The second did not —
+tap-verification (T9b, `d7a9846`) showed `router.back()` pops to the tab navigator's *initial* route,
+so back from Progress landed on Today whether the user arrived from Today or from Insights. Both
+screens now navigate explicitly to Insights, the hub they hang off, and the control announces "Back to
+Insights" rather than promising history it cannot honour.
 
 **Rejected:** a six- or seven-tab bar (labels stop being legible on a compact device, and PRism's
 bar deliberately keeps text labels — `_layout.tsx` comment); and folding Progress/Body *into*
@@ -204,7 +208,7 @@ Reviewable at the branch level. A criterion is met only with evidence.
 
 ## What shipped
 
-Twelve commits on `ui-ux-foundation`, after `791d19a`:
+Fifteen commits on `ui-ux-foundation`, after `791d19a`:
 
 | Commit | Group | Surface |
 | --- | --- | --- |
@@ -220,6 +224,9 @@ Twelve commits on `ui-ux-foundation`, after `791d19a`:
 | `3bde4c0` | — | This record's first validation write-up |
 | `f31f56f` | — | Social placeholder feed cut (owner decision) |
 | `d59f8f1` | — | Two layout fixes found by rendering on a simulator |
+| `84a9e1f` | — | Record renamed; sprint-naming rule added to `Docs/agents.md` |
+| `dec9544` | — | Working simulator launch sequence added to the README |
+| `d7a9846` | — | Three fixes found by driving the UI with real taps |
 
 ### Deviations from the planned sequence
 
@@ -246,6 +253,9 @@ Recorded rather than quietly absorbed:
 7. **Two layout fixes landed after simulator rendering** (`d59f8f1`), and one of them touches a
    pre-existing defect on Progress. Neither was in the planned scope; both were defects in this
    sprint's own output that only a rendered screen could expose. See "Validation".
+8. **Three more fixes landed after tap-verification** (`d7a9846`), one of which — the missing "Later"
+   control on the auth screen — is a predecessor-sprint defect, not this sprint's. It is fixed here
+   because it was also what blocked tap-verifying the setup steps.
 
 ## Design decisions
 
@@ -343,21 +353,54 @@ install` → `simctl launch`. Launch then returned a PID immediately.
 Both were re-rendered after the fix and confirmed: chip rows fully visible, "143.7k kg" and
 "35.9k kg/wk" each complete on one line.
 
+### Tap-driven verification (2026-07-29, same simulator, via idb)
+
+`idb` was installed (`brew install idb-companion` after `brew trust --formula`, plus `pip install
+fb-idb`) and every interaction listed as unexercised above was tapped for real. Targets were located
+from `idb ui describe-all` by the accessibility labels this sprint wrote, so no coordinate was
+guessed. Reaching the tab shell still used an AsyncStorage fixture writing `prism.onboarding.v1` —
+exactly what `onboardingStore.persist()` writes — so a returning user's state could be set up without
+tapping through onboarding first.
+
+| # | Interaction | Result |
+| --- | --- | --- |
+| T1–T5 | Tab bar: Today → Exercises → Insights → Social → Plans → Today | **PASS** — each tab's own content rendered; bar items measure 45.7pt |
+| T6 | Today "Go deeper" → Progress | **PASS** |
+| T7 | Back control on Progress (arrived from Today) | **PASS** — returns to Today |
+| T8 | Today "Go deeper" → Body, then its back control | **PASS** |
+| T9 | Insights "Go deeper" row → Progress | **PASS** |
+| T9b | Back control on Progress (arrived from **Insights**) | **FAIL → fixed** (`d7a9846`) — landed on Today, not Insights. Retested after the fix: **PASS** |
+| T10 | Insights period segment, 4 weeks → 7 days | **PASS** — summary, section eyebrow and highlight prose all re-read "last 7 days" |
+| T11 | Exercises grouping segment, Muscle → Kit | **PASS** — 16 muscle section headers became 5 equipment headers, FAVOURITES pinned in both |
+| T12 | Exercises "Push" filter chip | **PASS** — "43 EXERCISES" → "14 EXERCISES · 1 FILTER" |
+| T13 | Exercises row expansion | **PASS** — cue, "Start a session with this", and the row's own label flips to "Collapse for details" |
+| T14a | Dev "Reset onboarding" | **PASS** — app returns to the welcome screen |
+| T14b | Auth → setup steps without an account | **FAIL → fixed** (`d7a9846`) — no skip control existed at all; see below. Retested: **PASS** |
+| T14c | Skip on each of the four setup steps | **PASS** — 1→2→3→4, and no step 5 |
+| T14d | Completion summary after skipping everything | **PASS** — all four rows read "Not set"; no default was written (S-15, S-16) |
+| T14e | "Start training" hand-off | **PASS** — lands in the tab shell |
+| — | Segmented-control group label | **FAIL → fixed** (`d7a9846`) — never reached the accessibility tree |
+| — | Auth credential validation | **PASS**, incidentally — submitting a partly-filled field showed "That does not look like an email address." |
+
+Two of those failures matter beyond their fix. **T9b falsified the assumption this record flagged in
+"Information architecture change"**: `router.back()` does *not* return to the previous tab, it pops to
+the tab navigator's initial route. And **T14b found the auth screen had no exit** — `AUTH.skipLabel`
+had existed unrendered since the predecessor sprint, so the screen that says accounts do not work yet
+was the only one a user without an account could not leave. It was also what blocked this
+verification, which is why it is fixed here rather than logged.
+
+Also confirmed independently of the pixel measurement: the accessibility tree reports each
+segmented-control option as **44.0pt** tall.
+
 **Still not verified, and not claimed:**
 
-- **No tap was ever delivered.** Navigation was driven entirely by deep links. Tapping the back
-  chevron, the tab bar items, a segment, a filter chip, a row expansion, the "log this lift" action,
-  and the onboarding Skip control are all **unexercised**. Coordinate clicking through the Simulator
-  window was attempted and abandoned: the machine had other applications in front of the simulator,
-  including a modal dialog, and a misdirected click would have acted on them. A UI-driving tool
-  (`idb`, or an XCUITest target) is the right way to close this and is not installed.
-- **The `href: null` back affordance renders and is reachable; its `onPress` was not tapped.** The
-  `canGoBack()` fallback is therefore still unproven at runtime.
-- **Onboarding's skip path and choices summary were not seen.** Reaching the tab shell required
-  marking onboarding complete, and with no tap available that was done by writing the
-  `prism.onboarding.v1` key into the app container's AsyncStorage manifest — a local test fixture
-  mirroring exactly what `onboardingStore.persist()` writes. The steps screen and the completion
-  summary were consequently never rendered.
+- **Typing was never verified.** `idb ui text` does not reach text fields on this iOS 26 simulator
+  (the companion build is from 2022), so the auth fields, the exercise search box, and the check-in
+  note were only ever tapped, never filled. The search *filter* logic is therefore unexercised, as is
+  any keyboard-avoidance behaviour.
+- **"Log this lift" was not followed into the logger.** The expanded row's action button renders and
+  is labelled; tapping it through to `workout/active` was not done, so the claim in S-8 that it
+  reuses the existing active-workout path rests on reading the code, not on running it.
 - **One device, one size, default text size.** iPhone 17 Pro at 402×874pt only. The narrow-device
   case (iPhone SE) and large accessibility text sizes remain unchecked, and the tab bar's five 9.5pt
   labels are exactly what that check was for.
@@ -377,11 +420,10 @@ Both were re-rendered after the fix and confirmed: chip rows fully visible, "143
    What remains of it: the five-item bar on the narrowest supported device, the Exercises section list
    at large accessibility text sizes, and a real device rather than a simulator.
 6. ~~Decide whether the Social placeholder feed earns its place.~~ **Resolved** — cut in `f31f56f`.
-7. **Install a UI-driving tool and re-verify with taps.** Everything behind a tap is still unexercised:
-   the two back affordances and their `canGoBack()` fallback, tab-bar switching, segment and chip
-   selection, row expansion, "log this lift", and onboarding's Skip and choices summary. Either `idb`
-   or an XCUITest target would do it; coordinate clicking through the Simulator window is not an
-   acceptable substitute, for the reason recorded in Validation.
+7. ~~Install a UI-driving tool and re-verify with taps.~~ **Done** — `idb` installed, fourteen
+   interaction groups tapped, three defects found and fixed (`d7a9846`). What remains of it: text
+   entry, which `idb ui text` cannot deliver to this iOS 26 simulator, and following "log this lift"
+   through into the logger.
 8. ~~Decide on the sprint-document naming collision.~~ **Resolved** (owner decision, 2026-07-29). This
    record was originally `2026-07-29-ui-ux-expansion.md`, naming a sprint whose branch has never
    existed — the work runs on `ui-ux-foundation`. It is now
