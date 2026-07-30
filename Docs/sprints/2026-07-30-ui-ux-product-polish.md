@@ -266,6 +266,33 @@ with volume, distribution and reflection.
 - The **genuine empty state** on Insights (loaded, but nothing to derive yet) needs a profile with no
   history to reach, which the demo seed never produces. Unverified.
 
+## CI note — test lane, not a product regression
+
+**This branch's CI went red on `sessionFlow.test.ts`, and nothing in this sprint caused it.** The
+file arrived with the merged backend sprint (PR #10) and the failure is a property of the runtime, not
+of any code changed here — no UI/UX work in this PR touches sessions, auth, or the Supabase client.
+
+`createClient()` builds a `RealtimeClient` eagerly, and that resolves a WebSocket at construction
+(`RealtimeClient.js`: `transport = options?.transport ?? getWebSocketConstructor()`). CI pins
+**Node 20** (`.github/workflows/ci.yml`), where `typeof WebSocket === 'undefined'` — the global only
+became unflagged in Node 22. Local development on Node 22+ therefore passed while CI failed, purely
+on runtime version.
+
+**Fixed by injecting the transport, not by weakening the test.** All five assertions are unchanged and
+still run a real Supabase client against the real Keychain adapter. The injected transport *throws if
+constructed*, and no auth path ever constructs it — so it is a tripwire rather than a fake, and
+realtime coverage cannot drift into the hermetic lane unnoticed.
+
+Testing is now two lanes: `npm test` is hermetic and must pass on any Node version;
+`npm run test:integration` holds the real-project coverage, including the four checks the unit lane
+cannot answer. Full reasoning is in
+[`2026-07-30-security-backend-foundation`](2026-07-30-security-backend-foundation.md) under SB-1, in
+`README.md`'s Testing section, and in the support file itself.
+
+**Verified on the real CI runtime**, not simulated: Node 20.20.2, `tsc --noEmit` clean and
+`jest --ci` at **103/103, 9 suites**. Reverting only the injection reproduces
+`Node.js detected but native WebSocket not found.` on that same runtime; restoring it returns green.
+
 ## Final validation
 
 | Check | Result |
