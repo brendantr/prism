@@ -1,14 +1,27 @@
 # Sprint: ui-ux-product-polish
 
-- **Status:** **Complete, and visually verified on a simulator.** All three tasks met their success
-  criteria; the loading, error and save-failure states were seen rendering on device. Criteria were
-  written before any code changed.
+- **Status:** **Complete. Four of seven screens visually verified on a simulator.** All three tasks
+  met their success criteria; the loading, error and save-failure states were seen rendering on
+  device. Criteria were written before any code changed. See "Sprint summary" below and, for the
+  two gaps this leaves, "Still not covered".
 - **Date:** 2026-07-30
 - **Branch:** `ui-ux-product-polish` (new branch off `main` at `c4c3e68`; no earlier UI branch reused)
 - **Type:** UI/UX. Frontend only. No schema, migration, RLS, or repository-contract change.
 - **Predecessors:** [`2026-07-29-ui-ux-foundation-verification`](2026-07-29-ui-ux-foundation-verification.md)
   (UI), [`2026-07-30-security-backend-foundation`](2026-07-30-security-backend-foundation.md)
   (backend, merged PR #10)
+
+## Sprint summary
+
+*Recorded by the engineer/owner at close, 2026-07-30.*
+
+> Complete. All planned UI/UX tasks were finished, typecheck and tests passed, and four of seven
+> screens were visually verified after restarting the app with the correct Metro mode. The verified
+> screens were Today, Exercises, Insights, and the workout logger's failure banner. The remaining two
+> gaps — the truly empty Insights state and the other screens that were wired identically but not
+> individually photographed — are explicitly recorded in the sprint doc. The sprint preserved backend
+> security assumptions: the frontend never fabricates ownership, treats writes as fallible, and keeps
+> loading/error/empty states honest.
 
 ## User-facing goal
 
