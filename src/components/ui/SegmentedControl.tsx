@@ -15,8 +15,6 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   /** Wide-tracked caption above the track. Omit when the context is obvious. */
   label?: string;
-  /** Announced for the group as a whole. */
-  accessibilityLabel?: string;
 }
 
 /**
@@ -35,7 +33,6 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   label,
-  accessibilityLabel,
 }: SegmentedControlProps<T>) {
   return (
     <View>
@@ -45,7 +42,15 @@ export function SegmentedControl<T extends string>({
         </Text>
       ) : null}
 
-      <View style={styles.track} accessibilityLabel={accessibilityLabel}>
+      {/*
+        No group-level accessibilityLabel here. A container that carries one
+        needs `accessible` to be exposed at all, and `accessible` collapses the
+        segments into a single element -- the choices stop being individually
+        reachable. Verified absent from the accessibility tree on a simulator
+        (2026-07-29) before it was removed. Context belongs on each option's own
+        `accessibilityLabel` instead, where a screen reader actually reads it.
+      */}
+      <View style={styles.track}>
         {options.map((option) => {
           const selected = option.value === value;
           return (

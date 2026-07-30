@@ -155,7 +155,6 @@ export default function ExercisesScreen() {
           options={GROUP_OPTIONS}
           value={groupBy}
           onChange={setGroupBy}
-          accessibilityLabel="Group exercises by"
         />
       </View>
 

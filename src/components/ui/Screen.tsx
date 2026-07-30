@@ -21,6 +21,12 @@ export interface ScreenProps extends Pick<ScrollViewProps, 'refreshControl' | 'o
    * platform gesture that does not exist on every platform.
    */
   onBack?: () => void;
+  /**
+   * What the back control announces. Name the destination when the control goes
+   * somewhere fixed rather than to wherever the user came from -- "Go back" is a
+   * promise about history, and a control that does not keep it should not make it.
+   */
+  backLabel?: string;
   /** Extra bottom padding, e.g. to clear a floating action bar. */
   bottomInset?: number;
 }
@@ -36,6 +42,7 @@ export function Screen({
   eyebrow,
   headerRight,
   onBack,
+  backLabel = 'Go back',
   bottomInset = 0,
   ...scrollProps
 }: ScreenProps) {
@@ -45,7 +52,7 @@ export function Screen({
     <View style={styles.backRow}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Go back"
+        accessibilityLabel={backLabel}
         onPress={onBack}
         hitSlop={10}
         style={({ pressed }) => [styles.back, pressed && { opacity: opacity.pressed }]}

@@ -30,12 +30,19 @@ export default function BodyScreen() {
     [history, exerciseById, now],
   );
 
-  // Deep-linking straight here leaves nothing to pop, so the fallback is an
-  // explicit destination rather than a button that does nothing.
-  const back = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/insights'));
+  /**
+   * Always returns to Insights, the analytics hub these screens hang off.
+   *
+   * `router.back()` was tried and rejected: verified on a simulator (2026-07-29),
+   * a bottom-tab navigator pops to its initial route rather than to the tab you
+   * arrived from, so "back" from here landed on Today no matter whether you came
+   * from Today or from Insights. A control labelled "back" that ignores history
+   * is worse than one that names a fixed destination, so this names it.
+   */
+  const back = () => router.replace('/(tabs)/insights');
 
   return (
-    <Screen eyebrow="Estimate, not measurement" title="Body" onBack={back}>
+    <Screen eyebrow="Estimate, not measurement" title="Body" onBack={back} backLabel="Back to Insights">
       <Card style={styles.gutter} padding="lg">
         <Text variant="bodySm" tone="muted" style={styles.explainer}>
           {RECOVERY_MODEL_EXPLANATION}

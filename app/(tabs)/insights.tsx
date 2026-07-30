@@ -42,9 +42,11 @@ import type { Workout } from '@/domain/types';
 type WindowDays = '7' | '28' | '84';
 
 const WINDOW_OPTIONS: SegmentedOption<WindowDays>[] = [
-  { value: '7', label: '7 days' },
-  { value: '28', label: '4 weeks' },
-  { value: '84', label: '12 weeks' },
+  // The visible label is the bare period; the spoken one says what it changes,
+  // because a screen reader reaching "7 days" on its own has no context.
+  { value: '7', label: '7 days', accessibilityLabel: 'Show insights for the last 7 days' },
+  { value: '28', label: '4 weeks', accessibilityLabel: 'Show insights for the last 4 weeks' },
+  { value: '84', label: '12 weeks', accessibilityLabel: 'Show insights for the last 12 weeks' },
 ];
 
 /** How each window is named in prose, so copy and control cannot drift. */
@@ -181,7 +183,6 @@ export default function InsightsScreen() {
           options={WINDOW_OPTIONS}
           value={windowDays}
           onChange={setWindowDays}
-          accessibilityLabel="Choose the period these insights cover"
         />
       </View>
 

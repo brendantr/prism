@@ -143,6 +143,22 @@ export default function AuthScreen() {
             {isSignUp ? AUTH.toggleToSignIn : AUTH.toggleToSignUp}
           </Text>
         </Pressable>
+
+        {/*
+          The way past this screen without an account. `AUTH.skipLabel` existed
+          from the first draft but was never rendered, which made a screen that
+          says accounts do not work yet the one screen you could not get past --
+          the credential gate below is presentation-only, so it was asking for
+          input it would never use. Ghost, not filled: creating the account is
+          still the dominant action.
+        */}
+        <Button
+          label={AUTH.skipLabel}
+          variant="ghost"
+          fullWidth
+          onPress={() => router.push('/onboarding/steps')}
+          style={styles.skip}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -158,4 +174,5 @@ const styles = StyleSheet.create({
   notice: { marginTop: space.lg },
   cta: { marginTop: space.xl },
   toggle: { alignSelf: 'center', marginTop: space.lg, minHeight: 44, justifyContent: 'center' },
+  skip: { marginTop: space.sm },
 });
