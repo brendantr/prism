@@ -53,7 +53,7 @@ Consequences, stated up front so no result below is read as more than it is:
 
 ### SB-1 — Verify the secure session flow against real supabase-js behaviour
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** — `src/data/supabase/__tests__/sessionFlow.test.ts`, 5 tests
 
 The predecessor sprint shipped a Keychain-backed storage adapter but could never exercise it: nothing
 calls it until a session exists, and auth is unimplemented. It closed as "test-verified and
@@ -74,6 +74,28 @@ network.
 
 **Out of scope:** implementing sign-in/sign-up; any network round trip; a live Supabase project.
 End-to-end auth stays unverified after this task and is not claimed.
+
+**Outcome — met, 4/4.** A real `createClient` instance, given `secureSessionStorage`, reads back a
+session the adapter wrote; the session spans multiple Keychain items (asserted via the commit
+marker's chunk count, with the mock throwing above 2048 bytes so a regression cannot pass); sign-out
+purges every item; a torn write and an absent session both present as *signed out*.
+
+Verified against the real storage contract read from `auth-js` source rather than assumed:
+`setItemAsync` writes `JSON.stringify(session)` through `storage.setItem`, and `getItemAsync`
+fail-closes to `null` on unparseable JSON — which is the same posture the adapter already took.
+
+**Two findings from doing this properly, both worth keeping:**
+
+1. **`signOut({ scope: 'local' })` still makes a network call** in auth-js 2.110. The first version of
+   the sign-out test asserted `error` was `null` and failed. The failure was isolated by re-running
+   the identical flow against a trivial in-memory storage, where it **also** failed — proving the
+   adapter was not the cause before anything was changed.
+2. **An offline sign-out still purges the token locally.** Read from source
+   (`GoTrueClient._signOut`, ~line 4013): on a non-401/403/404 error the failure path calls
+   `removeCurrentSession()` *and then* returns the error. So a lifter signing out on gym wifi with no
+   signal does not leave a live refresh token in the Keychain. The test now asserts that property and
+   deliberately does **not** assert `error === null`, because whether the server was reachable is not
+   the security question.
 
 ---
 
@@ -191,3 +213,6 @@ Newest last.
 - **2026-07-30** — Branch opened from `main` at `5be14b1`. Sprint document written with success
   outcomes fixed before any code change. Confirmed no database is reachable for validation: `docker`
   absent, no linked Supabase project, `.env` placeholders only.
+- **2026-07-30** — SB-1 done. 5 integration tests wire the real Supabase client to the Keychain
+  adapter. Suite 88 → 93, 6 → 7 suites; `typecheck` clean. Two findings recorded above: local-scope
+  sign-out still hits the network, and an offline sign-out still purges the token.
