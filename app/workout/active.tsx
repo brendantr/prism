@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -63,6 +63,17 @@ export default function ActiveWorkoutScreen() {
 
   const [elapsed, setElapsed] = useState('0:00');
   const [saving, setSaving] = useState(false);
+  /**
+   * Set when the save fails. The session is still on screen and still complete,
+   * so this is a retry prompt, not a dead end.
+   */
+  const [saveFailed, setSaveFailed] = useState(false);
+  /**
+   * Guards the redirect below. Clearing the session after a successful save
+   * would otherwise look identical to "the session vanished", and bounce the
+   * lifter to Today instead of letting them reach their summary.
+   */
+  const finishing = useRef(false);
 
   // Session clock.
   useEffect(() => {
@@ -74,9 +85,11 @@ export default function ActiveWorkoutScreen() {
     return () => clearInterval(id);
   }, [workout]);
 
-  // If the store has no session (e.g. deep link, or after finishing), leave.
+  // If the store has no session (e.g. a deep link straight to this route), leave.
+  // `finishing` excludes the one case where an empty store is expected and the
+  // navigation is already handled.
   useEffect(() => {
-    if (!workout) router.replace('/');
+    if (!workout && !finishing.current) router.replace('/');
   }, [workout, router]);
 
   const priorBests = useMemo(() => bestsFromHistory(history), [history]);
@@ -131,7 +144,10 @@ export default function ActiveWorkoutScreen() {
         text: 'Finish',
         onPress: async () => {
           setSaving(true);
+          setSaveFailed(false);
           try {
+            // Builds the record without clearing the session -- see the store.
+            // Nothing local is thrown away until the write has come back clean.
             const finished = finish();
             if (!finished) return;
 
@@ -141,6 +157,8 @@ export default function ActiveWorkoutScreen() {
             const detected = detectWorkoutPrs(finished, priorBests);
             const records: PersonalRecord[] = detected.map((pr) => ({
               id: newId('pr'),
+              // Local draft only. The server sets the real owner from the
+              // session on write, so this value is never authoritative.
               profileId: profile.id,
               exerciseId: pr.exerciseId,
               kind: pr.kind,
@@ -152,7 +170,17 @@ export default function ActiveWorkoutScreen() {
             }));
             await addPersonalRecords(records);
 
+            // Saved. Only now is it safe to let the session go.
+            finishing.current = true;
             router.replace({ pathname: '/workout/summary', params: { id: finished.id } });
+            discard();
+          } catch (e) {
+            // The write can fail for reasons the lifter cannot see -- the server
+            // refusing it, an expired session, no signal in the gym. Whatever the
+            // cause, the sets stay on screen and stay theirs to retry. Silently
+            // dropping them here is how a session gets lost for good.
+            console.warn('[workout] save failed', e);
+            setSaveFailed(true);
           } finally {
             setSaving(false);
           }
@@ -291,6 +319,26 @@ export default function ActiveWorkoutScreen() {
       {/* Dock: rest timer above the finish bar */}
       <View style={[styles.dock, { paddingBottom: insets.bottom + space.md }]}>
         {restTimer ? <RestTimerBar /> : null}
+
+        {/*
+          Shown in place of nothing at all, which is what used to happen. The
+          wording deliberately promises only what is true: the sets are still
+          here. It does not say the session is saved, and it does not guess why
+          the server refused.
+        */}
+        {saveFailed ? (
+          <View
+            style={styles.saveError}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Ionicons name="cloud-offline-outline" size={16} color={color.coral} />
+            <Text variant="bodySm" tone="coral" style={styles.saveErrorText}>
+              Could not save this session. Your sets are still here — try finishing again.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.finishBar}>
           <Button
             label={saving ? 'Saving…' : 'Finish session'}
@@ -367,4 +415,16 @@ const styles = StyleSheet.create({
     borderTopColor: color.line,
   },
   finishBar: { paddingHorizontal: space.lg, paddingTop: space.md },
+  saveError: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    marginTop: space.md,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    backgroundColor: color.coralWash,
+  },
+  saveErrorText: { flex: 1, lineHeight: 18 },
 });

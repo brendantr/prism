@@ -61,7 +61,7 @@ Recorded before deciding the tasks, so the priorities are traceable to evidence.
 
 ### UX-1 — A logged session is never destroyed before the server confirms the save
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** — `activeWorkoutStore.ts`, `app/workout/active.tsx`, + 5 tests
 
 **Success criteria:**
 
@@ -75,6 +75,32 @@ Recorded before deciding the tasks, so the priorities are traceable to evidence.
 **Out of scope:** making the multi-record write atomic (`I-2`/`G-2` stays open — a partial server-side
 write is still possible; this task ensures the *client* does not compound it by discarding the local
 copy).
+
+**Outcome — met, 5/5.**
+
+| # | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | `finish()` is pure | The `set({ workout: null, ... })` line is gone; it now only builds and returns |
+| 2 | Cleared only after success | `discard()` moved to after `await upsertWorkout` and `await addPersonalRecords` both resolve |
+| 3 | Failed save keeps everything | A `catch` now exists at all. Sets stay, an inline alert appears, the button returns to "Finish session" so retry is one tap |
+| 4 | Redirect cannot misfire | The effect is guarded by a `finishing` ref, so clearing after a successful save no longer reads as "the session vanished" |
+| 5 | Regression test | 5 tests in `src/store/__tests__/activeWorkoutStore.test.ts`, including finish-twice (the retry path) and the completed-sets filter |
+
+**The bug in full, since it is worth recording precisely.** `finish()` set `workout: null` and returned
+the record; the caller `await`ed the save inside `try … finally` with **no `catch`**; and an effect in
+the same screen redirected to Today whenever `workout` went null. So a rejected write produced:
+session wiped → error swallowed → user bounced to Today → workout gone, with no message at any point.
+Three ordinary-looking pieces of code combining into silent data loss.
+
+**Copy note.** The failure message says "Your sets are still here — try finishing again." It promises
+only what is now true. It does not claim the session was saved, and it does not speculate about why
+the server refused — the lifter cannot act on `42501`.
+
+**A test-environment finding worth carrying forward.** The first run of the new tests failed with two
+sets both marked complete and `id: undefined`. Cause: `jest-expo` stubs `expo-crypto`, so
+`Crypto.randomUUID()` returns `undefined` and every minted id collides — the limitation the CSPRNG
+sprint documented, now shown to affect *any* test that creates store entities, not just id tests. The
+file mocks `expo-crypto` with Node's CSPRNG. Future store tests will need the same.
 
 ---
 
@@ -137,3 +163,5 @@ Newest last.
 
 - **2026-07-30** — Branch opened from `main` at `c4c3e68` (after PR #10 merged). UI reviewed, three
   findings recorded above, sprint document written with success criteria fixed before any code change.
+- **2026-07-30** — UX-1 done. `finish()` is pure, the save has a `catch`, and a failed write now keeps
+  the session on screen with a retry instead of destroying it. Suite 98 → 103, 8 → 9 suites.
