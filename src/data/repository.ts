@@ -277,7 +277,12 @@ class SupabaseRepository implements Repository {
    */
   async saveWorkout(workout: Workout): Promise<void> {
     const db = getSupabase();
-    const { error: wErr } = await db.from('workouts').upsert(fromWorkout(workout));
+    const profileId = await this.uid();
+    // Ownership comes from the session, never from the passed-in object. RLS
+    // enforces this too; the client should not be in a position to assert it.
+    const { error: wErr } = await db
+      .from('workouts')
+      .upsert({ ...fromWorkout(workout), profile_id: profileId });
     if (wErr) throw wErr;
 
     if (workout.exercises.length > 0) {
@@ -295,7 +300,15 @@ class SupabaseRepository implements Repository {
   }
 
   async deleteWorkout(id: string): Promise<void> {
-    const { error } = await getSupabase().from('workouts').delete().eq('id', id);
+    const profileId = await this.uid();
+    // Scoped by owner as well as id. RLS already limits the delete to your own
+    // rows, so this changes no outcome -- it means a bug in one layer is not
+    // the only thing standing between a stray id and someone else's session.
+    const { error } = await getSupabase()
+      .from('workouts')
+      .delete()
+      .eq('id', id)
+      .eq('profile_id', profileId);
     if (error) throw error;
   }
 
@@ -312,9 +325,10 @@ class SupabaseRepository implements Repository {
 
   async saveCheckIn(checkIn: CheckInPatch): Promise<void> {
     assertCompleteCheckIn(checkIn);
+    const profileId = await this.uid();
     const { error } = await getSupabase().from('check_ins').upsert({
       id: checkIn.id,
-      profile_id: checkIn.profileId,
+      profile_id: profileId,
       checked_in_at: checkIn.checkedInAt,
       sleep_quality: checkIn.sleepQuality,
       energy: checkIn.energy,
@@ -349,10 +363,11 @@ class SupabaseRepository implements Repository {
 
   async savePersonalRecords(records: PersonalRecord[]): Promise<void> {
     if (records.length === 0) return;
+    const profileId = await this.uid();
     const { error } = await getSupabase().from('personal_records').insert(
       records.map((r) => ({
         id: r.id,
-        profile_id: r.profileId,
+        profile_id: profileId,
         exercise_id: r.exerciseId,
         kind: r.kind,
         value: r.value,
