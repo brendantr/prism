@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Card, Screen, SectionHeader, Text } from '@/components/ui';
+import { Card, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
 import { MUSCLE_META } from '@/domain/muscles';
@@ -23,6 +23,9 @@ export default function BodyScreen() {
   const router = useRouter();
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
   const now = useMemo(() => new Date(), []);
 
   const recovery = useMemo(
@@ -41,8 +44,28 @@ export default function BodyScreen() {
    */
   const back = () => router.replace('/(tabs)/insights');
 
+  const header = {
+    eyebrow: 'Estimate, not measurement',
+    title: 'Body',
+    onBack: back,
+    backLabel: 'Back to Insights',
+  } as const;
+
+  if (status !== 'ready') {
+    return (
+      <Screen scroll={false} {...header}>
+        <ScreenState
+          phase={status}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Estimating recovery…"
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen eyebrow="Estimate, not measurement" title="Body" onBack={back} backLabel="Back to Insights">
+    <Screen {...header}>
       <Card style={styles.gutter} padding="lg">
         <Text variant="bodySm" tone="muted" style={styles.explainer}>
           {RECOVERY_MODEL_EXPLANATION}

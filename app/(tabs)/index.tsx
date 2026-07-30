@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
-import { Button, Card, Chip, Screen, SectionHeader, Text } from '@/components/ui';
+import { Button, Card, Chip, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { CheckInPrompt } from '@/components/today/CheckInPrompt';
 import { QuickAccess } from '@/components/today/QuickAccess';
 import { ReadinessCard } from '@/components/today/ReadinessCard';
@@ -55,6 +55,8 @@ import { color, space } from '@/theme';
 export default function TodayScreen() {
   const router = useRouter();
   const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
   const profile = useTrainingStore((s) => s.profile);
   const activeRoutine = useTrainingStore((s) => s.activeRoutine);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
@@ -127,26 +129,24 @@ export default function TodayScreen() {
     [recovery],
   );
 
-  if (status === 'loading' || status === 'idle' || !profile) {
+  // Today uses the same primitive as every other screen, so the three states
+  // read identically wherever the lifter meets them.
+  //
+  // The header is the one thing that cannot match: it greets them by name, and
+  // the name lives in the profile that has not arrived yet. The greeting shows
+  // regardless -- it comes from the clock -- and the name appears once it is
+  // genuinely known rather than being guessed at.
+  if (status !== 'ready' || !profile) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator color={color.violetBright} />
-        <Text variant="bodySm" tone="muted" style={styles.loadingText}>
-          Reading your training history…
-        </Text>
-      </View>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <Screen title="Something broke">
-        <Card style={styles.gutter}>
-          <Text variant="body" tone="secondary">
-            {useTrainingStore.getState().error ?? 'Your training data could not be loaded.'}
-          </Text>
-          <Button label="Try again" variant="secondary" onPress={() => void useTrainingStore.getState().refresh()} style={styles.retry} />
-        </Card>
+      <Screen scroll={false} eyebrow={greeting(now)}>
+        <ScreenState
+          // Loaded but no profile is not "still loading" -- it is something
+          // being wrong, and it should offer a retry rather than spin forever.
+          phase={status !== 'ready' ? status : 'error'}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Reading your training history…"
+        />
       </Screen>
     );
   }
@@ -387,8 +387,6 @@ function countStreakWeeks(
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, backgroundColor: color.bg, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { marginTop: space.md },
   gutter: { marginHorizontal: space.lg },
   retry: { marginTop: space.base },
   demoBanner: {

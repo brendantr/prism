@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Chip, ListRow, Screen, SectionHeader, Text } from '@/components/ui';
+import { Card, Chip, ListRow, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { PLANNED_SURFACES, SOCIAL } from '@/content/social';
 import { useTrainingStore } from '@/store/trainingStore';
@@ -33,14 +33,34 @@ export default function SocialScreen() {
   const profile = useTrainingStore((s) => s.profile);
   const personalRecords = useTrainingStore((s) => s.personalRecords);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
 
   const latestPr = useMemo(
     () => [...personalRecords].sort((a, b) => b.achievedAt.localeCompare(a.achievedAt))[0] ?? null,
     [personalRecords],
   );
 
+  const header = { eyebrow: SOCIAL.eyebrow, title: SOCIAL.title } as const;
+
+  // The shareable card below is built from the lifter's own record, so this
+  // screen needs the store loaded even though nothing on it is networked.
+  if (status !== 'ready') {
+    return (
+      <Screen scroll={false} {...header}>
+        <ScreenState
+          phase={status}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Loading your records…"
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen eyebrow={SOCIAL.eyebrow} title={SOCIAL.title}>
+    <Screen {...header}>
       <Card variant="outline" padding="lg" style={styles.gutter}>
         <View style={styles.noticeHead}>
           <Ionicons name="information-circle-outline" size={17} color={color.cyanBright} />

@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Chip, Screen, SectionHeader, Text } from '@/components/ui';
+import { Card, Chip, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { estimateDayMinutes } from '@/domain/schedule';
 import { useTrainingStore } from '@/store/trainingStore';
@@ -20,9 +20,27 @@ export default function PlansScreen() {
   const routines = useTrainingStore((s) => s.routines);
   const activeRoutine = useTrainingStore((s) => s.activeRoutine);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
+
+  const header = { eyebrow: 'Structure', title: 'Plans' } as const;
+
+  if (status !== 'ready') {
+    return (
+      <Screen scroll={false} {...header}>
+        <ScreenState
+          phase={status}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Loading your plans…"
+        />
+      </Screen>
+    );
+  }
 
   return (
-    <Screen eyebrow="Structure" title="Plans">
+    <Screen {...header}>
       <SectionHeader title="Template plans" eyebrow="Ready to run" />
 
       {routines.map((routine) => {
