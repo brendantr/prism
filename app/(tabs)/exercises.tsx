@@ -8,6 +8,7 @@ import {
   EmptyState,
   ListRow,
   Screen,
+  ScreenState,
   SearchField,
   SegmentedControl,
   Text,
@@ -86,6 +87,9 @@ export default function ExercisesScreen() {
   const favourites = useTrainingStore((s) => s.favouriteExerciseIds);
   const toggleFavourite = useTrainingStore((s) => s.toggleFavourite);
   const profile = useTrainingStore((s) => s.profile);
+  const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
 
   const activeWorkout = useActiveWorkoutStore((s) => s.workout);
   const startWorkout = useActiveWorkoutStore((s) => s.start);
@@ -140,8 +144,25 @@ export default function ExercisesScreen() {
     router.push('/workout/active');
   };
 
+  // Same chrome in every state, so the header does not move when the body
+  // swaps between loading, error and the list.
+  const header = { eyebrow: 'Every movement PRism knows', title: 'Exercises' } as const;
+
+  if (status !== 'ready') {
+    return (
+      <Screen scroll={false} {...header}>
+        <ScreenState
+          phase={status}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Loading the exercise library…"
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen scroll={false} eyebrow="Every movement PRism knows" title="Exercises">
+    <Screen scroll={false} {...header}>
       <SearchField
         value={query}
         onChangeText={setQuery}

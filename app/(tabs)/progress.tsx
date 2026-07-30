@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Card, LinearSpectrum, Screen, SectionHeader, StatBlock, Text } from '@/components/ui';
+import { Card, LinearSpectrum, Screen, ScreenState, SectionHeader, StatBlock, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { e1rmSeries } from '@/domain/calc/prs';
 import { volumeInWindow } from '@/domain/calc/readiness';
@@ -25,6 +25,9 @@ export default function ProgressScreen() {
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const profile = useTrainingStore((s) => s.profile);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
 
   const now = useMemo(() => new Date(), []);
 
@@ -69,8 +72,28 @@ export default function ProgressScreen() {
 
   const peak = Math.max(...keyLifts.map((l) => Math.abs(l.change)), 0.01);
 
+  const header = {
+    eyebrow: 'Every angle',
+    title: 'Progress',
+    onBack: back,
+    backLabel: 'Back to Insights',
+  } as const;
+
+  if (status !== 'ready') {
+    return (
+      <Screen scroll={false} {...header}>
+        <ScreenState
+          phase={status}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Loading your history…"
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen eyebrow="Every angle" title="Progress" onBack={back} backLabel="Back to Insights">
+    <Screen {...header}>
       <Card variant="raised" padding="xl" spectral style={styles.gutter}>
         <View style={styles.statRow}>
           <StatBlock

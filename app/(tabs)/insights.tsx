@@ -4,8 +4,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Card,
+  EmptyState,
   ListRow,
   Screen,
+  ScreenState,
   SectionHeader,
   SegmentedControl,
   StatBlock,
@@ -74,6 +76,9 @@ export default function InsightsScreen() {
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const profile = useTrainingStore((s) => s.profile);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const status = useTrainingStore((s) => s.status);
+  const loadError = useTrainingStore((s) => s.error);
+  const refresh = useTrainingStore((s) => s.refresh);
   const now = useMemo(() => new Date(), []);
 
   const [windowDays, setWindowDays] = useState<WindowDays>('28');
@@ -174,10 +179,38 @@ export default function InsightsScreen() {
       .slice(0, 8);
   }, [inWindow, exerciseById, weeks]);
 
-  if (!profile || !summary) return <Screen eyebrow="What the data says" title="Insights" />;
+  const header = { eyebrow: 'What the data says', title: 'Insights' } as const;
+
+  if (status !== 'ready') {
+    return (
+      <Screen scroll={false} {...header}>
+        <ScreenState
+          phase={status}
+          onRetry={() => void refresh()}
+          errorMessage={loadError}
+          loadingLabel="Working out what your training says…"
+        />
+      </Screen>
+    );
+  }
+
+  // Loaded, but there is genuinely nothing to derive from yet. This used to
+  // render as a bare title over blank space, which reads as a broken screen
+  // rather than a new lifter's honest starting point.
+  if (!profile || !summary) {
+    return (
+      <Screen scroll={false} {...header}>
+        <EmptyState
+          icon="sparkles-outline"
+          title="Nothing to read yet"
+          body="Insights appear once you have logged a session or two. There is no shortcut — the numbers come from your own training."
+        />
+      </Screen>
+    );
+  }
 
   return (
-    <Screen eyebrow="What the data says" title="Insights">
+    <Screen {...header}>
       <View style={styles.gutter}>
         <SegmentedControl
           options={WINDOW_OPTIONS}

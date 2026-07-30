@@ -27,6 +27,11 @@ type ScaleField = (typeof SCALES)[number]['field'];
 type Draft = Record<ScaleField, number | null>;
 
 export interface CheckInPromptProps {
+  /**
+   * Local draft state, not an ownership claim. The repository overwrites it
+   * with the signed-in session's id before the row reaches Postgres, so this
+   * value never decides who a check-in belongs to and must not gate anything.
+   */
   profileId: string;
   /** Today's check-in, if the lifter has already answered anything today. */
   checkIn: CheckIn | null;
