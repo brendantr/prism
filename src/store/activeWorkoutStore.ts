@@ -29,6 +29,15 @@ interface ActiveWorkoutState {
   /** Set ids the user has completed this session, for PR celebration ordering. */
   lastCompletedSetId: string | null;
 
+  /**
+   * `profileId` is **local draft state, never an ownership claim.**
+   *
+   * It exists so the in-progress session has the shape of a `Workout` while it
+   * is still on the device. On write, `SupabaseRepository` replaces it with the
+   * id from the signed-in session and Postgres checks the result against its
+   * own policies — so nothing the client puts here can decide who owns a row.
+   * Do not read it back as a permission, and do not gate UI on it.
+   */
   start: (params: { profileId: string; title: string; routineDay?: RoutineDay | null }) => Workout;
   discard: () => void;
 

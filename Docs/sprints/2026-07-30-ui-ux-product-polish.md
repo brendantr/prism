@@ -106,7 +106,7 @@ file mocks `expo-crypto` with Node's CSPRNG. Future store tests will need the sa
 
 ### UX-2 — Honest loading, error and empty states on every data-driven screen
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** — `src/components/ui/ScreenState.tsx` + all seven screens
 
 **Success criteria:**
 
@@ -122,7 +122,7 @@ file mocks `expo-crypto` with Node's CSPRNG. Future store tests will need the sa
 
 ### UX-3 — Keep the UI free of fabricated ownership
 
-**Status:** ☐ Not started
+**Status:** ☑ **Done** — verified, then documented at the contract
 
 **Success criteria:**
 
