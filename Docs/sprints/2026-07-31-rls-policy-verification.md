@@ -1,12 +1,6 @@
 # Sprint: rls-policy-verification
 
-- **Status:** Complete, with a significant finding. `supabase/migrations/0001_init.sql` **fails to
-  apply to a standard Postgres instance** (a non-immutable function in an index expression), aborting
-  before any RLS policy is ever created — a more severe finding than "unverified." Against an
-  unapplied, hypothetically-patched copy, all 57 planned cross-tenant isolation assertions **passed**,
-  demonstrating the policies as written are correct once the migration itself can run.
-  `supabase/migrations/0001_init.sql` is **not modified** by this sprint. See "Results" and "Open
-  questions."
+- **Status:** Phase 1 complete (see below); Phase 2 in progress.
 - **Date:** 2026-07-31
 - **Branch:** `rls-policy-verification`
 - **Type:** Read-only verification against existing, already-committed policy definitions. No schema
@@ -15,7 +9,19 @@
   are written for all 11 tables (`supabase/migrations/0001_init.sql`) but were, until this sprint,
   never exercised against a live Postgres instance.
 
-## Preflight
+## Phase 1 — local Postgres (complete)
+
+Everything below "Phase 2" up to this point in the document is Phase 1: a local, disposable Postgres
+instance (no Docker/Supabase CLI local stack available on that machine), an emulated Supabase
+auth/role model, and an automated 57-assertion suite. **Central finding:**
+`supabase/migrations/0001_init.sql` **fails to apply to a standard Postgres instance** (a
+non-immutable function in an index expression), aborting before any RLS policy is ever created — a
+more severe finding than "unverified." Against an unapplied, hypothetically-patched copy, all 57
+planned cross-tenant isolation assertions **passed**, demonstrating the policies as written are
+correct once the migration itself can run. `supabase/migrations/0001_init.sql` was **not modified** in
+Phase 1. Full detail in "Results" and "Open questions" below.
+
+## Phase 1 — Preflight
 
 **Fact.** `git status --short --branch` on `main` was clean before branching; branch created off
 `main` at `45280d3` (the `android-themed-icon-monochrome-layer` merge). `Docs/architecture.md`,
@@ -77,7 +83,7 @@ restrictive than it would on real Supabase infrastructure, that would invalidate
 verdicts — this is exactly why the emulation is committed in full, in the open, rather than run once
 and discarded.
 
-## Scope
+## Phase 1 — Scope
 
 **In scope:**
 - Stand up a local, disposable Postgres instance; apply `0001_init.sql` and `0002_security_hardening.sql`
@@ -103,7 +109,7 @@ and discarded.
 - **No live/production Supabase project is touched.** Everything here runs against a local, disposable
   instance created and torn down within this sprint.
 
-## Tasks and success criteria
+## Phase 1 — Tasks and success criteria
 
 1. **Stand up local Postgres, apply both migrations.** Success: both migrations apply without error
    against a fresh local database; `\dt` / `\d+` confirms all 11 tables plus enums, triggers, and RLS
@@ -125,7 +131,7 @@ and discarded.
 Same convention as prior sprints: **Fact** (observed/commanded), **Decision** (a choice made here,
 with rationale), **Assumption** (not directly checked), **Open question** (for the engineer/owner).
 
-## Results
+## Phase 1 — Results
 
 ### Task 1 — stand up local Postgres, apply both migrations
 
@@ -260,7 +266,7 @@ instruction and `CLAUDE.md`'s database-change approval gate, `supabase/migration
 **not modified** anywhere in this sprint. The one-line fix used to unblock verification exists only as
 an unapplied scratch file outside the repository and is described, not committed, above.
 
-## Open questions
+## Phase 1 — Open questions
 
 1. **Should `supabase/migrations/0001_init.sql`'s `check_ins_one_per_day` index be fixed?** *Owner
    decision* — this sprint recommends `(timezone('utc', checked_in_at)::date)` in place of
@@ -276,7 +282,7 @@ an unapplied scratch file outside the repository and is described, not committed
    against a corrected schema, wiring it into `.github/workflows/ci.yml` (with a Postgres service
    container) is a natural, low-risk next step. *Owner decision on priority.*
 
-## Progress log
+## Phase 1 — Progress log
 
 - **2026-07-31 local** — Branch created off `main` (`45280d3`). Preflight docs read in full. Two
   discrepancies from the task's stated premise found and resolved (second migration exists; neither
@@ -291,3 +297,39 @@ an unapplied scratch file outside the repository and is described, not committed
   copy of the migration, that all 57 planned isolation assertions pass once the DDL defect is fixed.
   Did not modify `supabase/migrations/0001_init.sql`. Local Postgres instance stopped and its data
   directory is disposable scratch state, not part of this repository.
+
+## Phase 2 — hosted Supabase project (this section)
+
+**Fact.** A second instruction, in the same session, asked for the same underlying verification against
+a real hosted Supabase project rather than local Postgres — explicitly noting no Docker/container
+runtime is available (consistent with Phase 1's own finding) and asking for a dedicated test-only
+project. This is additive to Phase 1, not a replacement: Phase 1's finding (the migration cannot even
+apply) is independently real and unaffected by which Postgres instance is used to demonstrate it —
+Phase 2 exists to re-confirm that finding against genuine Supabase infrastructure (not just a
+faithful emulation of one) and to check anything Phase 1's local emulation could not, by construction,
+verify (e.g., PostgREST's actual request path, a real `auth.users`/GoTrue).
+
+**Decision, confirmed with the engineer/owner before any cloud action was taken.** Two things were
+flagged and confirmed rather than assumed:
+1. The Supabase CLI on this machine (`supabase 2.109.1`) is already authenticated, but to an account
+   (org `dokonveymdzabfxzhwjf`) whose only existing project is `Simulisten` — unrelated to PRism.
+   Confirmed to proceed in that same account, creating a new, dedicated project for PRism RLS testing
+   only.
+2. `rls-policy-verification` already existed as a branch (this one) with Phase 1's two real commits.
+   Confirmed to continue on this same branch and sprint doc, with Phase 2 recorded as an additive
+   section rather than starting over or discarding Phase 1.
+
+**Scope, Phase 2 specifically:**
+- Create one new, dedicated Supabase project for this verification only — no real user data, ever.
+- Apply `0001_init.sql` (and, since Phase 1 already found it cannot succeed unmodified,
+  document exactly what has to change to get it running in this real project too — same
+  stop-and-report posture as Phase 1: no fix is written back into `supabase/migrations/` without
+  explicit approval).
+- Re-run the same style of two-user, 11-table, four-operation isolation matrix against this real
+  project (via `psql` against the project's Postgres connection string, or the SQL editor/CLI), plus
+  the `exercises.profile_id is null` exception.
+- Document exact commands/queries and pass/fail per table in this same doc.
+- **No CI wiring, no policy/migration edits, no client-code changes** without explicit approval,
+  unchanged from Phase 1's scope.
+- At the end of Phase 2: decide, with evidence from *two independent environments* (emulated local
+  Postgres and real hosted Supabase), whether G-3 is closed and whether I-1 can be marked met.
