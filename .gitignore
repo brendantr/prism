@@ -31,3 +31,7 @@ yarn-error.*
 
 # Test output
 coverage/
+
+# Python bytecode from the asset-generation scripts
+__pycache__/
+*.pyc
