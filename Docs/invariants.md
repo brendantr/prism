@@ -11,7 +11,21 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 ### I-1. Every user-data table must use row-level security (RLS) before real user data is written
 - **Rule:** No table holding real (non-demo) user data may be written to in production until RLS is enabled and its policies are verified to behave as designed.
 - **Why:** The client holds only a Supabase anon key; RLS is PRism's entire authorization boundary (see `README.md`'s security model paragraph). Without verified RLS, any user could potentially read or write another user's data.
-- **Enforcement evidence or expected validation:** `Docs/architecture.md` confirms RLS policies are *written* for all 11 tables (`supabase/migrations/0001_init.sql`) but are **unverified against a live Postgres instance** — no test or CI job applies the migration or exercises the policies (architecture.md gap G-3). Expected validation: a CI job or test suite (e.g., `supabase test db`, or a local Postgres container) asserting user A cannot read/write user B's rows, run before any production auth path is enabled.
+- **Enforcement evidence or expected validation:** **Attempted 2026-07-31** (sprint
+  `rls-policy-verification`) and **not yet met — a more specific finding than "unverified."**
+  `supabase/migrations/0001_init.sql` fails to apply to a standard Postgres instance at all: a
+  non-immutable function in the `check_ins_one_per_day` index expression (`checked_in_at::date`,
+  which Postgres classifies `STABLE` not `IMMUTABLE`) aborts the migration before any RLS policy is
+  created — confirmed directly (`pg_class.relrowsecurity` false and `pg_policies` empty after
+  applying the committed file as-is). Against an unapplied, scratch-only copy with the one-line fix
+  `timezone('utc', checked_in_at)::date`, an automated 57-assertion suite
+  (`supabase/tests/rls/`) confirmed full cross-tenant isolation across all 11 tables and every CRUD
+  operation, plus the documented `exercises.profile_id is null` exception (I-6) — **57/57 passed**.
+  This means the policies *as written* are demonstrated correct, but the migration that creates them
+  cannot run today, so I-1 is not met until (a) the index defect is fixed in
+  `supabase/migrations/0001_init.sql` and (b) `supabase/tests/rls/run.sh` passes against that actual,
+  corrected file rather than a scratch copy. Full evidence:
+  `Docs/sprints/2026-07-31-rls-policy-verification.md`.
 - **Exception process:** None. This is a hard gate before enabling non-demo mode for real users; no engineer/owner override applies to skipping RLS verification itself.
 
 ### I-2. Workout saves involving multiple records must be atomic, idempotent, or safely recoverable
