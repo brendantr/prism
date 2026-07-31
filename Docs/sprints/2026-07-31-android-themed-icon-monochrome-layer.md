@@ -1,7 +1,11 @@
 # Sprint: android-themed-icon-monochrome-layer
 
-- **Status:** In progress. Record opened before any code, asset, or config change, per
-  `Docs/agents.md` preflight.
+- **Status:** Implementation complete (Tasks 1–3, 5), independently verified at the file/build level.
+  Task 4's on-device visual verification is **inconclusive** on this test environment — the ring from
+  the predecessor sprint was still observed after the fix, across three different test conditions, but
+  the interactive Themed-Icons toggle could not be exercised due to what this record's evidence points
+  to as a test-environment limitation, not a confirmed code defect. See "Results" → Task 4 and "Open
+  questions." Not pushed, no PR opened — awaiting an engineer decision on how to proceed.
 - **Date:** 2026-07-31
 - **Branch:** `android-themed-icon-monochrome-layer`
 - **Type:** Asset generation + Android config only.
@@ -121,9 +125,157 @@ Same convention as the predecessor records: **Fact** (observed/commanded), **Dec
 made here, with rationale), **Assumption** (not directly checked), **Open question** (for the
 engineer/owner).
 
+## Results
+
+### Task 1 — generate the monochrome derivative
+
+**Status: Done, verified.**
+
+**Fact.** `scripts/monochrome-key.py` (new, pure stdlib, mirrors `alpha-key.py`'s PNG codec) added
+two subcommands — `key` (luminance-threshold silhouette, LOW=55/HIGH=85, derived from the measured
+table in "Pre-flight technical check") and `pad` (genuinely transparent centring, done in Python
+because `sips -p --padColor` was verified empirically to always fill opaque, even on an RGBA source).
+`scripts/generate-app-icons.sh` calls both after the existing three outputs, gated by a new
+`--monochrome-scale` flag that defaults to `$ANDROID_SCALE` (resolved *after* argument parsing so a
+`--android-scale` override is still honoured).
+
+**Fact.** Regenerating from committed source three times in a row produced byte-identical
+`monochrome-icon.png` (`shasum -a 256` matched on every run). `git diff --stat` on the other three
+derivatives (`app-icon.png`, `adaptive-icon.png`, `splash-icon.png`) was empty after each run —
+the new step does not disturb them. Source artwork checksum unchanged throughout.
+
+**Fact.** Output is 1024×1024 RGBA (`sips -g hasAlpha` → yes), a white silhouette (shield outline +
+full beam fan, plus two interior facets that happen to cross the luminance threshold) on a fully
+transparent canvas, scaled to 62% and centred — visually confirmed at both full inspection size and
+a realistic ~180px launcher-icon preview.
+
+### Task 2 — add and document
+
+**Status: Done.**
+
+**Fact.** `assets/brand/monochrome-icon.png` added; `assets/brand/README.md` updated: layout table
+row, `--monochrome-scale` usage example, "Why four outputs" section gained a monochrome bullet, a
+closing paragraph on the `sips` padding limitation, and the "Wiring (applied)" JSON example now shows
+`monochromeImage` alongside a short explanation of what `expo prebuild` does with it.
+
+### Task 3 — wire into Android config
+
+**Status: Done, verified.**
+
+**Fact.** `app.json`'s `android.adaptiveIcon` gained `"monochromeImage": "./assets/brand/monochrome-icon.png"`,
+between `foregroundImage` and `backgroundColor`. Validated as well-formed JSON
+(`python3 -c "import json; json.load(open('app.json'))"` → `ok`).
+
+**Fact.** `npx expo prebuild --platform android` regenerated `android/`. The resulting
+`android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` now reads:
+
+```xml
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/iconBackground"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>
+</adaptive-icon>
+```
+
+— a real `<monochrome>` element, not absent as it was before this sprint — and
+`ic_launcher_monochrome.webp` exists in all five `mipmap-*dpi` density directories. This is exactly
+the success criterion this task set for itself.
+
+### Task 4 — on-device verification, both Themed-Icons states
+
+**Status: Attempted extensively; inconclusive on this environment. Not a clean CONFIRMED or
+CONTRADICTED — reported per the sprint's own stop-and-report instruction rather than guessed at
+further.**
+
+**Fact.** Built and installed on `Pixel_7_API_34` (the same AVD from the predecessor sprint;
+`ANDROID_HOME` and the AVD were still present on this machine from that earlier session).
+`npx expo prebuild --platform android` then a Gradle build produced `app-debug.apk`, installed
+successfully (`adb install` → `Success`).
+
+**Fact, the core finding.** On the home screen/dock, the PRism icon shows the same light-blue ring
+(measured precisely: `#B0D9FF` / `rgb(176,217,255)`, byte-identical to the predecessor sprint's
+original measurement) around a full-colour, unclipped shield icon — the same defect being fixed,
+apparently unchanged by this sprint's work. This was observed identically across three different
+conditions, each intended to rule out a specific alternative explanation before accepting it as real:
+
+1. Immediately after the fresh build and install.
+2. After `adb shell pm clear com.google.android.apps.nexuslauncher` (a full icon-cache/model wipe of
+   Pixel Launcher itself) followed by uninstall + reinstall of PRism — ruling out a stale cached icon
+   bitmap from before the monochrome layer existed.
+3. After directly setting `adb shell settings put secure themed_icons 1` (the underlying Android
+   system flag this feature is understood to read) and restarting the launcher — ruling out "Themed
+   Icons defaults to off and was never actually being tested."
+
+**Fact.** Verifying via the originally-planned method — Settings → Wallpaper & style → Themed icons
+toggle — was not achievable. Both the Settings app and the dedicated `com.google.android.apps.wallpaper`
+picker (`CustomizationPickerActivity`, confirmed via `dumpsys activity activities` as the correct,
+resolved foreground activity) suffered repeated ANRs ("isn't responding"), and the wallpaper picker
+specifically closed back to the home screen without ever rendering its content, across many retries
+with increasingly long recovery waits (up to 20s). `logcat` during these events showed genuine ANRs
+and `SurfaceSyncGroup` transaction timeouts, not app crashes or exceptions in PRism's own code. `top`
+on the host Mac showed severe, unrelated resource pressure at the time (load average ≈19.5, well
+under 150MB free physical memory, large `Comet Helper` browser processes dominating) — this is host
+contention, not evidence of a PRism defect.
+
+**Fact.** `assets/brand/adaptive-icon.png` itself was checked pixel-by-pixel along a horizontal
+scanline through its vertical centre and contains no light-blue pixels anywhere — the ring is not
+baked into our own artwork.
+
+**Fact.** A `com.google.android.apps.nexuslauncher` device-prefs file
+(`/data/data/.../shared_prefs/com.android.launcher3.device.prefs.xml`, read via `adb root`, available
+because this is a non-production `google_apis` system image) stores
+`pref_icon_shape_path` with a `,no-theme` suffix — suggesting Themed Icons may not actually be engaged
+by default on this image, independent of anything this sprint changed.
+
+**Assumption, not independently confirmed.** This AVD's system image is `google_apis` (not
+`google_apis_playstore`) — the same choice made in the predecessor sprint, for the same
+architecture-matching reason. This image class is known to ship trimmed or stub versions of some
+Pixel-exclusive Google apps. The wallpaper picker resolving to the correct activity class but never
+successfully rendering content, combined with the ring's exact colour being unaffected by directly
+forcing the underlying `themed_icons` secure setting, is consistent with — but does not prove — this
+AVD's Themed-Icons/wallpaper-colour-extraction pipeline being incomplete on this specific image,
+which would make this environment unable to validate the fix either way regardless of whether the
+fix itself is correct.
+
+**Decision.** Rather than continue guessing at further settings keys, redesigning the silhouette on
+a hunch, or declaring the ring resolved/unresolved without real confirmation, this is reported here
+per the sprint's explicit instruction to stop and report rather than proceed on an ambiguous result.
+Tasks 1–3 are independently verified as correctly implemented at the file and build level — the
+generated native XML unambiguously references a real monochrome resource — but that alone does not
+prove the on-device visual defect is fixed, and this sprint cannot honestly claim it is.
+
+### Task 5 — iOS spot check
+
+**Status: Done.**
+
+**Fact.** iOS Simulator (iPhone 17 Pro, iOS 26.4, already booted on this machine) home screen
+screenshot shows the PRism icon rendering full-bleed and correctly masked to the squircle, no
+clipping, no visual change from before this sprint — expected, since `monochromeImage` is an
+Android-only key and `expo.icon` was not touched.
+
+## Open questions
+
+1. **Is the ring actually resolved?** Unknown — this sprint's on-device verification of the fix was
+   inconclusive on this AVD (see Task 4). *Owner decision:* either (a) recreate the AVD using a
+   `google_apis_playstore` system image (closer to a genuine consumer Pixel, likely to have a working
+   Themed Icons stack) and re-run Task 4's verification, or (b) test on a real Pixel device, before
+   treating the ring as closed.
+2. **Carried forward from the predecessor sprint, still unresolved:** the disposition of the unmerged
+   `brand-app-icon-android-verification` branch (its two commits were cherry-picked onto this branch;
+   the original branch itself is untouched). *Owner decision.*
+
 ## Progress log
 
 - **2026-07-31, 01:13 local** — Branch created off `main` (`8bfa55e`). Preflight discrepancy found and
   resolved by cherry-picking the predecessor's two docs commits (see "Preflight note"). Silhouette
   derivation checked for ambiguity and found well-defined (see "Pre-flight technical check"). This
   record opened before any code, asset, or config change.
+- **2026-07-31, 01:13–02:00 local** — Tasks 1–3 implemented and independently verified: deterministic
+  monochrome derivative generated and visually QA'd, README updated, `app.json` wired, `expo prebuild`
+  confirmed a real `<monochrome>` XML element and `ic_launcher_monochrome.webp` resources.
+- **2026-07-31, 02:00–03:04 local** — Task 4 on-device verification attempted extensively on
+  `Pixel_7_API_34`: fresh install, launcher-cache clear + reinstall, and a direct `themed_icons`
+  secure-setting override all showed the same unchanged ring. The interactive Settings/Wallpaper-picker
+  toggle path could not be exercised due to repeated ANRs traced to host resource contention, not a
+  PRism defect. Result reported as inconclusive rather than guessed at further, per this sprint's
+  explicit stop-and-report instruction. Task 5 (iOS spot check) completed and confirmed unaffected.
