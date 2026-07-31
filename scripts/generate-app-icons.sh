@@ -5,6 +5,7 @@
 #   assets/brand/prism-logo-source.(svg|png)   ->   assets/brand/app-icon.png
 #                                                   assets/brand/adaptive-icon.png
 #                                                   assets/brand/splash-icon.png
+#                                                   assets/brand/monochrome-icon.png
 #
 # Same input and flags always produce the same output, so the icons can be
 # rebuilt from source rather than being hand-made files nobody can reproduce.
@@ -13,7 +14,7 @@
 #   sips          ships with macOS
 #   rsvg-convert  only needed when the source is an SVG (brew install librsvg)
 #
-# WHY THREE OUTPUTS
+# WHY FOUR OUTPUTS
 #   iOS masks the icon to a squircle and expects full-bleed art, so `app-icon`
 #   fills the canvas with the brand background and insets the mark slightly.
 #
@@ -36,10 +37,21 @@
 #   the same #07070B, so the result is identical to transparent padding while
 #   keeping this script to tools that are already on the machine.
 #
+#   `monochrome-icon` is the fourth layer, and unlike the other three it is
+#   NOT full-colour art -- it is a white silhouette (shield outline + beam fan,
+#   background and interior shading dropped) on a genuinely transparent
+#   canvas. Android 13+ "Themed icons" tints this layer to match the
+#   wallpaper; without it, some Pixel Launcher versions draw an undecorated
+#   backplate ring around the icon instead -- observed on-device and recorded
+#   in Docs/sprints/2026-07-31-brand-app-icon-android-verification.md. See
+#   scripts/monochrome-key.py for how the silhouette and the transparent
+#   padding are derived, and why sips cannot do the padding step itself.
+#
 # USAGE
 #   scripts/generate-app-icons.sh
 #   scripts/generate-app-icons.sh --crop 320,180,1400,1400   # x,y,w,h on the source
 #   scripts/generate-app-icons.sh --ios-scale 0.86 --android-scale 0.62
+#   scripts/generate-app-icons.sh --monochrome-scale 0.62    # defaults to --android-scale
 #
 #   --crop is how the wordmark gets removed: give it the box around the
 #   shield/prism mark in source pixels. Once the right box is known, record it
@@ -69,6 +81,15 @@ IOS_SCALE="1.0"
 # only the middle ~66% is guaranteed. 0.62 keeps the shield inside that.
 ANDROID_SCALE="0.62"
 
+# The monochrome layer is masked exactly like the foreground (same 108dp
+# canvas, same ~66% safe zone), so it defaults to the same inset as
+# adaptive-icon -- a mismatched scale would size the themed silhouette
+# differently from the unthemed icon. Left empty here (rather than bound to
+# $ANDROID_SCALE directly) because that would freeze in today's default and
+# ignore a later --android-scale override; it is resolved after argument
+# parsing instead, once $ANDROID_SCALE has its final value.
+MONOCHROME_SCALE=""
+
 # Box around the shield/prism mark in source pixels, excluding the "PRism"
 # wordmark and tagline (which begin at ~y=865). Chosen so the shield centre
 # lands at 50%/50% of the crop: shield spans x 385-875, y 163-830, centre
@@ -78,14 +99,19 @@ CROP="272,135,720,720"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --crop)          CROP="$2"; shift 2 ;;
-    --ios-scale)     IOS_SCALE="$2"; shift 2 ;;
-    --android-scale) ANDROID_SCALE="$2"; shift 2 ;;
-    --bg)            BG="${2#\#}"; shift 2 ;;
-    -h|--help)       sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --crop)             CROP="$2"; shift 2 ;;
+    --ios-scale)        IOS_SCALE="$2"; shift 2 ;;
+    --android-scale)    ANDROID_SCALE="$2"; shift 2 ;;
+    --monochrome-scale) MONOCHROME_SCALE="$2"; shift 2 ;;
+    --bg)               BG="${2#\#}"; shift 2 ;;
+    -h|--help)          sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+
+# Resolved here, after parsing, so an --android-scale override is honoured
+# unless --monochrome-scale explicitly says otherwise.
+[[ -z "$MONOCHROME_SCALE" ]] && MONOCHROME_SCALE="$ANDROID_SCALE"
 
 # --- Locate the source. SVG wins: it rasterises crisply at any size. ----------
 SOURCE=""
@@ -157,8 +183,20 @@ emit "$BRAND_DIR/adaptive-icon.png" "$ANDROID_SCALE" "android"
 # and resampling would only soften the shield outline.
 python3 "$ROOT/scripts/alpha-key.py" "$MASTER" "$BRAND_DIR/splash-icon.png"
 
+# Monochrome: silhouette the cropped mark (bright -> opaque white, everything
+# else transparent), scale it with the same inset adaptive-icon uses, then pad
+# onto the full canvas -- transparently, which sips's own --padColor cannot do
+# (verified: it always fills opaque, even on an RGBA source). See
+# scripts/monochrome-key.py for the reasoning behind the split into two steps.
+MONO_KEYED="$WORK/mono-keyed.png"
+MONO_SCALED="$WORK/mono-scaled.png"
+python3 "$ROOT/scripts/monochrome-key.py" key "$MASTER" "$MONO_KEYED"
+mono_inner=$(python3 -c "print(int($CANVAS * $MONOCHROME_SCALE))")
+sips -Z "$mono_inner" "$MONO_KEYED" --out "$MONO_SCALED" >/dev/null
+python3 "$ROOT/scripts/monochrome-key.py" pad "$MONO_SCALED" "$BRAND_DIR/monochrome-icon.png" "$CANVAS"
+
 # The source is only ever read. Guard against a future edit writing over it.
-for generated in "$BRAND_DIR/app-icon.png" "$BRAND_DIR/adaptive-icon.png"; do
+for generated in "$BRAND_DIR/app-icon.png" "$BRAND_DIR/adaptive-icon.png" "$BRAND_DIR/monochrome-icon.png"; do
   if [[ "$generated" -ef "$SOURCE" ]]; then
     echo "error: refusing to overwrite the source artwork" >&2; exit 1
   fi

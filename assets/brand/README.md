@@ -14,6 +14,7 @@ together:
 | `app-icon.png` | 1024×1024 iOS icon master → `expo.icon` | Generated |
 | `adaptive-icon.png` | 1024×1024 Android foreground → `expo.android.adaptiveIcon.foregroundImage` | Generated |
 | `splash-icon.png` | 720×720 **transparent-background** mark → `expo-splash-screen` `image` | Generated |
+| `monochrome-icon.png` | 1024×1024 **white-on-transparent silhouette** → `expo.android.adaptiveIcon.monochromeImage` | Generated |
 
 ## Regenerating
 
@@ -34,12 +35,17 @@ scripts/generate-app-icons.sh --crop 320,180,1400,1400
 
 # Adjust how much of the canvas the mark occupies.
 scripts/generate-app-icons.sh --ios-scale 0.86 --android-scale 0.62
+
+# The monochrome layer's inset defaults to --android-scale (it is masked the
+# same way); override independently only if the themed silhouette needs a
+# different size than the unthemed icon.
+scripts/generate-app-icons.sh --monochrome-scale 0.62
 ```
 
 Once the correct crop box is known, record it as the `CROP` default inside the
 script so a plain run stays reproducible.
 
-## Why three outputs rather than one
+## Why four outputs rather than one
 
 They are not interchangeable, and reusing the iOS icon for Android is a common
 way to ship a clipped logo.
@@ -58,10 +64,27 @@ way to ship a clipped logo.
   This was the old placeholder's bug: a flat `#0B0B12` square on a `#07070B`
   background, i.e. the "small black box on launch".
 
+- **Monochrome** is a different job again: Android 13+ "Themed icons" tints an
+  optional single-colour silhouette layer to match the wallpaper. Without one,
+  Pixel Launcher was observed drawing an undecorated, wallpaper-tinted ring
+  around the unthemed icon instead — recorded in
+  [`Docs/sprints/2026-07-31-brand-app-icon-android-verification.md`](../../Docs/sprints/2026-07-31-brand-app-icon-android-verification.md).
+  `monochrome-icon.png` is white where the mark is bright (the shield outline
+  and the beam fan) and fully transparent everywhere else, derived by a
+  measured luminance threshold — see `scripts/monochrome-key.py` for the exact
+  values and why they're not guessed. It is masked the same way
+  `adaptive-icon.png` is (same 62% inset by default), so the themed silhouette
+  matches the unthemed icon's sizing.
+
 Icon padding uses the brand background `#07070B` rather than transparency. Expo
 composites the foreground over `adaptiveIcon.backgroundColor`, which is the same
 colour, so the result matches transparent padding while keeping the script to
 tools already present on macOS (`sips`, plus `rsvg-convert` for SVG sources).
+**The monochrome layer is the one exception** — its padding must be genuinely
+transparent (Android treats every opaque pixel as "shape" to tint), and `sips
+--padColor` cannot produce that even on an RGBA source; verified empirically,
+not assumed. `scripts/monochrome-key.py` does that one step in pure Python
+instead.
 
 ## Source requirements
 
@@ -80,12 +103,19 @@ tools already present on macOS (`sips`, plus `rsvg-convert` for SVG sources).
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/brand/adaptive-icon.png",
+        "monochromeImage": "./assets/brand/monochrome-icon.png",
         "backgroundColor": "#07070B"
       }
     }
   }
 }
 ```
+
+`monochromeImage` is an Expo config key, not a hand-edit to generated native XML — `expo prebuild`
+turns it into `mipmap-anydpi-v26/ic_launcher.xml`'s `<monochrome>` element and an
+`ic_launcher_monochrome.webp` resource, the same way `foregroundImage` and `backgroundColor` already
+become the rest of that file. iOS ignores this key entirely; Android 13+ Themed Icons is the only
+consumer.
 
 No `expo.ios.icon` override: nothing here needs a platform-specific iOS icon, so
 the single `expo.icon` covers it. iOS and Android are the only targets — there

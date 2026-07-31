@@ -16,6 +16,7 @@
       "package": "app.prism.trainer",
       "adaptiveIcon": {
         "foregroundImage": "./assets/brand/adaptive-icon.png",
+        "monochromeImage": "./assets/brand/monochrome-icon.png",
         "backgroundColor": "#07070B"
       }
     },
