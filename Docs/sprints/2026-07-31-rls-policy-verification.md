@@ -1,6 +1,12 @@
 # Sprint: rls-policy-verification
 
-- **Status:** Phase 1 complete (see below); Phase 2 in progress.
+- **Status:** Complete (both phases). `supabase/migrations/0001_init.sql` **fails to apply** on both
+  an emulated local Postgres instance (Phase 1) and a real, dedicated hosted Supabase project
+  (Phase 2, `prism-rls-verification`) — identical failure, identical line, ruling out an
+  environment-specific cause. Against an unapplied, scratch-only patched copy in both environments,
+  all 57 planned cross-tenant isolation assertions **passed twice** (114/114 total), demonstrating the
+  policies as written are correct once the migration itself can run.
+  `supabase/migrations/0001_init.sql` is **not modified** by this sprint. See "Combined conclusion."
 - **Date:** 2026-07-31
 - **Branch:** `rls-policy-verification`
 - **Type:** Read-only verification against existing, already-committed policy definitions. No schema
@@ -333,3 +339,119 @@ flagged and confirmed rather than assumed:
   unchanged from Phase 1's scope.
 - At the end of Phase 2: decide, with evidence from *two independent environments* (emulated local
   Postgres and real hosted Supabase), whether G-3 is closed and whether I-1 can be marked met.
+
+### Phase 2 — Project used
+
+**Fact.** Project `prism-rls-verification`, ref `gyxcjmitzktffyuroucz`, org `dokonveymdzabfxzhwjf`
+(same org as the pre-existing, unrelated `Simulisten` project — confirmed with the engineer/owner
+before creation), region `us-east-1`, Postgres 17.6. Created via `supabase projects create
+prism-rls-verification --org-id dokonveymdzabfxzhwjf --db-password <generated> --region us-east-1
+--yes`. Dashboard: `https://supabase.com/dashboard/project/gyxcjmitzktffyuroucz`. The database
+password was generated locally (`openssl rand -base64 24`, 32 characters), used only for direct
+`psql` connections during this sprint, stored only in this session's scratch directory, and never
+committed, echoed to chat output, or written into this document — per `Docs/invariants.md` I-4/I-5.
+Confirmed before any schema work: `public` schema was empty (fresh project) and no other tables or
+data existed.
+
+### Phase 2 — Results
+
+**Fact, confirming Phase 1's central finding on genuine infrastructure.** Applying the real,
+committed `supabase/migrations/0001_init.sql` (unmodified) against this hosted project reproduces
+**the identical failure, at the identical line**:
+
+```
+psql:supabase/migrations/0001_init.sql:209: ERROR:  functions in index expression must be marked IMMUTABLE
+```
+
+Confirmed via the same checks as Phase 1: 10 of 11 tables created (`personal_records` absent),
+`pg_class.relrowsecurity = false` on every table, zero rows in `pg_policies`. This rules out any
+possibility that Phase 1's finding was an artifact of the local emulation, a specific Postgres
+version (this project runs 17.6; Phase 1's local instance ran 16.14), or of anything else
+environment-specific — the defect is in the SQL itself.
+
+**Fact.** This real project arrives pre-provisioned with genuine `auth.users` (the actual GoTrue
+schema, not Phase 1's stub), genuine `auth.uid()`, and genuine `anon`/`authenticated`/`service_role`
+roles — confirmed by inspection before any migration ran. Phase 1's auth/role emulation
+(`00_setup_auth_emulation.sql`) was correctly **not** run here; it would have conflicted with the
+real schema.
+
+**Fact, a new and different finding from Phase 1's own harness gap.** Unlike Phase 1's local
+instance, this real project did **not** automatically grant `authenticated`/`anon` the table
+privileges Supabase's own documented convention describes (RLS as the actual gate, ordinary GRANTs
+underneath it) for tables created via a direct `psql` session as `postgres` — seeding failed with
+`permission denied for table routine_exercises` until an explicit
+`grant select, insert, update, delete on all tables in schema public to anon, authenticated;` (and
+`grant all ... to service_role;`) was run. This is **expected, not a defect**: Supabase's dashboard
+and CLI-driven migration flow ordinarily establishes these grants as part of its own provisioning;
+applying a migration via a raw, direct `psql` connection — which is itself only happening here
+because there is no Docker to run the Supabase CLI's normal migration path — bypasses that step.
+Any real deployment of this schema through Supabase's own tooling would not hit this; it is called
+out here only for completeness and reproducibility of this test.
+
+**Fact.** With the DDL fix applied via the same unapplied, scratch-only patched copy used in Phase 1
+(never written into `supabase/migrations/`), plus the grant statement above, `0002_security_hardening.sql`
+applied cleanly, the same two-user fixture (`supabase/tests/rls/01_seed_test_data.sql`, unmodified)
+seeded correctly across all 11 tables, and `02_run_isolation_tests.sql` (unmodified) ran to completion.
+
+**Result: 57 / 57 assertions passed — identical outcome to Phase 1, on real hosted Supabase
+infrastructure with genuine auth, genuine roles, and Postgres 17.6 rather than an emulation.** Same
+per-table breakdown as Phase 1's table (all 11 tables, all four CRUD directions, the I-6 exception,
+both reverse-direction checks, and the own-row positive control) — not reproduced a second time here
+verbatim; see Phase 1 — Results for the full per-table list, which is identical in structure and
+outcome.
+
+### Phase 2 — Limitations
+
+**Assumption, not independently checked.** This verification exercised Postgres's RLS enforcement
+directly via `psql` (session-level `SET ROLE` + `request.jwt.claim.sub`), which is the same
+mechanism PostgREST uses per request in production, but does not route through PostgREST or a real
+mobile-client session itself — no actual JWT was minted by GoTrue, and no request went through
+Supabase's API gateway. This is the standard, documented way to test RLS directly and is what
+`supabase test db` itself does under the hood, but it is not a full end-to-end client test.
+`src/data/repository.ts`'s `SupabaseRepository` was not exercised at all (out of scope, and there is
+still no auth UI in this app to obtain a session from — `Docs/architecture.md` G-1).
+
+**Fact.** No real user data was ever placed in this project — only the two fictional test
+users/profiles and one fixture row per table, all with clearly synthetic UUIDs (`1111...`,
+`2222...`, and `a0000000`–`40000000` prefixes). The project remains, as of this writing, live and
+billed to org `dokonveymdzabfxzhwjf` — its disposition (kept for future re-verification/eventual CI
+use, or deleted) is an open question below, not decided by this sprint.
+
+## Combined conclusion (Phase 1 + Phase 2)
+
+**G-3 (`Docs/architecture.md`) is now substantively addressed, but not in the direction originally
+assumed.** The question "do the RLS policies actually enforce isolation" now has a confident,
+evidence-based answer — **yes**, demonstrated 114 times over (57 assertions × 2 independent
+environments: emulated local Postgres and real hosted Supabase) — but the question underneath it,
+"can this schema even be deployed as committed," has a confident **no**. G-3 is closed in the sense
+that the *policies* are no longer an open question; a **new, more fundamental gap** (the migration
+cannot apply) has been substituted in its place, and is now the actual blocker to closing I-1.
+
+**I-1 is still not met**, for a more specific reason than before this sprint: not "unverified," but
+"the schema that would need verifying cannot be created in the first place." The path to meeting I-1
+is now narrow and concrete: fix the one DDL statement, then re-run
+`supabase/tests/rls/run.sh` against the actual corrected `supabase/migrations/0001_init.sql` (not a
+scratch copy) in at least one real environment.
+
+## Phase 2 — Open questions
+
+1. **Disposition of the `prism-rls-verification` Supabase project.** It is live and billed to org
+   `dokonveymdzabfxzhwjf` right now, contains only synthetic test data, and could be kept (for
+   re-running this suite once the DDL fix lands, or as a future CI target) or deleted. *Owner
+   decision* — not deleted by this sprint without being asked.
+2. **Same DDL-fix and CI-wiring questions as Phase 1** (see "Phase 1 — Open questions"), now with
+   twice the evidence behind them.
+
+## Phase 2 — Progress log
+
+- **2026-07-31 local (continued from Phase 1)** — New instruction received asking for the same
+  verification against real hosted Supabase infrastructure; two discrepancies flagged and confirmed
+  with the engineer/owner before any cloud action (which account/org to use; how to handle the
+  already-existing `rls-policy-verification` branch/doc) rather than assumed. Sprint doc restructured
+  into Phase 1/Phase 2 before touching any code, per preflight. Created `prism-rls-verification`
+  (org `dokonveymdzabfxzhwjf`, ref `gyxcjmitzktffyuroucz`). Confirmed the real, committed
+  `0001_init.sql` fails identically to Phase 1's local finding. Found and resolved a
+  real-project-specific harness gap (missing `authenticated`/`anon` table grants, expected given a
+  direct `psql` connection bypasses Supabase's normal provisioning path). Re-ran the unmodified Phase
+  1 test suite (seed + 57 assertions) against the hypothetically-patched schema: 57/57 passed.
+  `supabase/migrations/0001_init.sql` not modified. Combined conclusion recorded above.
