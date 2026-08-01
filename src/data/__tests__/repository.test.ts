@@ -18,7 +18,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 const DAY = '2020-05-05';
 const at = (time: string) => `${DAY}T${time}.000Z`;
 
-type Scales = Partial<Pick<CheckIn, 'sleepQuality' | 'energy' | 'soreness' | 'stress' | 'note'>>;
+type Scales = Partial<Pick<CheckIn, 'sleepQuality' | 'energy' | 'soreness' | 'stress'>>;
 
 /**
  * A submission carrying ONLY the fields named by the caller.

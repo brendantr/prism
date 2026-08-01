@@ -293,7 +293,6 @@ function generateCheckIns(now: Date, workouts: Workout[], rand: () => number): C
       energy,
       soreness,
       stress,
-      note: null,
     });
   }
 

@@ -178,11 +178,10 @@ export interface CheckIn {
   energy: number | null;
   soreness: number | null;
   stress: number | null;
-  note: string | null;
 }
 
 /** Fields a check-in submission is allowed to leave out entirely. */
-type CheckInOptional = 'sleepQuality' | 'energy' | 'soreness' | 'stress' | 'note';
+type CheckInOptional = 'sleepQuality' | 'energy' | 'soreness' | 'stress';
 
 /**
  * A check-in submission, which may cover only part of the record.
