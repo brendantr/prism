@@ -1,9 +1,11 @@
 # Sprint: onboarding-ui-redesign
 
-- **Status:** Complete. All three slides implemented and verified on a simulator; three real defects
-  found during verification were fixed. One verification gap (scroll-to-reveal on the two taller
-  slides at small-device/large-text extremes) could not be closed with available tooling — see
-  "Results" for the full, precisely-labelled account.
+- **Status:** Implementation complete. Typecheck and all automated tests passed. The core onboarding
+  flow was tap-verified on the iOS simulator. One accessibility edge-case remains unobserved: vertical
+  scrolling on the Progress and Readiness slides at small-device / extra-large text conditions. The
+  layout has a correctly bounded ScrollView and no clipping/overlap was observed, but the available
+  automation cannot generate a working vertical ScrollView gesture. Android runtime parity was not
+  separately re-observed because this was a pure JS/UI sprint and no Android emulator was available.
 - **Date:** 2026-08-01
 - **Branch:** `feature/onboarding-ui-redesign` (local only — not pushed, no PR opened, per explicit instruction)
 - **Type:** Frontend/UI only. No auth, Supabase/database, migration, RLS, or onboarding-completion
