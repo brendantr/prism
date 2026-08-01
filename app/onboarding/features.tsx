@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, CarouselPagination, FadeIn } from '@/components/ui';
+import { EstimatedOneRepMaxCard } from '@/components/onboarding/EstimatedOneRepMaxCard';
 import { LogPreviewCard } from '@/components/onboarding/LogPreviewCard';
 import { OnboardingSlideHeader } from '@/components/onboarding/OnboardingSlideHeader';
 import { FEATURES, FEATURE_SLIDES, type FeatureSlide } from '@/content/onboarding';
@@ -79,6 +80,7 @@ export default function FeaturesScreen() {
               <FadeIn>
                 <OnboardingSlideHeader eyebrow={item.eyebrow} title={item.title} body={item.body} />
                 {item.id === 'log' ? <LogPreviewCard /> : null}
+                {item.id === 'progress' ? <EstimatedOneRepMaxCard /> : null}
               </FadeIn>
             </ScrollView>
           </View>
