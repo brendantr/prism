@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   FlatList,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -8,18 +9,27 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, CarouselPagination, Card, Text } from '@/components/ui';
+import { Button, CarouselPagination, FadeIn } from '@/components/ui';
+import { LogPreviewCard } from '@/components/onboarding/LogPreviewCard';
+import { OnboardingSlideHeader } from '@/components/onboarding/OnboardingSlideHeader';
 import { FEATURES, FEATURE_SLIDES, type FeatureSlide } from '@/content/onboarding';
-import { color, radius, space } from '@/theme';
+import { color, space } from '@/theme';
 
 /**
- * FEATURE PREVIEW
- * ===============
- * Three cards, swiped horizontally. The CTA stays pinned and keeps the same
- * label on every slide -- moving or relabelling it would make the button feel
- * like it belongs to the card rather than the flow.
+ * LOG / PROGRESS / READINESS
+ * ===========================
+ * Three slides, swiped horizontally, telling PRism's product story in
+ * sequence: capture the work, interrogate the evidence, plan with humility.
+ *
+ * Each slide's content sits inside its own vertical `ScrollView` -- the outer
+ * `FlatList` still owns horizontal paging, opposite-axis nested scrolling is
+ * unproblematic -- so a small device or large accessibility text makes a
+ * slide scroll rather than clip. The CTA stays pinned and keeps the same
+ * position on every slide; only its final-slide label changes ("Get
+ * started"), never its handler -- see `Docs/sprints/2026-08-01-onboarding-ui-redesign.md`
+ * for why the last slide still hands off to `/onboarding/auth` rather than
+ * completing onboarding directly.
  */
 export default function FeaturesScreen() {
   const router = useRouter();
@@ -65,27 +75,25 @@ export default function FeaturesScreen() {
         scrollEventThrottle={16}
         renderItem={({ item }) => (
           <View style={[styles.slide, { width }]}>
-            <Card variant="raised" padding="xl" spectral style={styles.card}>
-              <View style={styles.icon}>
-                <Ionicons name={item.icon} size={22} color={color.violetBright} />
-              </View>
-              <Text variant="eyebrow" tone="violet" style={styles.slideEyebrow}>
-                {item.eyebrow}
-              </Text>
-              <Text variant="title1" accessibilityRole="header">
-                {item.title}
-              </Text>
-              <Text variant="body" tone="secondary" style={styles.slideBody}>
-                {item.body}
-              </Text>
-            </Card>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.slideContent}>
+              <FadeIn>
+                <OnboardingSlideHeader eyebrow={item.eyebrow} title={item.title} body={item.body} />
+                {item.id === 'log' ? <LogPreviewCard /> : null}
+              </FadeIn>
+            </ScrollView>
           </View>
         )}
       />
 
       <View style={styles.footer}>
         <CarouselPagination count={FEATURE_SLIDES.length} index={index} />
-        <Button label={FEATURES.primaryCta} fullWidth size="lg" onPress={advance} style={styles.cta} />
+        <Button
+          label={isLast ? FEATURES.finalCta : FEATURES.primaryCta}
+          fullWidth
+          size="lg"
+          onPress={advance}
+          style={styles.cta}
+        />
       </View>
     </View>
   );
@@ -94,19 +102,8 @@ export default function FeaturesScreen() {
 const styles = StyleSheet.create({
   canvas: { flex: 1, backgroundColor: color.bg },
   head: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: space.lg },
-  slide: { justifyContent: 'center', paddingHorizontal: space.lg },
-  card: { marginTop: space.base },
-  icon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: color.violetWash,
-    marginBottom: space.lg,
-  },
-  slideEyebrow: { marginBottom: space.sm },
-  slideBody: { marginTop: space.md },
+  slide: { justifyContent: 'flex-start' },
+  slideContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: space.lg },
   footer: { alignItems: 'center', paddingHorizontal: space.lg, gap: space.lg },
   cta: { alignSelf: 'stretch' },
 });
