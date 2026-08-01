@@ -14,6 +14,7 @@ import { Button, CarouselPagination, FadeIn } from '@/components/ui';
 import { EstimatedOneRepMaxCard } from '@/components/onboarding/EstimatedOneRepMaxCard';
 import { LogPreviewCard } from '@/components/onboarding/LogPreviewCard';
 import { OnboardingSlideHeader } from '@/components/onboarding/OnboardingSlideHeader';
+import { ReadinessInputRows } from '@/components/onboarding/ReadinessInputRows';
 import { FEATURES, FEATURE_SLIDES, type FeatureSlide } from '@/content/onboarding';
 import { color, space } from '@/theme';
 
@@ -81,6 +82,7 @@ export default function FeaturesScreen() {
                 <OnboardingSlideHeader eyebrow={item.eyebrow} title={item.title} body={item.body} />
                 {item.id === 'log' ? <LogPreviewCard /> : null}
                 {item.id === 'progress' ? <EstimatedOneRepMaxCard /> : null}
+                {item.id === 'readiness' ? <ReadinessInputRows /> : null}
               </FadeIn>
             </ScrollView>
           </View>
