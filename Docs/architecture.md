@@ -5,7 +5,8 @@
 - **Status:** Draft for review
 - **Date:** 2026-07-25
 - **Repository commit reviewed:** `2490c8de94b6492c2c20a3a91299313c30042320` (branch `main`, working tree clean, no staged/unstaged changes at time of review — verified via `git status`).
-- **Current baseline (2026-07-29):** `main` is at `c59cbdb12d8ba2374d4d22ad6a9f8e0b91481fcb`. Everything merged between the reviewed commit and that baseline was documentation-only (product-intent-and-guardrails, architecture-baseline-audit, readiness-inputs-and-confidence-foundation planning); no code, schema, or test changed, so this document's findings held up to that point. **The `readiness-inputs-and-confidence-foundation` implementation sprint then changed code**: the check-in path, `src/domain/types.ts`, and `src/domain/calc/readiness.ts` no longer match this document's description of them. Findings touching those files are superseded by that sprint and by `Docs/invariants.md` I-7 and I-18; the rest of this document has not been re-verified since the reviewed commit.
+- **Current baseline (2026-07-29):** `main` is at `c59cbdb12d8ba2374d4d22ad6a9f8e0b91481fcb`. Everything merged between the reviewed commit and that baseline was documentation-only (product-intent-and-guardrails, architecture-baseline-audit, readiness-inputs-and-confidence-foundation planning); no code, schema, or test changed, so this document's findings held up to that point. **The `readiness-inputs-and-confidence-foundation` implementation sprint then changed code**: the check-in path, `src/domain/types.ts`, and `src/domain/calc/readiness.ts` no longer match this document's description of them. Findings touching those files are superseded by that sprint and by `Docs/invariants.md` I-7 and I-18; the rest of this document was not re-verified from 2026-07-29 to 2026-08-01.
+- **Baseline refresh (2026-08-01):** Re-verified against `main` after the `rls-policy-verification` → `rls-migration-fix` → `dependency-hygiene` → `cleanup-batch` sprint sequence (a pre-feature-readiness closure pass — see `Docs/readiness/2026-07-31-closure-inventory.md`). Commands re-run this session: `npm run typecheck` (clean), `npm test -- --ci` (**103/103 passed, 9 suites** — up from the 40/40, 1-suite baseline below), `npx expo-doctor` (**20/20**), `npm audit` (**11 moderate**, down from an unrecorded-here 36; the 1 high finding is fixed, the 11 moderate are confirmed unfixable short of a major, breaking Expo downgrade — see `Docs/sprints/2026-08-01-dependency-hygiene.md`). Material changes since 2026-07-29, superseding specific claims below where noted inline: (1) both security sprints landed (Keychain session storage, CSPRNG ids, server-derived write ownership, migration `0002_security_hardening.sql`); (2) the RLS migration defect is **fixed** — `supabase/migrations/0001_init.sql` now applies cleanly and 57/57 cross-tenant isolation assertions pass against the actual committed file (`Docs/sprints/2026-08-01-rls-migration-fix.md`), closing `Docs/invariants.md` I-1; (3) the UI was restructured to a five-tab bar (Today/Exercises/Insights/Social/Plans) with an onboarding flow, and all seven data-driven screens now share a loading/error/empty-state primitive (`ScreenState`); (4) a brand icon/splash asset pipeline (`assets/brand/`, `scripts/generate-app-icons.sh`) was added, including an Android Themed-Icons monochrome layer; (5) `react-hook-form`/`zod`/`@hookform/resolvers` were removed (previously unused); (6) the unreachable `CheckIn.note` field and the dead `Stepper.tsx` component were removed. This document's Known Gaps table is updated inline below rather than restating findings that no longer hold.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -14,7 +15,8 @@
 ## Executive Summary
 
 **What is currently working (verified):**
-- The app boots, typechecks, and passes its full test suite with zero errors (`npm run typecheck` → clean; `npm test -- --ci` → 40/40 tests passed; `npx expo-doctor` → 20/20 checks passed).
+- The app boots, typechecks, and passes its full test suite with zero errors (`npm run typecheck` → clean; `npm test -- --ci` → **103/103 tests passed, 9 suites** as of 2026-08-01, up from 40/40 in 1 suite at this document's original review; `npx expo-doctor` → 20/20 checks passed).
+- **RLS policies are now demonstrated correct and deployable, not just written.** `supabase/migrations/0001_init.sql` applies cleanly (a previously-undiscovered non-immutable index expression was fixed 2026-08-01) and an automated 57-assertion suite (`supabase/tests/rls/`) confirms cross-tenant isolation across all 11 tables and every CRUD operation, against the actual committed migration file, reproduced twice from a clean database and once more on a real hosted Supabase project. See `Docs/invariants.md` I-1 and `Docs/sprints/2026-08-01-rls-migration-fix.md`. This does not mean production/non-demo mode is reachable by a real user yet — see the authentication gap below, unchanged.
 - A complete **demo mode** runs the entire app on deterministic, locally generated data with zero network calls and zero configuration (`src/data/demoSeed.ts`, `src/data/repository.ts`).
 - A pure, thoroughly unit-tested **calculation engine** (`src/domain/calc/`) implements 1RM estimation, volume, PR detection, recovery estimation, a composite readiness score, and next-load recommendations.
 - A **Supabase/Postgres schema** with row-level security exists and is checked into the repo (`supabase/migrations/0001_init.sql`), covering 11 tables and a consistent ownership model.
@@ -27,12 +29,14 @@
 - No CI job runs against a real Supabase instance, and no automated test exercises `SupabaseRepository`, RLS policies, or the migration itself.
 - Native `ios/` and `android/` directories are git-ignored and regenerated locally via `expo prebuild` — this repository's tracked source is the Expo-managed layer only.
 
-**Five most material architecture / launch risks:**
-1. **No authentication path exists**, so the Supabase (production) backend is currently unreachable by any UI in this repository — demo mode is the only mode a user can actually run.
-2. **RLS policies and the schema are unexercised** — no test or CI step applies the migration to a database or asserts the policies behave as designed. Correctness is currently a matter of code review only.
-3. **Unused dependencies present** (`react-hook-form`, `zod`, `@hookform/resolvers` are declared but not imported anywhere in `app/` or `src/`), suggesting either dead weight or unstarted work — needs product/eng confirmation.
-4. **No observability** — no crash reporting, analytics, or logging pipeline was found in dependencies or source.
-5. **No CD/release pipeline** — CI covers typecheck and test only; there is no `eas.json`, no EAS build/submit workflow, and no App Store/Play release automation in this repository.
+**Five most material architecture / launch risks (updated 2026-08-01):**
+1. **No authentication path exists**, so the Supabase (production) backend is currently unreachable by any UI in this repository — demo mode is the only mode a user can actually run. **Unchanged** — this is now the single most material gap, since the RLS blocker beneath it (below) is resolved.
+2. **Multi-record workout writes are still not atomic** — `SupabaseRepository.saveWorkout` performs three sequential, non-transactional upserts (see G-2 below). A failure mid-save can leave a workout with missing exercises/sets. **Unchanged**, and now the most material *data-integrity* gap given RLS itself is verified.
+3. **No observability** — no crash reporting, analytics, or logging pipeline was found in dependencies or source. **Unchanged.**
+4. **No CD/release pipeline** — CI covers typecheck and test only; there is no `eas.json`, no EAS build/submit workflow, and no App Store/Play release automation in this repository. **Unchanged.**
+5. **Residual dependency vulnerabilities** — `npm audit` reports 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling, not shipped in the app bundle). Confirmed unfixable without a major, breaking Expo downgrade; tracked as accepted risk pending an upstream fix (`Docs/sprints/2026-08-01-dependency-hygiene.md`).
+
+~~Previously listed here, now resolved:~~ *RLS policies and the schema are unexercised* — **resolved 2026-08-01**, see above. *Unused dependencies present* (`react-hook-form`, `zod`, `@hookform/resolvers`) — **resolved 2026-08-01**, all three removed (confirmed zero imports before removal).
 
 **This is an evidence-based current-state document, not a future-state design.** Every claim below is either marked *verified* (backed by a specific file, command output, or test), *inferred* (a reasonable reading of code that was not directly executed), or *unknown* (cannot be determined from this repository and requires confirmation).
 
@@ -65,7 +69,7 @@
 | Backend / data | Supabase (`@supabase/supabase-js`) | `^2.48.1` | Postgres + auth + RLS backend, optional (demo mode is default) | `package.json`, `src/data/supabase/client.ts` |
 | Local persistence | `@react-native-async-storage/async-storage` | `2.2.0` | Demo-mode local writes; Supabase session storage | `src/data/repository.ts`, `src/data/supabase/client.ts` |
 | Auth | Supabase Auth (client SDK only) | `^2.48.1` | `auth.getUser()` used to scope queries; **no sign-in/out UI exists** | `src/data/repository.ts` (`SupabaseRepository.uid()`) |
-| Forms | `react-hook-form` `^7.54.2`, `@hookform/resolvers` `^3.9.1`, `zod` `^3.24.1` | declared, **unused** | No import of any of these three packages found anywhere in `app/` or `src/` | `grep` across `app/`, `src/` — zero matches |
+| Forms | *(removed 2026-08-01)* | — | `react-hook-form`, `@hookform/resolvers`, `zod` were declared but never imported anywhere in `app/` or `src/`; removed as dead weight (`Docs/sprints/2026-08-01-dependency-hygiene.md`). Auth and check-in forms use hand-rolled validation instead. | `git log` |
 | Testing | Jest `^29.7.0` + `jest-expo` `~57.0.2` | — | Unit tests for `src/domain/calc` | `package.json`, `src/domain/calc/__tests__/calc.test.ts` |
 | CI | GitHub Actions | — | Typecheck + test on push/PR to `main` | `.github/workflows/ci.yml` |
 | Build / release | Expo CLI (`expo run:ios`/`run:android`), no EAS config | — | Local native builds only; no `eas.json` found in repo | `package.json` scripts; absence confirmed via file search |
@@ -107,6 +111,25 @@ prism/
 ├── ios/, android/             # Git-ignored, regenerated via `expo prebuild`
 └── package.json / tsconfig.json / app.json / .env.example
 ```
+
+**Additions since 2026-07-25, not reflected in the tree above (kept as originally drawn rather than
+redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
+- `app/(tabs)/` gained `exercises.tsx` and `social.tsx`; the tab bar is five destinations
+  (Today/Exercises/Insights/Social/Plans), with Progress and Body still routable but hidden from the
+  bar (`href: null`).
+- `app/onboarding/` — a first-run flow (splash, welcome, feature carousel, presentation-only auth,
+  four-step setup, completion), gating first launch via a persisted flag in `app/_layout.tsx`.
+- `assets/brand/` — the brand icon/splash source artwork and four generated derivatives (app icon,
+  adaptive icon, splash icon, Android monochrome icon), plus `scripts/generate-app-icons.sh` and two
+  Python helpers (`alpha-key.py`, `monochrome-key.py`), all deterministic/reproducible from the
+  committed source.
+- `supabase/migrations/0002_security_hardening.sql` — a second migration (`display_name` bounding, a
+  cross-tenant exercise-visibility trigger), applied and verified in this repository as of 2026-08-01.
+- `supabase/tests/rls/` — the RLS isolation test suite (57 SQL assertions + a runner script), not
+  wired into CI.
+- `src/store/onboardingStore.ts` — onboarding's local, `AsyncStorage`-only draft state.
+- `src/components/ui/ScreenState.tsx` — the shared loading/error/empty-state primitive all seven
+  data-driven screens now use.
 
 **Responsibility and dependency direction (verified by import inspection):**
 
@@ -238,9 +261,27 @@ flowchart TD
 
 ## Quality and Operational Readiness
 
-**Existing test suites and what they cover:** One suite, `src/domain/calc/__tests__/calc.test.ts` (434 lines, 40 tests), covering: Epley 1RM (including rep cap and inversion), training volume (warm-up exclusion, incomplete-set exclusion), PR detection (both `e1rm` and `weight` kinds, extrapolation guard), recovery estimate (monotonicity, clamping, status bands), all five next-load-recommendation branches (deload/hold/increase×2/establish, rounding-cancellation guard), readiness score (bounds, weight-sum, ISO-week boundaries), and the demo seed generator (determinism, 8-week coverage, no future dates). **No tests exist** for `src/data` (repository, mappers), `src/store` (Zustand stores), any file under `app/`, or any file under `src/components`.
+**Existing test suites and what they cover (original, 2026-07-25):** One suite, `src/domain/calc/__tests__/calc.test.ts` (434 lines, 40 tests), covering: Epley 1RM (including rep cap and inversion), training volume (warm-up exclusion, incomplete-set exclusion), PR detection (both `e1rm` and `weight` kinds, extrapolation guard), recovery estimate (monotonicity, clamping, status bands), all five next-load-recommendation branches (deload/hold/increase×2/establish, rounding-cancellation guard), readiness score (bounds, weight-sum, ISO-week boundaries), and the demo seed generator (determinism, 8-week coverage, no future dates). **No tests exist** for `src/data` (repository, mappers), `src/store` (Zustand stores), any file under `app/`, or any file under `src/components`.
 
-**Commands run and exact outcomes (this session, on commit `2490c8d`):**
+**Current test suites (2026-08-01): 9 suites, 103 tests, all hermetic (`npm test`).** Added since the
+original review: `src/data/supabase/__tests__/secureStorage.test.ts` and `sessionFlow.test.ts` (Keychain
+session storage, real-client session-storage contract), `src/utils/__tests__/id.test.ts` (CSPRNG id
+generation), `src/domain/__tests__/authValidation.test.ts` (presentation-only credential validation),
+`src/data/__tests__/repository.test.ts` and `ownership.test.ts` (check-in partial-submission semantics,
+server-derived write ownership), `src/store/__tests__/trainingStore.test.ts` and
+`activeWorkoutStore.test.ts` (readiness confidence states, the finish()-must-not-discard-on-failure
+regression guard). A separate, non-hermetic integration lane exists (`npm run test:integration`,
+`*.integration.test.ts`, excluded from the default run) and skips unless
+`PRISM_INTEGRATION_SUPABASE_URL`/`..._ANON_KEY` are set — it holds `it.todo` placeholders for
+server-issued-session round-trip, refresh-token rotation, server-side sign-out, and RLS rejecting a
+forged `profile_id`, none of which are implemented yet (no CI job or local environment currently
+exercises this lane). `src/data` (repository) and `src/store` now have coverage; `app/` and
+`src/components` still do not — no component-test framework exists (a deliberate choice, recorded in
+`Docs/sprints/2026-07-27-readiness-inputs-and-confidence-foundation.md` Decision 6).
+Separately, `supabase/tests/rls/` (57 pgTAP-style SQL assertions, not Jest) verifies RLS policy
+enforcement directly against Postgres — see G-3 below.
+
+**Commands run and exact outcomes (2026-07-25 original review, commit `2490c8d`):**
 
 | Command | Result |
 |---|---|
@@ -250,9 +291,19 @@ flowchart TD
 | `npx expo-doctor` | **Passed** — "20/20 checks passed. No issues detected!" |
 | `git log --oneline --decorate -20` | 14 commits shown, linear history culminating in "restore: return to Expo SDK 57 baseline" and two merge commits into `main` |
 
+**Commands re-run and exact outcomes (2026-08-01, current baseline):**
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` (`tsc --noEmit`) | **Passed**, zero output |
+| `npm test -- --ci` (`jest --ci`) | **Passed** — 9 suites, 103/103 tests |
+| `npx expo-doctor` | **Passed** — 20/20 (was 19/20 mid-session before `Docs/sprints/2026-08-01-dependency-hygiene.md` fixed a 7-package version drift) |
+| `npm audit` | 11 moderate findings remain, confirmed unfixable without a major Expo downgrade — see G-10 |
+| `npx expo export --platform ios` | **Passed** — single iOS bundle, 5.1 MB |
+
 **Lint status:** No lint script exists in `package.json` (no `eslint`, no `.eslintrc*` file found in the repository root). **Not run because it does not exist**, not because it was skipped.
 
-**CI coverage:** `.github/workflows/ci.yml` runs on push/PR to `main`: checkout → Node 20 setup → `npm ci` → `npm run typecheck` → `npm test -- --ci`. No build step, no lint step (matching the absence noted above), no Supabase/RLS verification, no E2E test, no artifact publishing.
+**CI coverage:** `.github/workflows/ci.yml` runs on push/PR to `main`: checkout → Node 20 setup → `npm ci` → `npm run typecheck` → `npm test -- --ci`. No build step, no lint step (matching the absence noted above), no Supabase/RLS verification, no E2E test, no artifact publishing. **Unchanged as of 2026-08-01** — the new `supabase/tests/rls/` suite is deliberately not wired into CI yet (a real, tracked follow-up, not an oversight).
 
 **Observability, analytics, crash reporting, backups, release tooling, EAS status:**
 - **Crash reporting:** Absent — no Sentry, Bugsnag, or equivalent found in dependencies or source.
@@ -266,17 +317,21 @@ flowchart TD
 
 ## Known Gaps and Risks
 
+Updated 2026-08-01. Closed/resolved gaps are kept in the table, struck through, rather than deleted —
+per `Docs/invariants.md` I-15, a document's history of what was found and fixed is itself evidence.
+
 | ID | Severity | Category | Evidence | User/business impact | Recommended next action | Requires product decision? |
 |---|---|---|---|---|---|---|
 | G-1 | High | Auth | No sign-in/sign-up/sign-out UI in `app/`; `SupabaseRepository.uid()` throws without a session | Production (Supabase) mode is unreachable by any real user today | Design and build an auth flow before enabling production mode | Yes |
 | G-2 | High | Data integrity | `SupabaseRepository.saveWorkout` performs 3 sequential non-transactional upserts (`src/data/repository.ts`) | A failure mid-save can leave a workout with missing exercises/sets | Wrap in a Postgres function/RPC or add reconciliation logic | No |
-| G-3 | High | Verification gap | No CI job or test applies `supabase/migrations/0001_init.sql` or exercises RLS policies | RLS correctness is unverified beyond code review | Add a CI job with a local Postgres/Supabase container and policy tests | No |
+| ~~G-3~~ | ~~High~~ | ~~Verification gap~~ | **Resolved 2026-08-01.** `supabase/tests/rls/` (57 assertions) now runs against the actual, corrected `0001_init.sql`/`0002_security_hardening.sql` on a disposable local Postgres instance and passes; a prior blocking DDL defect (non-immutable index expression) was found and fixed first. Not yet wired into CI — that remains a real, separate follow-up (`Docs/sprints/2026-07-31-rls-policy-verification.md` open question 3). | RLS correctness is now demonstrated, not just written | Wire `supabase/tests/rls/run.sh` into CI with a Postgres service container | No |
 | G-4 | Medium | Observability | No crash reporting, analytics, or logging framework found in dependencies | Production issues would be invisible until user-reported | Decide on and integrate an observability stack before wider release | Yes |
-| G-5 | Medium | Error handling | Progress/Body/Insights/Plans screens do not branch on `trainingStore.status === 'error'` (verified absent) | A load failure shows stale/empty data on those tabs instead of a clear error state | Add shared error-state handling, likely via a wrapper component | No |
-| G-6 | Medium | Dependency hygiene | `react-hook-form`, `zod`, `@hookform/resolvers` are declared dependencies with zero imports found in `app/` or `src/` | Unnecessary bundle weight; unclear whether onboarding/settings forms were planned around them | Confirm intent — remove if dead, or scope the forms work that will use them | Yes |
+| ~~G-5~~ | ~~Medium~~ | ~~Error handling~~ | **Resolved.** All seven data-driven screens (`Today`, `Exercises`, `Insights`, `Social`, `Plans`, `Progress`, `Body`) now share `src/components/ui/ScreenState.tsx` and branch on `trainingStore.status` (`2026-07-30-ui-ux-product-polish.md`). Four of seven were individually photographed in their error state; three (Plans, Social, and one of Progress/Body) were wired identically and typecheck-covered but not individually screenshotted — see `Docs/readiness/2026-07-31-closure-inventory.md` item B2. | A load failure now shows an honest error state with retry, not stale/empty data | Photograph the remaining screens' error states (low-cost follow-up) | No |
+| ~~G-6~~ | ~~Medium~~ | ~~Dependency hygiene~~ | **Resolved 2026-08-01.** `react-hook-form`, `zod`, `@hookform/resolvers` removed — confirmed zero imports before removal (`Docs/sprints/2026-08-01-dependency-hygiene.md`). | — | — | — |
 | G-7 | Low | Release tooling | No `eas.json` or EAS scripts found | No path to a cloud/CI-driven store build yet | Add EAS configuration when nearing a release milestone | Yes |
-| G-8 | Low | Accessibility (unconfirmed) | README claims `maxFontSizeMultiplier` support; not found in the component files read this session | Possible gap between documented and actual font-scaling behavior | Confirm during a targeted accessibility pass across all of `src/components` | No |
+| ~~G-8~~ | ~~Low~~ | ~~Accessibility (unconfirmed)~~ | **Resolved.** `maxFontSizeMultiplier` is implemented — confirmed in `src/components/ui/Text.tsx:41` (1.6×) plus `SearchField.tsx`, `Input.tsx` (1.4× each; `Stepper.tsx` also had it before its 2026-08-01 removal as dead code). The original discrepancy was this document not having read those files, not an implementation gap. | — | — | — |
 | G-9 | Low | Offline handling | No network-state detection code found (`NetInfo` or equivalent) | Behavior of the Supabase path when offline is unverified | Add offline detection/handling once production mode has an auth path | No |
+| G-10 | Low | Dependency vulnerabilities | `npm audit`: 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling). `--force --dry-run` confirms no fix short of downgrading `expo` to `46.0.21` | Build-tooling-only exposure, not shipped in the app bundle; low real-world risk but nonzero | Re-check when a newer Expo SDK release lands | No |
 
 ---
 
