@@ -334,7 +334,6 @@ class SupabaseRepository implements Repository {
       energy: checkIn.energy,
       soreness: checkIn.soreness,
       stress: checkIn.stress,
-      note: checkIn.note,
     });
     if (error) throw error;
   }
@@ -451,9 +450,6 @@ function mergeCheckIn(existing: CheckIn, patch: CheckInPatch): CheckIn {
     const value = patch[field];
     merged[field] = value === undefined ? null : value;
   }
-  if ('note' in patch) {
-    merged.note = patch.note === undefined ? null : patch.note;
-  }
 
   return merged;
 }
@@ -468,7 +464,6 @@ function blankCheckIn(patch: CheckInPatch): CheckIn {
     energy: null,
     soreness: null,
     stress: null,
-    note: null,
   };
 }
 

@@ -154,7 +154,6 @@ export function toCheckIn(row: any): CheckIn {
     energy: row.energy ?? null,
     soreness: row.soreness ?? null,
     stress: row.stress ?? null,
-    note: row.note ?? null,
   };
 }
 

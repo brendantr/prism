@@ -314,7 +314,6 @@ describe('readiness score', () => {
       energy: 4,
       soreness: 2,
       stress: 2,
-      note: null,
       ...partial,
     };
   }

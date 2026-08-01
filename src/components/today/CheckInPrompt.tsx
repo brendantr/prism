@@ -83,7 +83,6 @@ export function CheckInPrompt({ profileId, checkIn }: CheckInPromptProps) {
         energy: draft.energy,
         soreness: draft.soreness,
         stress: draft.stress,
-        note: checkIn?.note ?? null,
       });
       setEditing(false);
     } catch (e) {

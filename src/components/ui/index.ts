@@ -14,7 +14,6 @@ export * from './StatBlock';
 export * from './ReadinessRing';
 export * from './ConsistencyStrip';
 export * from './LinearSpectrum';
-export * from './Stepper';
 export * from './Input';
 export * from './ProgressHeader';
 export * from './OptionRow';

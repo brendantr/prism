@@ -121,7 +121,6 @@ describe('the repository is the source of truth for ownership', () => {
       energy: 4,
       soreness: 2,
       stress: 2,
-      note: null,
     });
 
     expect(payloadFor('check_ins').profile_id).toBe(SESSION_UID);
@@ -158,7 +157,6 @@ describe('the repository is the source of truth for ownership', () => {
       energy: 3,
       soreness: 3,
       stress: 3,
-      note: null,
     });
 
     // One sweep over everything that was sent, so a future write path added

@@ -41,7 +41,6 @@ function submission(draft: Partial<CheckIn>): CheckIn {
     energy: null,
     soreness: null,
     stress: null,
-    note: existing?.note ?? null,
     ...draft,
   };
 }
