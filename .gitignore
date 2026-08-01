@@ -35,3 +35,6 @@ coverage/
 # Python bytecode from the asset-generation scripts
 __pycache__/
 *.pyc
+
+# Supabase CLI local state (which project this checkout is linked to)
+supabase/.temp/
