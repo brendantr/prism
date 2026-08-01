@@ -11,23 +11,25 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 ### I-1. Every user-data table must use row-level security (RLS) before real user data is written
 - **Rule:** No table holding real (non-demo) user data may be written to in production until RLS is enabled and its policies are verified to behave as designed.
 - **Why:** The client holds only a Supabase anon key; RLS is PRism's entire authorization boundary (see `README.md`'s security model paragraph). Without verified RLS, any user could potentially read or write another user's data.
-- **Enforcement evidence or expected validation:** **Attempted 2026-07-31** (sprint
-  `rls-policy-verification`, two independent environments) and **not yet met — a more specific
-  finding than "unverified."** `supabase/migrations/0001_init.sql` fails to apply to a standard
-  Postgres instance at all: a non-immutable function in the `check_ins_one_per_day` index expression
-  (`checked_in_at::date`, which Postgres classifies `STABLE` not `IMMUTABLE`) aborts the migration
-  before any RLS policy is created — confirmed directly (`pg_class.relrowsecurity` false and
-  `pg_policies` empty after applying the committed file as-is), and **reproduced identically, at the
-  identical line, on a real, dedicated hosted Supabase project** (`prism-rls-verification`,
-  Postgres 17.6) — ruling out any environment- or version-specific cause. Against an unapplied,
-  scratch-only copy with the one-line fix `timezone('utc', checked_in_at)::date`, an automated
-  57-assertion suite (`supabase/tests/rls/`) confirmed full cross-tenant isolation across all 11
-  tables and every CRUD operation, plus the documented `exercises.profile_id is null` exception
-  (I-6) — **57/57 passed, in both environments (114/114 total)**. This means the policies *as
-  written* are demonstrated correct, but the migration that creates them cannot run today, so I-1 is
-  not met until (a) the index defect is fixed in `supabase/migrations/0001_init.sql` and (b)
-  `supabase/tests/rls/run.sh` passes against that actual, corrected file rather than a scratch copy.
-  Full evidence: `Docs/sprints/2026-07-31-rls-policy-verification.md`.
+- **Enforcement evidence or expected validation:** **Met, as of 2026-08-01** (sprint
+  `rls-migration-fix`, following `rls-policy-verification`'s 2026-07-31 finding). The index defect
+  that previously aborted `supabase/migrations/0001_init.sql` before any RLS policy could be created —
+  a non-immutable function (`checked_in_at::date`) in the `check_ins_one_per_day` index expression —
+  is fixed in the committed file (`timezone('utc', checked_in_at)::date`, `IMMUTABLE` per
+  `pg_proc.provolatile`). `supabase/tests/rls/run.sh`, run against the actual corrected
+  `supabase/migrations/0001_init.sql` and `0002_security_hardening.sql` (not a scratch copy) on a
+  disposable local Postgres 16 instance, applies both migrations cleanly end to end — all 11 tables
+  created, all 20 RLS policies present, `pg_class.relrowsecurity = true` on every table including
+  `personal_records` (previously never created) — and passes all 57 cross-tenant isolation assertions,
+  reproduced twice from a clean database. Migration `0002`'s four SB-3 behavioral checks were also run
+  directly against this corrected schema and all four passed: a 10,000-character `display_name` is
+  truncated to exactly 60 characters; a cross-tenant `workout_exercises` reference to another user's
+  private exercise is rejected (`42501`, `assert_exercise_visible`); the owning user can still delete
+  that exercise afterward (no lingering block); and ordinary same-user logging inserts continue to
+  succeed. Full evidence: `Docs/sprints/2026-08-01-rls-migration-fix.md`. This closes I-1 for the
+  policies-as-committed; it does not by itself mean production/non-demo mode should be enabled — that
+  still requires an authentication path (`Docs/architecture.md` G-1) and applying this migration to a
+  real production Supabase project, neither of which is in scope here.
 - **Exception process:** None. This is a hard gate before enabling non-demo mode for real users; no engineer/owner override applies to skipping RLS verification itself.
 
 ### I-2. Workout saves involving multiple records must be atomic, idempotent, or safely recoverable

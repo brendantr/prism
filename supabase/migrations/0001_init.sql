@@ -205,8 +205,12 @@ create table check_ins (
 
 create index check_ins_profile_idx on check_ins (profile_id, checked_in_at desc);
 -- One check-in per calendar day per lifter.
+-- `checked_in_at::date` depends on the session TimeZone setting, so Postgres
+-- classifies it STABLE, not IMMUTABLE, and rejects it in an index expression.
+-- `timezone('utc', checked_in_at)::date` is IMMUTABLE (confirmed via
+-- `pg_proc.provolatile`) and fixed to UTC rather than session-dependent.
 create unique index check_ins_one_per_day
-  on check_ins (profile_id, (checked_in_at::date));
+  on check_ins (profile_id, (timezone('utc', checked_in_at)::date));
 
 -- --------------------------------------------------------------------------
 -- personal_records
