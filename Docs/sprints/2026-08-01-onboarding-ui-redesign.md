@@ -1,6 +1,9 @@
 # Sprint: onboarding-ui-redesign
 
-- **Status:** Planned — this document is written before any implementation, per `CLAUDE.md`.
+- **Status:** Complete. All three slides implemented and verified on a simulator; three real defects
+  found during verification were fixed. One verification gap (scroll-to-reveal on the two taller
+  slides at small-device/large-text extremes) could not be closed with available tooling — see
+  "Results" for the full, precisely-labelled account.
 - **Date:** 2026-08-01
 - **Branch:** `feature/onboarding-ui-redesign` (local only — not pushed, no PR opened, per explicit instruction)
 - **Type:** Frontend/UI only. No auth, Supabase/database, migration, RLS, or onboarding-completion
@@ -294,4 +297,80 @@ Each commit's diff is inspected before committing to confirm it contains only it
 
 ## Results
 
-Filled in as work is completed — see the end of this document for the verification log.
+**Status: Complete.** All three slides implemented and verified on-device; three real defects were
+found and fixed during that verification (not by reading the code — only by actually opening each
+screen). One verification gap remains, explicitly not claimed as closed — see "What remains open."
+
+### Defects found and fixed during on-device verification
+
+1. **`ProgressChart`'s `<Svg>` had no `height` prop.** `viewBox` alone does not give an `Svg` element a
+   rendered height in React Native (unlike web SVG, which can infer aspect ratio) — the chart silently
+   rendered at zero height, an empty gap between the stat and the axis labels. Fixed by adding an
+   explicit `height={96}`. Confirmed fixed: the cyan trend line, baseline, and endpoint dot all render
+   correctly on-device (iPhone 16e).
+2. **The "NOT ENOUGH INPUT" `Chip` stretched to the full card width** instead of hugging its own
+   content, because its parent `View` had no `alignItems` set and defaulted to stretching a
+   flex-column's only-sized-by-content child. Fixed by wrapping the chip in its own
+   `alignSelf: 'flex-start'` view. Confirmed fixed: the chip now renders as a compact pill, matching
+   the other two on-screen chips.
+3. **Each slide's vertical `ScrollView` had no reliably bounded parent height**, because `flex: 1` on a
+   `FlatList` *row*-direction item controls width share, not height — a real layout defect, not a
+   styling nit, since it meant the ScrollView could not correctly compute whether it needed to scroll
+   at all. Fixed by measuring the `FlatList`'s own rendered height via `onLayout` and applying it as an
+   explicit `height` on each slide. This is a genuine correctness fix (the previous approach was
+   relying on cross-axis flex behavior that does not do what the original code assumed), independent of
+   the verification gap below.
+
+### What remains open — scrolling could not be verified end-to-end
+
+**On the two taller slides (Progress, Readiness), content exceeds the visible viewport on the
+narrowest supported device (iPhone SE, 375×667pt) and especially at `accessibility-extra-large` text
+size** — e.g. only "Set 1" of three is visible on Log at the largest text size; the Epley toggle and
+disclaimer sit below the fold on Progress/Readiness at SE width. Verifying that a real scroll gesture
+reveals this content was attempted extensively (`idb ui swipe`, multiple durations/distances/starting
+points) and **could not be confirmed** — but this was proven to be a tooling limitation, not evidence
+of a real defect: **the identical technique also fails to scroll the pre-existing, completely unmodified
+Today screen's plain `ScrollView`**, confirmed by an identical before/after screenshot on code this
+sprint never touched. `idb`'s synthetic swipe does not generate gestures this simulator's React Native
+runtime recognizes as a scroll, for any `ScrollView` in this app, not something specific to this
+redesign.
+
+**What is and is not established, stated precisely per `Docs/invariants.md` I-15:**
+- **Fact:** nothing clips, overlaps illegibly, or renders broken at either extreme (narrow device,
+  large text) — content that does not fit is cut cleanly at the `ScrollView`'s bound, not mid-element.
+- **Fact:** the `ScrollView` now has a correctly measured, non-zero bounded height (defect 3, above),
+  which is the actual precondition for scrolling to be possible at all.
+- **Assumption, not directly observed:** that scrolling then works as expected. Nested opposite-axis
+  scrolling (vertical `ScrollView` inside a horizontal, paging `FlatList`) is a standard, widely-used
+  React Native pattern and there is no known mechanism by which it would fail on a real device having
+  succeeded in code review — but "no known reason it would fail" is not the same claim as "observed
+  working," and this record does not blur the two.
+- **What would close this:** a real device or a working on-device automation tool capable of generating
+  genuine scroll gestures (`idb`'s swipe command is confirmed not to be that, in this environment).
+
+### Manual verification performed (iPhone 16e simulator, iOS 26.0, unless noted)
+
+| Check | Result |
+|---|---|
+| Log slide renders (headline, body, 3-set preview card, checkmarks) | **Pass**, screenshotted |
+| Progress slide renders (1RM stat, chart, axis labels, uncertainty line) | **Pass**, screenshotted, after fixing defect 1 |
+| "How is this calculated?" expand/collapse | **Pass** — shows `e1RM = weight × (1 + reps / 30)` and the concrete `100 × (1 + 5 / 30) = 116.7 kg` substitution |
+| Readiness slide renders ("NOT ENOUGH INPUT" chip, 3 rows, disclaimer) | **Pass**, screenshotted, after fixing defect 2 |
+| Skip (from Log) | **Pass** — routes to `/onboarding/auth`, the existing unmodified screen |
+| Continue × 2 (Log → Progress → Readiness) | **Pass**, via tap |
+| Swipe pagination (Log → Progress) | **Pass** — horizontal swipe advances the slide and the pagination dot moves with it |
+| Get started (from Readiness) | **Pass** — routes to `/onboarding/auth`, identical destination to Skip/Continue's final hand-off, confirming the completion-semantics reconciliation in this doc's "Current onboarding architecture" section |
+| Pagination dot position | **Pass** — matches the visible slide on every transition observed |
+| Narrow device (iPhone SE, 375pt) | **Pass for Log** (fits fully); **Progress/Readiness extend below the fold** — see "What remains open" |
+| Large accessibility text (`accessibility-extra-large`) | **Pass, no clipping/overlap**; **more content requires scrolling that could not be verified** — see "What remains open" |
+| No external image/file dependency | **Confirmed** — `grep -rn "require(.*\.\(png\|jpg\|jpeg\)"` over the new files: no matches |
+| No new gradients/glow/decorative effects | **Confirmed** by diff review — only the existing, capped `LinearSpectrum` top-edge band (via `Card spectral`) is used, exactly as elsewhere in the app |
+
+### Final validation
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | Pass, exit 0 |
+| `npm test -- --ci` | Pass — 115/115 tests, 10 suites (was 103/9 at branch point) |
+| Lint | N/A — no lint script/config exists in this repository |
+| `git diff --stat` against each commit | Confirmed scoped to onboarding files + this sprint doc only |
