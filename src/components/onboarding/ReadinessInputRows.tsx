@@ -20,7 +20,9 @@ export function ReadinessInputRows() {
 
   return (
     <View style={styles.wrap}>
-      <Chip label="NOT ENOUGH INPUT" tone="neutral" />
+      <View style={styles.badge}>
+        <Chip label="NOT ENOUGH INPUT" tone="neutral" />
+      </View>
 
       <Card variant="outline" padding="none" style={styles.card}>
         {rows.map((row, i) => (
@@ -46,6 +48,7 @@ export function ReadinessInputRows() {
 
 const styles = StyleSheet.create({
   wrap: { marginTop: space.xl },
+  badge: { alignSelf: 'flex-start' },
   card: { marginTop: space.base, paddingHorizontal: space.lg },
   row: { paddingVertical: space.base },
   disclaimer: { marginTop: space.lg, lineHeight: 18 },

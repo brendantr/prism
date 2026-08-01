@@ -5,6 +5,7 @@ import {
   StyleSheet,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -38,7 +39,18 @@ export default function FeaturesScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
+  const [listHeight, setListHeight] = useState(0);
   const listRef = useRef<FlatList<FeatureSlide>>(null);
+
+  // A horizontal FlatList's row-direction cross-axis (height) is not fixed by
+  // `flex: 1` on its items -- that property competes for *width* in a row,
+  // not height. Each slide's vertical ScrollView needs a real, measured
+  // parent height to know when to start scrolling, so it is captured here and
+  // applied explicitly below, rather than assumed from flex alone.
+  const onListLayout = (e: LayoutChangeEvent) => {
+    const next = e.nativeEvent.layout.height;
+    if (next !== listHeight) setListHeight(next);
+  };
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -68,6 +80,8 @@ export default function FeaturesScreen() {
 
       <FlatList
         ref={listRef}
+        style={styles.list}
+        onLayout={onListLayout}
         data={FEATURE_SLIDES}
         keyExtractor={(item) => item.id}
         horizontal
@@ -76,7 +90,7 @@ export default function FeaturesScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
         renderItem={({ item }) => (
-          <View style={[styles.slide, { width }]}>
+          <View style={[styles.slide, { width, height: listHeight || undefined }]}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.slideContent}>
               <FadeIn>
                 <OnboardingSlideHeader eyebrow={item.eyebrow} title={item.title} body={item.body} />
@@ -106,6 +120,7 @@ export default function FeaturesScreen() {
 const styles = StyleSheet.create({
   canvas: { flex: 1, backgroundColor: color.bg },
   head: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: space.lg },
+  list: { flex: 1 },
   slide: { justifyContent: 'flex-start' },
   slideContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: space.lg },
   footer: { alignItems: 'center', paddingHorizontal: space.lg, gap: space.lg },

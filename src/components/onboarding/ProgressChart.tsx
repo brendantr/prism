@@ -16,6 +16,9 @@ const VIEW_WIDTH = 300;
 const VIEW_HEIGHT = 120;
 const PAD_X = 10;
 const PAD_Y = 14;
+/** Rendered height in points. `Svg` does not infer a height from `viewBox`
+ *  alone -- omitting this collapses the chart to zero height. */
+const DISPLAY_HEIGHT = 96;
 
 /**
  * A restrained cyan line chart: evidence, not decoration.
@@ -52,7 +55,12 @@ export function ProgressChart({ points }: ProgressChartProps) {
   return (
     <View style={styles.wrap}>
       <View accessible accessibilityLabel={trendLabel}>
-        <Svg width="100%" viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
+        <Svg
+          width="100%"
+          height={DISPLAY_HEIGHT}
+          viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+          preserveAspectRatio="xMidYMid meet"
+        >
           <Line
             x1={PAD_X}
             y1={VIEW_HEIGHT - PAD_Y}
