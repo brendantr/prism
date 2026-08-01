@@ -22,40 +22,110 @@ export const WELCOME = {
 } as const;
 
 export interface FeatureSlide {
-  id: string;
+  id: 'log' | 'progress' | 'readiness';
+  /** e.g. "01 / LOG" -- the section-index badge, not a generic label. */
   eyebrow: string;
   title: string;
   body: string;
-  icon: 'flash' | 'trending-up' | 'body';
 }
 
 export const FEATURE_SLIDES: FeatureSlide[] = [
   {
     id: 'log',
-    eyebrow: 'Log',
-    title: 'Built for the bench, not the desk.',
-    body: 'Big targets, tabular numbers, and a rest timer that keeps running while your phone is face down between sets.',
-    icon: 'flash',
+    eyebrow: '01 / LOG',
+    title: 'Log what happened.',
+    body: 'Sets, reps, and load — recorded in seconds. That is the evidence every estimate PRism shows you later is built from.',
   },
   {
     id: 'progress',
-    eyebrow: 'Progress',
+    eyebrow: '02 / PROGRESS',
     title: 'Every number can be interrogated.',
     body: 'Estimated 1RM, volume, and load suggestions all show the rule that produced them, so you can disagree with one.',
-    icon: 'trending-up',
   },
   {
     id: 'readiness',
-    eyebrow: 'Readiness',
+    eyebrow: '03 / READINESS',
     title: 'Honest about what it cannot see.',
-    body: 'A readiness estimate that says "not enough input yet" instead of inventing a confident-looking score. It is a planning estimate, never a health metric.',
-    icon: 'body',
+    body: 'A readiness estimate that says "not enough input yet" instead of inventing a confident-looking score.',
   },
 ];
 
 export const FEATURES = {
   primaryCta: 'Continue',
+  /** Shown on the last slide only -- this hands off to auth, same as `primaryCta` does elsewhere. */
+  finalCta: 'Get started',
   skipLabel: 'Skip',
+} as const;
+
+/**
+ * ONBOARDING DEMO DATA
+ * ====================
+ * Static, presentation-only content for the Log/Progress onboarding slides.
+ * This is fixed fictional sample data for illustrating the product -- it is
+ * never read from `trainingStore`, any repository, or any real session, and
+ * must never be wired to either. Every derived number here is computed
+ * through the real `estimateOneRepMax` (Epley) function rather than typed by
+ * hand, so the onboarding preview can never quietly drift out of sync with
+ * the formula it claims to demonstrate.
+ */
+
+export interface OnboardingDemoSet {
+  weightKg: number;
+  reps: number;
+  rpe: number;
+}
+
+export const ONBOARDING_LOG_DEMO = {
+  exerciseName: 'Back Squat',
+  sets: [
+    { weightKg: 100, reps: 5, rpe: 8 },
+    { weightKg: 100, reps: 5, rpe: 8 },
+    { weightKg: 100, reps: 5, rpe: 8 },
+  ] satisfies OnboardingDemoSet[],
+} as const;
+
+/**
+ * Eight weekly (load, reps) samples. Deliberately the same lift and the same
+ * final set as `ONBOARDING_LOG_DEMO`, so the Log and Progress slides tell one
+ * coherent story rather than two disconnected mockups. Each point's estimated
+ * 1RM is computed at render time via `estimateOneRepMax`, not stored here.
+ */
+export const ONBOARDING_PROGRESS_DEMO = {
+  weeklySamples: [
+    { weekLabel: '8 weeks ago', weightKg: 88, reps: 5 },
+    { weekLabel: '7 weeks ago', weightKg: 90, reps: 5 },
+    { weekLabel: '6 weeks ago', weightKg: 91, reps: 5 },
+    { weekLabel: '5 weeks ago', weightKg: 90, reps: 6 },
+    { weekLabel: '4 weeks ago', weightKg: 94, reps: 5 },
+    { weekLabel: '3 weeks ago', weightKg: 96, reps: 5 },
+    { weekLabel: '2 weeks ago', weightKg: 95, reps: 6 },
+    { weekLabel: 'Today', weightKg: 100, reps: 5 },
+  ] satisfies Array<{ weekLabel: string; weightKg: number; reps: number }>,
+} as const;
+
+export const ONBOARDING_READINESS_DEMO = {
+  rows: [
+    {
+      key: 'training',
+      title: 'Recent training',
+      hasInput: true,
+      subtitle: '3 sessions logged this week',
+    },
+    {
+      key: 'sleep',
+      title: 'Sleep',
+      hasInput: false,
+      subtitle: 'No input yet',
+    },
+    {
+      key: 'recovery',
+      title: 'Recovery',
+      hasInput: false,
+      subtitle: 'No input yet',
+    },
+  ] as const,
+  disclaimer:
+    'Readiness is a planning estimate built from what you log — training, sleep, recovery. It is never a diagnosis, and it is never medical advice.',
 } as const;
 
 export const AUTH = {
