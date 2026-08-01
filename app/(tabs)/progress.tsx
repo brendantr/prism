@@ -68,10 +68,6 @@ export default function ProgressScreen() {
    */
   const back = () => router.replace('/(tabs)/insights');
 
-  if (!profile || !headline) return <Screen title="Progress" onBack={back} backLabel="Back to Insights" />;
-
-  const peak = Math.max(...keyLifts.map((l) => Math.abs(l.change)), 0.01);
-
   const header = {
     eyebrow: 'Every angle',
     title: 'Progress',
@@ -79,6 +75,10 @@ export default function ProgressScreen() {
     backLabel: 'Back to Insights',
   } as const;
 
+  // Status must be checked before the profile/headline guard below: both stay
+  // null for the entire loading/error window, so checking them first silently
+  // swallowed the loading spinner and the error state behind a bare title --
+  // confirmed on-device 2026-08-01 (Docs/sprints/2026-08-01-screen-state-verification.md).
   if (status !== 'ready') {
     return (
       <Screen scroll={false} {...header}>
@@ -91,6 +91,10 @@ export default function ProgressScreen() {
       </Screen>
     );
   }
+
+  if (!profile || !headline) return <Screen title="Progress" onBack={back} backLabel="Back to Insights" />;
+
+  const peak = Math.max(...keyLifts.map((l) => Math.abs(l.change)), 0.01);
 
   return (
     <Screen {...header}>
