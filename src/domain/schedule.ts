@@ -138,6 +138,20 @@ export function weekCells(
   });
 }
 
+/** One selectable day in the "choose a workout" screen, flattened across routines. */
+export interface TemplateChoice {
+  routineId: string;
+  routineName: string;
+  day: RoutineDay;
+}
+
+/** Every routine day a lifter could deliberately start from, in routine/day order. */
+export function listTemplateChoices(routines: Routine[]): TemplateChoice[] {
+  return routines.flatMap((routine) =>
+    routine.days.map((day) => ({ routineId: routine.id, routineName: routine.name, day })),
+  );
+}
+
 /** The most recent completed session for a given routine day, if any. */
 export function lastSessionForDay(workouts: Workout[], routineDayId: string): Workout | null {
   const matches = workouts
