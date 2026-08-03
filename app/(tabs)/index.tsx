@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +27,11 @@ import {
   selectTodaysCheckIn,
   useTrainingStore,
 } from '@/store/trainingStore';
-import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
+import {
+  selectCompletedSetCount,
+  selectTotalSetCount,
+  useActiveWorkoutStore,
+} from '@/store/activeWorkoutStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
 import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
@@ -67,6 +71,11 @@ export default function TodayScreen() {
 
   const activeWorkout = useActiveWorkoutStore((s) => s.workout);
   const startWorkout = useActiveWorkoutStore((s) => s.start);
+  const draftPendingReview = useActiveWorkoutStore((s) => s.draftPendingReview);
+  const resumeDraft = useActiveWorkoutStore((s) => s.resumeDraft);
+  const discardDraft = useActiveWorkoutStore((s) => s.discard);
+  const draftCompletedSets = useActiveWorkoutStore(selectCompletedSetCount);
+  const draftTotalSets = useActiveWorkoutStore(selectTotalSetCount);
 
   const now = useMemo(() => new Date(), []);
 
@@ -172,7 +181,44 @@ export default function TodayScreen() {
         </View>
       ) : null}
 
-      {activeWorkout ? (
+      {activeWorkout && draftPendingReview ? (
+        <Card variant="raised" style={styles.draftCard} padding="base">
+          <Text variant="eyebrow" tone="cyan">
+            Recovered session
+          </Text>
+          <Text variant="title3" style={styles.draftTitle}>
+            {activeWorkout.title}
+          </Text>
+          <Text variant="bodySm" tone="faint">
+            {`Started ${formatRelativeDay(activeWorkout.startedAt).toLowerCase()} · ${draftCompletedSets}/${draftTotalSets} sets logged`}
+          </Text>
+          <Text variant="bodySm" tone="secondary" style={styles.draftBody}>
+            PRism found this workout still in progress after the app was closed. Resume it, or discard
+            the draft.
+          </Text>
+          <View style={styles.draftActions}>
+            <Button
+              label="Resume workout"
+              onPress={() => {
+                resumeDraft();
+                router.push('/workout/active');
+              }}
+              style={styles.draftActionButton}
+            />
+            <Button
+              label="Discard draft"
+              variant="danger"
+              onPress={() => {
+                Alert.alert('Discard this draft?', 'Nothing you logged will be saved.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Discard', style: 'destructive', onPress: () => discardDraft() },
+                ]);
+              }}
+              style={styles.draftActionButton}
+            />
+          </View>
+        </Card>
+      ) : activeWorkout ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Resume your workout in progress"
@@ -216,12 +262,7 @@ export default function TodayScreen() {
           exerciseById={exerciseById}
           lastSession={lastSessionForDay(completed, today.day.id)}
           onStart={handleStart}
-          onBrowse={() => {
-            if (!activeWorkout) {
-              startWorkout({ profileId: profile.id, title: 'Open session', routineDay: null });
-            }
-            router.push('/workout/picker');
-          }}
+          onBrowse={() => router.push('/workout/templates')}
         />
       ) : (
         <Card style={styles.gutter}>
@@ -229,13 +270,10 @@ export default function TodayScreen() {
             No plan is active yet. Pick one from Plans, or start an open session and add lifts as you go.
           </Text>
           <Button
-            label="Start an open session"
+            label="Choose a workout"
             variant="secondary"
             style={styles.retry}
-            onPress={() => {
-              startWorkout({ profileId: profile.id, title: 'Open session', routineDay: null });
-              router.push('/workout/active');
-            }}
+            onPress={() => router.push('/workout/templates')}
           />
         </Card>
       )}
@@ -397,6 +435,11 @@ const styles = StyleSheet.create({
     marginBottom: space.base,
   },
   demoText: { flex: 1 },
+  draftCard: { marginHorizontal: space.lg, marginBottom: space.base },
+  draftTitle: { marginTop: 2 },
+  draftBody: { marginTop: space.sm },
+  draftActions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
+  draftActionButton: { flex: 1 },
   resume: {
     flexDirection: 'row',
     alignItems: 'center',

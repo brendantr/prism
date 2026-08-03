@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { newId } from '@/utils/id';
 import type { RoutineDay, SetType, Workout, WorkoutExercise, WorkoutSet } from '@/domain/types';
+
+/** Local-only draft key, independent of the repository -- see the module-level `subscribe` below. */
+const DRAFT_STORAGE_KEY = 'prism.activeWorkout.draft.v1';
 
 /**
  * ACTIVE WORKOUT
@@ -11,8 +15,11 @@ import type { RoutineDay, SetType, Workout, WorkoutExercise, WorkoutSet } from '
  * the user finishes it, and treating it as such is how logging apps end up with
  * phantom half-workouts in the history.
  *
- * Everything here is synchronous and optimistic. Persistence happens once, on
- * finish, through the repository.
+ * Everything here is synchronous and optimistic. The repository never sees this
+ * state until `finish()` hands a completed workout to `trainingStore`. A raw
+ * mirror of `workout` is also kept in `AsyncStorage` (see the `subscribe` below)
+ * purely so a killed process can recover the in-progress draft on relaunch --
+ * that mirror is never read by anything except this store's own `hydrate()`.
  */
 
 export interface RestTimer {
@@ -28,6 +35,20 @@ interface ActiveWorkoutState {
   restTimer: RestTimer | null;
   /** Set ids the user has completed this session, for PR celebration ordering. */
   lastCompletedSetId: string | null;
+
+  /** Whether `hydrate()` has finished reading any locally persisted draft yet. */
+  hydrationStatus: 'idle' | 'loading' | 'ready';
+  /**
+   * True only when the current `workout` was just restored from disk on this
+   * app launch and the user has not yet chosen to resume or discard it. Drives
+   * the "Recovered session" decision on Today rather than silently dropping the
+   * lifter back into the logger.
+   */
+  draftPendingReview: boolean;
+  /** Reads any locally persisted draft from a prior, killed session. Idempotent. */
+  hydrate: () => Promise<void>;
+  /** Clears the pending-review flag; the restored `workout` is left untouched. */
+  resumeDraft: () => void;
 
   /**
    * `profileId` is **local draft state, never an ownership claim.**
@@ -75,6 +96,45 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
   workout: null,
   restTimer: null,
   lastCompletedSetId: null,
+  hydrationStatus: 'idle',
+  draftPendingReview: false,
+
+  hydrate: async () => {
+    if (get().hydrationStatus !== 'idle') return;
+    set({ hydrationStatus: 'loading' });
+
+    let restored: Workout | null = null;
+    try {
+      const raw = await AsyncStorage.getItem(DRAFT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Workout;
+        // Defensive: nothing in this store ever persists another status (see
+        // the `subscribe` below), but a stored value is external input and
+        // gets the same skepticism as any other -- a corrupt or unexpected
+        // shape must never block launch.
+        if (parsed && parsed.status === 'in_progress') restored = parsed;
+      }
+    } catch {
+      restored = null;
+    }
+
+    // The read above is async; the user may have already started a new
+    // session (e.g. tapping "Start session" before this resolves) while it
+    // was in flight. A workout already sitting in the store by now is never
+    // the stale on-disk draft -- it's real, current state, and must win.
+    if (get().workout) {
+      set({ hydrationStatus: 'ready' });
+      return;
+    }
+
+    set(
+      restored
+        ? { workout: restored, draftPendingReview: true, hydrationStatus: 'ready' }
+        : { hydrationStatus: 'ready' },
+    );
+  },
+
+  resumeDraft: () => set({ draftPendingReview: false }),
 
   start: ({ profileId, title, routineDay }) => {
     const workoutId = newId('wk');
@@ -113,11 +173,12 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       exercises,
     };
 
-    set({ workout, restTimer: null, lastCompletedSetId: null });
+    set({ workout, restTimer: null, lastCompletedSetId: null, draftPendingReview: false });
     return workout;
   },
 
-  discard: () => set({ workout: null, restTimer: null, lastCompletedSetId: null }),
+  discard: () =>
+    set({ workout: null, restTimer: null, lastCompletedSetId: null, draftPendingReview: false }),
 
   addExercise: (exerciseId, defaults) => {
     const workout = get().workout;
@@ -323,6 +384,23 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
     };
   },
 }));
+
+// --- Local draft persistence -----------------------------------------------
+//
+// The only persistence mechanism this store needs: every mutating action
+// above already replaces `workout` with a new object, so watching the
+// reference is enough to catch every meaningful change without touching each
+// action individually. A kill mid-session loses nothing older than the last
+// completed write; a kill mid-`finish()` loses nothing at all, since
+// `finish()` never calls `set()` -- see its own comment above.
+useActiveWorkoutStore.subscribe((state, prevState) => {
+  if (state.workout === prevState.workout) return;
+  if (state.workout && state.workout.status === 'in_progress') {
+    AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(state.workout)).catch(() => {});
+  } else {
+    AsyncStorage.removeItem(DRAFT_STORAGE_KEY).catch(() => {});
+  }
+});
 
 // --- Selectors -------------------------------------------------------------
 

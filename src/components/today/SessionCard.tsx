@@ -106,7 +106,7 @@ export function SessionCard({
           fullWidth
           size="md"
         />
-        <Button label="Build a different session" variant="ghost" size="sm" onPress={onBrowse} fullWidth />
+        <Button label="Choose a workout" variant="ghost" size="sm" onPress={onBrowse} fullWidth />
       </View>
     </Card>
   );
