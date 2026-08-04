@@ -24,6 +24,23 @@ Every handoff states, explicitly:
 - **Unresolved risks** — anything left open, deferred, or uncertain.
 - **The exact next decision** the engineer/owner needs to make, stated as a specific question, not a vague "let me know what you think."
 
+## On-device verification is cold-start only
+
+A simulator instance that has absorbed hot reloads produces convincing phantom defects. Three times
+across two sprints, a screen that looked catastrophically broken — labels cut mid-glyph, stat values
+reduced to fragments, a warning banner with no source — rendered correctly after nothing but a cold
+restart. Each was reproducible enough to look real; none survived a relaunch.
+
+**A rendering or layout defect seen on a hot-reloaded instance is not a finding until it reproduces
+on a cold-started app.** Reproduce it cold before reporting it, and say in the handoff that the claim
+comes from a cold run. The same relaunch guards against the neighbouring trap: an instance left idle
+since an earlier session can serve a cached bundle, so its screenshots are evidence about old code,
+not the change under test.
+
+Where this came from: `Docs/sprints/2026-08-03-today-insights-cohesion.md` §6.2 and
+`Docs/sprints/2026-08-04-logger-ux-polish.md` §5.2–5.3, which record the three artifacts and the
+stale bundle as they were found.
+
 ## Stop conditions
 
 An agent stops and asks rather than proceeding when it hits any of the following:
