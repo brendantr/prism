@@ -88,9 +88,16 @@ export default function ActiveWorkoutScreen() {
   // If the store has no session (e.g. a deep link straight to this route), leave.
   // `finishing` excludes the one case where an empty store is expected and the
   // navigation is already handled.
+  //
+  // `profile` is included deliberately. Without it, a session in the store but
+  // no profile fell through to `return null` below -- a blank screen with no
+  // header, no control, and no way out. Today owns the loading and error states
+  // for the training store, so the honest destination is Today. Defensive: the
+  // profile is only null before the first successful load, and the logger is
+  // not reachable until Today has loaded, so this is not expected to fire.
   useEffect(() => {
-    if (!workout && !finishing.current) router.replace('/');
-  }, [workout, router]);
+    if ((!workout || !profile) && !finishing.current) router.replace('/');
+  }, [workout, profile, router]);
 
   const priorBests = useMemo(() => bestsFromHistory(history), [history]);
 
@@ -133,7 +140,21 @@ export default function ActiveWorkoutScreen() {
       Alert.alert(
         'Nothing logged yet',
         'Mark at least one set complete, or discard the session.',
-        [{ text: 'Keep going' }, { text: 'Discard', style: 'destructive', onPress: handleDiscard }],
+        [
+          { text: 'Keep going', style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            // Straight to the discard, not through `handleDiscard`'s prompt.
+            // Nothing is logged, so there is nothing to lose and nothing to
+            // confirm -- chaining a second dialog onto this one asked the same
+            // question twice.
+            onPress: () => {
+              discard();
+              router.replace('/');
+            },
+          },
+        ],
       );
       return;
     }
@@ -189,6 +210,45 @@ export default function ActiveWorkoutScreen() {
     ]);
   };
 
+  /**
+   * Removing logged work asks first; removing nothing does not.
+   *
+   * The session-level Discard has always confirmed, but removing an exercise
+   * took every set logged under it with one tap and no prompt, and a long press
+   * on a set index deleted it outright. Both are irreversible -- there is no
+   * undo anywhere in the logger -- so both now confirm.
+   *
+   * The condition matters as much as the prompt: an untouched exercise or an
+   * unticked set is a plan, not a record, and asking before clearing one is
+   * friction in the middle of a set. Only work that would actually be lost is
+   * worth interrupting for.
+   */
+  const confirmRemoveExercise = (workoutExerciseId: string, name: string, loggedSets: number) => {
+    if (loggedSets === 0) {
+      removeExercise(workoutExerciseId);
+      return;
+    }
+    Alert.alert(
+      `Remove ${name}?`,
+      `${loggedSets} logged ${loggedSets === 1 ? 'set goes' : 'sets go'} with it. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeExercise(workoutExerciseId) },
+      ],
+    );
+  };
+
+  const confirmRemoveSet = (setId: string, isLogged: boolean) => {
+    if (!isLogged) {
+      removeSet(setId);
+      return;
+    }
+    Alert.alert('Remove this set?', 'You have already logged it. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => removeSet(setId) },
+    ]);
+  };
+
   const handleDiscard = () => {
     Alert.alert('Discard this session?', 'Nothing you logged will be saved.', [
       { text: 'Cancel', style: 'cancel' },
@@ -241,7 +301,14 @@ export default function ActiveWorkoutScreen() {
         </View>
 
         <View style={styles.metrics}>
-          <Metric label="Sets" value={`${completedSets}/${totalSets}`} />
+          {/*
+            "Sets done", not "Sets": this counts every ticked set including
+            warm-ups, which is the right progress number here but is NOT the
+            "Working sets" the summary and History report for the same session
+            (those exclude warm-ups, as volume does). Two different numbers under
+            one word made the summary look like it had lost a set.
+          */}
+          <Metric label="Sets done" value={`${completedSets}/${totalSets}`} />
           <Metric label="Volume" value={`${formatVolume(liveVolume, profile.unit)} ${profile.unit}`} />
           <Metric label="Lifts" value={String(workout.exercises.length)} />
         </View>
@@ -288,9 +355,17 @@ export default function ActiveWorkoutScreen() {
                 priorBests={priorBests.get(we.exerciseId)}
                 onUpdateSet={updateSet}
                 onToggleSet={toggleSetComplete}
-                onRemoveSet={removeSet}
+                onRemoveSet={(setId) =>
+                  confirmRemoveSet(setId, we.sets.find((s) => s.id === setId)?.completed ?? false)
+                }
                 onAddSet={() => addSet(we.id)}
-                onRemoveExercise={() => removeExercise(we.id)}
+                onRemoveExercise={() =>
+                  confirmRemoveExercise(
+                    we.id,
+                    exercise.name,
+                    we.sets.filter((s) => s.completed).length,
+                  )
+                }
                 onApplySuggestion={(weightKg) => {
                   for (const set of we.sets) {
                     if (!set.completed && set.type !== 'warmup') updateSet(set.id, { weightKg });

@@ -418,10 +418,6 @@ export function selectTotalSetCount(s: ActiveWorkoutState): number {
   return s.workout.exercises.reduce((n, we) => n + we.sets.length, 0);
 }
 
-export const SET_TYPE_LABEL: Record<SetType, string> = {
-  working: 'Working set',
-  warmup: 'Warm-up',
-  dropset: 'Drop set',
-  failure: 'To failure',
-  backoff: 'Back-off',
-};
+// `SET_TYPE_LABEL` used to live here with no consumers at all, while the logger
+// and History each wrote their own set-type wording. The one vocabulary is now
+// `src/content/setTypes.ts` -- copy does not belong in a store either way.

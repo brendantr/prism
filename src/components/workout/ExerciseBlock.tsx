@@ -24,6 +24,14 @@ export interface ExerciseBlockProps {
   onApplySuggestion: (weightKg: number) => void;
 }
 
+/** Applied to every set-table column heading. See the note at their use. */
+const COLUMN_LABEL = {
+  numberOfLines: 1,
+  adjustsFontSizeToFit: true,
+  minimumFontScale: 0.8,
+  maxFontSizeMultiplier: 1.2,
+} as const;
+
 const ACTION_TONE = {
   increase: 'positive' as const,
   hold: 'cyan' as const,
@@ -173,21 +181,29 @@ export function ExerciseBlock({
         </View>
       ) : null}
 
-      {/* Column headers */}
+      {/*
+        Column headers shrink to fit rather than wrap. These label fixed-width
+        cells whose widths are shared with `SetRow` -- the two components draw
+        one grid -- so at the accessibility text sizes "Set" broke across two
+        lines as "SE / T" while the numbers under it stayed put. Widening the
+        column would have squeezed the weight and reps steppers on a compact
+        device, so the labels scale down instead, the same way `StatBlock`
+        handles a number too wide for its column. The values still scale fully.
+      */}
       <View style={styles.columns}>
-        <Text variant="eyebrow" tone="faint" style={styles.colIndex}>
+        <Text variant="eyebrow" tone="faint" style={styles.colIndex} {...COLUMN_LABEL}>
           Set
         </Text>
-        <Text variant="eyebrow" tone="faint" style={styles.colPrev}>
+        <Text variant="eyebrow" tone="faint" style={styles.colPrev} {...COLUMN_LABEL}>
           {previousWorkout ? 'Last' : '—'}
         </Text>
-        <Text variant="eyebrow" tone="faint" style={styles.colFlex}>
+        <Text variant="eyebrow" tone="faint" style={styles.colFlex} {...COLUMN_LABEL}>
           {unit}
         </Text>
-        <Text variant="eyebrow" tone="faint" style={styles.colFlex}>
+        <Text variant="eyebrow" tone="faint" style={styles.colFlex} {...COLUMN_LABEL}>
           Reps
         </Text>
-        <Text variant="eyebrow" tone="faint" style={styles.colRpe}>
+        <Text variant="eyebrow" tone="faint" style={styles.colRpe} {...COLUMN_LABEL}>
           RPE
         </Text>
         <View style={styles.colCheck} />

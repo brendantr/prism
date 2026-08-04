@@ -7,7 +7,8 @@ import { buildSessionDetail, type HistoryExerciseLine, type HistorySetLine } fro
 import { useTrainingStore } from '@/store/trainingStore';
 import { formatDate, formatDuration, formatRpe, formatTimeOfDay, formatVolume, formatWeight } from '@/utils/format';
 import { color, radius, space } from '@/theme';
-import type { PersonalRecord, SetType, Unit } from '@/domain/types';
+import { SET_TYPE_COPY, setTypeMark } from '@/content/setTypes';
+import type { PersonalRecord, Unit } from '@/domain/types';
 
 /**
  * SESSION DETAIL
@@ -212,25 +213,8 @@ function describeRecord(pr: PersonalRecord, unit: Unit): string {
 
 // --- Exercise ---------------------------------------------------------------
 
-/** Short cell labels, matching the logger's own single-letter set marks. */
-const SET_MARK: Record<Exclude<SetType, 'working'>, string> = {
-  warmup: 'W',
-  dropset: 'D',
-  failure: 'F',
-  backoff: 'B',
-};
-
 /** Applied to every column heading in the set table. See the note at its use. */
 const COLUMN_LABEL = { numberOfLines: 1, maxFontSizeMultiplier: 1.2 } as const;
-
-/** Spoken form, so a screen reader never has to interpret "W". */
-const SET_TYPE_WORD: Record<SetType, string> = {
-  working: 'working set',
-  warmup: 'warm-up set',
-  dropset: 'drop set',
-  failure: 'set to failure',
-  backoff: 'back-off set',
-};
 
 function ExerciseCard({ line, unit }: { line: HistoryExerciseLine; unit: Unit }) {
   return (
@@ -307,7 +291,7 @@ function ExerciseCard({ line, unit }: { line: HistoryExerciseLine; unit: Unit })
 }
 
 function SetLine({ set, unit }: { set: HistorySetLine; unit: Unit }) {
-  const mark = set.type === 'working' ? String(set.position) : SET_MARK[set.type];
+  const mark = setTypeMark(set.type, set.position);
   const tone = set.countsTowardVolume ? 'primary' : 'faint';
   const disposition = set.countsTowardVolume
     ? 'Counted toward volume'
@@ -320,7 +304,7 @@ function SetLine({ set, unit }: { set: HistorySetLine; unit: Unit }) {
       style={styles.setRow}
       accessible
       accessibilityLabel={[
-        `Set ${set.position}, ${SET_TYPE_WORD[set.type]}`,
+        `Set ${set.position}, ${SET_TYPE_COPY[set.type].spoken}`,
         `${formatWeight(set.weightKg, unit)} for ${set.reps} reps`,
         set.rpe == null ? 'RPE not recorded' : `RPE ${set.rpe}`,
         disposition,

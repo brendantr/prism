@@ -307,3 +307,111 @@ describe('resumeDraft()', () => {
     expect(store().workout).toBe(before);
   });
 });
+
+/**
+ * Set and exercise editing.
+ *
+ * These actions had no coverage at all, and the logger now gates the two
+ * destructive ones behind a confirmation whose condition is "would this lose
+ * logged work?". That condition is only meaningful if the removals themselves
+ * behave — in particular if they re-index what is left, since the set number
+ * shown in the logger is `setIndex + 1` and a gap there would misnumber every
+ * row below the one removed.
+ */
+describe('set and exercise editing', () => {
+  const firstExercise = () => store().workout!.exercises[0];
+
+  describe('addSet()', () => {
+    it('inherits the last set’s load and reps rather than starting empty', () => {
+      // Inheritance is from the LAST set, not from the last *completed* one --
+      // "same weight, one more set" is the case it is built for. Fill the
+      // trailing set so the assertion reflects how a lifter actually works down
+      // an exercise, top to bottom.
+      startWithOneCompletedSet();
+      const sets = firstExercise().sets;
+      const last = sets[sets.length - 1];
+      store().updateSet(last.id, { weightKg: 100, reps: 5 });
+      const before = firstExercise().sets.length;
+
+      store().addSet(firstExercise().id);
+
+      const after = firstExercise().sets;
+      expect(after).toHaveLength(before + 1);
+      const added = after[after.length - 1];
+      expect(added.weightKg).toBe(100);
+      expect(added.reps).toBe(5);
+      // Inheriting the numbers must not inherit the tick.
+      expect(added.completed).toBe(false);
+    });
+
+    it('numbers the new set after the ones already there', () => {
+      startWithOneCompletedSet();
+
+      store().addSet(firstExercise().id);
+
+      expect(firstExercise().sets.map((s) => s.setIndex)).toEqual([0, 1, 2]);
+    });
+
+    it('does nothing when there is no session', () => {
+      store().addSet('whatever');
+      expect(store().workout).toBeNull();
+    });
+  });
+
+  describe('removeSet()', () => {
+    it('drops the set and re-indexes the ones left, so numbering has no gap', () => {
+      startWithOneCompletedSet();
+      const middle = firstExercise().sets[0].id;
+
+      store().removeSet(middle);
+
+      const sets = firstExercise().sets;
+      expect(sets.map((s) => s.id)).not.toContain(middle);
+      expect(sets.map((s) => s.setIndex)).toEqual(sets.map((_, i) => i));
+    });
+
+    it('leaves other exercises untouched', () => {
+      startWithOneCompletedSet();
+      store().addExercise('ex-2', { sets: 2, reps: 8, rest: 90 });
+      const otherBefore = store().workout!.exercises[1].sets.length;
+
+      store().removeSet(firstExercise().sets[0].id);
+
+      expect(store().workout!.exercises[1].sets).toHaveLength(otherBefore);
+    });
+  });
+
+  describe('removeExercise()', () => {
+    it('removes the exercise and every set logged under it', () => {
+      startWithOneCompletedSet();
+      store().addExercise('ex-2', { sets: 2, reps: 8, rest: 90 });
+      const target = firstExercise().id;
+
+      store().removeExercise(target);
+
+      expect(store().workout!.exercises.map((e) => e.id)).not.toContain(target);
+      expect(store().workout!.exercises).toHaveLength(1);
+    });
+
+    it('re-indexes the exercises left behind', () => {
+      startWithOneCompletedSet();
+      store().addExercise('ex-2', { sets: 1, reps: 8, rest: 90 });
+      store().addExercise('ex-3', { sets: 1, reps: 8, rest: 90 });
+
+      store().removeExercise(firstExercise().id);
+
+      expect(store().workout!.exercises.map((e) => e.orderIndex)).toEqual([0, 1]);
+    });
+
+    it('can empty the session without clearing it', () => {
+      startWithOneCompletedSet();
+
+      store().removeExercise(firstExercise().id);
+
+      // An empty session is still a session -- the logger shows its own empty
+      // state rather than bouncing the lifter back to Today.
+      expect(store().workout).not.toBeNull();
+      expect(store().workout!.exercises).toHaveLength(0);
+    });
+  });
+});
