@@ -419,10 +419,19 @@ const styles = StyleSheet.create({
   /**
    * A horizontal ScrollView inside a column flex parent will fight the list
    * below it for vertical space and end up compressed -- which clipped the
-   * chips in both filter rows. Pinning the height to the chip's own 26pt plus
-   * the row's top padding takes them out of that negotiation entirely.
+   * chips in both filter rows. flexShrink: 0 is what actually takes it out of
+   * that negotiation; minHeight only sets the floor for the common case (the
+   * chip's own 26pt plus the row's top padding) without capping how tall the
+   * row can grow.
+   *
+   * This used to be a fixed `height`, which solved the squeeze but created the
+   * opposite failure: at large accessibility text sizes the chip labels grow
+   * taller than 26pt and the fixed box clipped their tops -- confirmed
+   * on-device on Exercises' two filter rows ("FAVOURITES", "PUSH", "BARBELL",
+   * etc. all cut off at accessibility-extra-large). minHeight keeps the normal
+   * case identical while letting the row grow instead of clip.
    */
-  filterScroll: { flexGrow: 0, flexShrink: 0, height: 26 + space.md },
+  filterScroll: { flexGrow: 0, flexShrink: 0, minHeight: 26 + space.md },
   filterRow: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.xs },
   list: { paddingTop: space.base, paddingBottom: space.xxl },
   count: { paddingHorizontal: space.lg, paddingBottom: space.sm },
