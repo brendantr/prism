@@ -33,6 +33,7 @@ import {
   useActiveWorkoutStore,
 } from '@/store/activeWorkoutStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
+import { DEEPER_SECTION, DEEPER_SURFACES, tileIcon } from '@/content/deeperSurfaces';
 import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
 import { color, space } from '@/theme';
@@ -244,6 +245,9 @@ export default function TodayScreen() {
         volume={formatVolume(volume.thisWeek, profile.unit)}
         volumeUnit={profile.unit}
         volumeDelta={volume.delta}
+        // "last 7 days" is the exact phrase Insights' window selector uses, so
+        // the same span is named the same way on both screens.
+        spanNote="Sessions this week · volume, last 7 days"
         upNext={today ? (today.reason === 'rest_day' ? 'Rest day' : today.day.name) : 'No plan active'}
         upNextDetail={
           today
@@ -351,37 +355,24 @@ export default function TodayScreen() {
         </>
       ) : null}
 
-      <SectionHeader title="Go deeper" eyebrow="More detail" />
+      {/*
+        Same three surfaces, same order, same words as the "Go deeper" card on
+        Insights -- both read from `DEEPER_SURFACES`. Tiles rather than rows
+        here because this sits at the end of a long scroll and should stay
+        quiet; Insights is the hub those screens hang off and gives them rows.
+        Plans is deliberately absent: this row is for surfaces with no tab of
+        their own, and three tiles is the most that stays legible on a compact
+        device.
+      */}
+      <SectionHeader title={DEEPER_SECTION.title} eyebrow={DEEPER_SECTION.eyebrow} />
       <QuickAccess
-        items={[
-          {
-            key: 'progress',
-            label: 'Progress',
-            caption: 'Key lifts over time',
-            icon: 'trending-up-outline',
-            onPress: () => router.push('/(tabs)/progress'),
-          },
-          {
-            key: 'body',
-            label: 'Body',
-            caption: 'Recovery by muscle',
-            icon: 'body-outline',
-            onPress: () => router.push('/(tabs)/body'),
-          },
-          {
-            // Takes the slot Plans held: this row is for surfaces with no tab of
-            // their own (see `QuickAccess`), and Plans has one while History
-            // does not. Three tiles is also the most this row fits legibly on a
-            // compact device.
-            key: 'history',
-            label: 'History',
-            // Two words per line at this tile width -- "Every finished session"
-            // clipped to "Every finished s…" on an iPhone SE.
-            caption: 'Sessions you finished',
-            icon: 'time-outline',
-            onPress: () => router.push('/history'),
-          },
-        ]}
+        items={DEEPER_SURFACES.map((surface) => ({
+          key: surface.key,
+          label: surface.label,
+          caption: surface.tileCaption,
+          icon: tileIcon(surface),
+          onPress: () => router.push(surface.route),
+        }))}
       />
 
       <Text variant="eyebrow" tone="faint" style={styles.version}>

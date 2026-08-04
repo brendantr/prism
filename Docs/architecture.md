@@ -15,7 +15,11 @@
   document's Data Architecture, Security and Known Gaps sections are unchanged by them — G-1 (no
   auth path) and G-2 (non-atomic `saveWorkout`) both remain open. The route map below and the test
   counts are updated inline; nothing else in this document was re-verified on 2026-08-03. Current
-  suite: **153 tests, 12 suites** (`npm test -- --ci`), typecheck clean.
+  suite: **153 tests, 12 suites** (`npm test -- --ci`), typecheck clean. A third sprint,
+  `today-insights-cohesion` (2026-08-03), then changed presentation only on those two screens —
+  no data-layer, schema or store change — and added `src/content/deeperSurfaces.ts` as the single
+  source of truth for the Progress/Body/History navigation row both screens render. Suite after it:
+  **163 tests, 13 suites**, typecheck clean.
 - **Baseline refresh (2026-08-01):** Re-verified against `main` after the `rls-policy-verification` → `rls-migration-fix` → `dependency-hygiene` → `cleanup-batch` sprint sequence (a pre-feature-readiness closure pass — see `Docs/readiness/2026-07-31-closure-inventory.md`). Commands re-run this session: `npm run typecheck` (clean), `npm test -- --ci` (**103/103 passed, 9 suites** — up from the 40/40, 1-suite baseline below), `npx expo-doctor` (**20/20**), `npm audit` (**11 moderate**, down from an unrecorded-here 36; the 1 high finding is fixed, the 11 moderate are confirmed unfixable short of a major, breaking Expo downgrade — see `Docs/sprints/2026-08-01-dependency-hygiene.md`). Material changes since 2026-07-29, superseding specific claims below where noted inline: (1) both security sprints landed (Keychain session storage, CSPRNG ids, server-derived write ownership, migration `0002_security_hardening.sql`); (2) the RLS migration defect is **fixed** — `supabase/migrations/0001_init.sql` now applies cleanly and 57/57 cross-tenant isolation assertions pass against the actual committed file (`Docs/sprints/2026-08-01-rls-migration-fix.md`), closing `Docs/invariants.md` I-1; (3) the UI was restructured to a five-tab bar (Today/Exercises/Insights/Social/Plans) with an onboarding flow, and all seven data-driven screens now share a loading/error/empty-state primitive (`ScreenState`); (4) a brand icon/splash asset pipeline (`assets/brand/`, `scripts/generate-app-icons.sh`) was added, including an Android Themed-Icons monochrome layer; (5) `react-hook-form`/`zod`/`@hookform/resolvers` were removed (previously unused); (6) the unreachable `CheckIn.note` field and the dead `Stepper.tsx` component were removed. This document's Known Gaps table is updated inline below rather than restating findings that no longer hold.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
@@ -140,6 +144,11 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
 - `src/store/onboardingStore.ts` — onboarding's local, `AsyncStorage`-only draft state.
 - `src/components/ui/ScreenState.tsx` — the shared loading/error/empty-state primitive all seven
   data-driven screens now use.
+- `src/content/` — user-facing copy held outside the screens that render it (`onboarding.ts`,
+  `social.ts`, and, added 2026-08-03, `deeperSurfaces.ts`, the single source of truth for the
+  Progress/Body/History navigation row that both Today and Insights draw from).
+- `src/domain/history.ts` + `app/history/` — the Workout History v1 derivation layer and its two
+  screens (added 2026-08-03).
 
 **Responsibility and dependency direction (verified by import inspection):**
 

@@ -46,7 +46,10 @@ export function SessionCard({
       <View style={styles.head}>
         <Chip label={copy.eyebrow} tone={copy.tone} />
         {reason !== 'rest_day' ? (
-          <Text variant="eyebrow" tone="faint">
+          // Shrinks against the chip beside it. Without this the row overflowed
+          // the card on a 390pt screen and clipped its own last value mid-word
+          // ("~49M" -> "~49"), on the most important card in the app.
+          <Text variant="eyebrow" tone="faint" numberOfLines={1} style={styles.headMeta}>
             {`${day.exercises.length} lifts · ${totalSets} sets · ~${minutes}m`}
           </Text>
         ) : null}
@@ -115,6 +118,7 @@ export function SessionCard({
 const styles = StyleSheet.create({
   card: { marginHorizontal: space.lg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+  headMeta: { flexShrink: 1, textAlign: 'right' },
   title: { marginTop: space.md },
   muscles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.md },
   list: {

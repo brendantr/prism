@@ -19,6 +19,7 @@ import { completedThisWeek, volumeInWindow } from '@/domain/calc/readiness';
 import { muscleDistribution, workoutWorkingSetCount } from '@/domain/calc/volume';
 import { MUSCLE_META } from '@/domain/muscles';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
+import { DEEPER_SECTION, DEEPER_SURFACES } from '@/content/deeperSurfaces';
 import { useShallow } from 'zustand/react/shallow';
 import { formatVolume } from '@/utils/format';
 import { color, radius, space } from '@/theme';
@@ -200,10 +201,15 @@ export default function InsightsScreen() {
   if (!profile || !summary) {
     return (
       <Screen scroll={false} {...header}>
+        {/* Every other empty state in the app offers a way out, which is what
+            `EmptyState` is for -- this one used to be a dead end, and the way
+            out of "no data yet" is the same first session History points at. */}
         <EmptyState
           icon="sparkles-outline"
           title="Nothing to read yet"
-          body="Insights appear once you have logged a session or two. There is no shortcut — the numbers come from your own training."
+          body="Insights appear once you have finished a session or two. There is no shortcut — the numbers come from your own training."
+          actionLabel="Choose a workout"
+          onAction={() => router.push('/workout/templates')}
         />
       </Screen>
     );
@@ -301,34 +307,22 @@ export default function InsightsScreen() {
         )}
       </Card>
 
-      <SectionHeader title="Go deeper" eyebrow="Detail screens" />
+      {/* Shares `DEEPER_SURFACES` with Today's tile row -- see that module for
+          why the two screens stopped owning these words separately. */}
+      <SectionHeader title={DEEPER_SECTION.title} eyebrow={DEEPER_SECTION.eyebrow} />
       <Card style={styles.gutterCard} padding="base">
-        <ListRow
-          title="History"
-          subtitle="Every session you have finished, newest first"
-          icon="time"
-          iconTone="violet"
-          chevron
-          onPress={() => router.push('/history')}
-        />
-        <ListRow
-          title="Progress"
-          subtitle="Estimated 1RM and volume for your key lifts"
-          icon="trending-up"
-          iconTone="violet"
-          chevron
-          divided
-          onPress={() => router.push('/(tabs)/progress')}
-        />
-        <ListRow
-          title="Body"
-          subtitle="Estimated recovery for every muscle group"
-          icon="body"
-          iconTone="cyan"
-          chevron
-          divided
-          onPress={() => router.push('/(tabs)/body')}
-        />
+        {DEEPER_SURFACES.map((surface, i) => (
+          <ListRow
+            key={surface.key}
+            title={surface.label}
+            subtitle={surface.rowSubtitle}
+            icon={surface.icon}
+            iconTone={surface.iconTone}
+            chevron
+            divided={i > 0}
+            onPress={() => router.push(surface.route)}
+          />
+        ))}
       </Card>
 
       <SectionHeader title="Coming next" eyebrow="Roadmap" />
