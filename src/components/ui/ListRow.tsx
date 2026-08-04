@@ -78,8 +78,18 @@ export function ListRow({
         <Text variant="title3" numberOfLines={2}>
           {title}
         </Text>
+        {/*
+          No cap, for the same reason the title lost its. Every current
+          subtitle is a bounded, factual string (a session's stats joined
+          with " · ", an exercise's equipment and muscles, a fixed line of
+          product copy) -- not open-ended user text -- so this only ever adds
+          a line or two on the rows that need it. Confirmed on-device: at
+          accessibility-extra-large, Social's own subtitles were clipping the
+          same way the title was ("...consistency you actually se…",
+          "...Nothing about r…"), on rows with no drill-down to read the rest.
+        */}
         {subtitle ? (
-          <Text variant="bodySm" tone="faint" numberOfLines={2} style={styles.subtitle}>
+          <Text variant="bodySm" tone="faint" style={styles.subtitle}>
             {subtitle}
           </Text>
         ) : null}
