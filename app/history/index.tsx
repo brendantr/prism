@@ -58,7 +58,10 @@ export default function HistoryScreen() {
   const totals = useMemo(() => historyTotals(entries), [entries]);
 
   const header = {
-    eyebrow: 'Every session you have logged',
+    // "Finished", not "logged": this list is completed sessions only, and a
+    // draft that was logged but never finished never appears in it. Today and
+    // Insights use the same word for the same reason (`content/deeperSurfaces`).
+    eyebrow: 'Every session you have finished',
     title: 'History',
     onBack: () => router.back(),
   } as const;
@@ -85,7 +88,7 @@ export default function HistoryScreen() {
         <EmptyState
           icon="time-outline"
           title="No finished sessions yet"
-          body="Sessions land here the moment you finish one. Nothing is backfilled — this list only ever shows training you actually logged."
+          body="Sessions land here the moment you finish one. Nothing is backfilled — this list only ever shows training you actually finished."
           actionLabel="Choose a workout"
           onAction={() => router.push('/workout/templates')}
         />

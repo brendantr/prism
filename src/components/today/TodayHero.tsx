@@ -21,6 +21,17 @@ export interface TodayHeroProps {
   volume: string;
   volumeUnit: string;
   volumeDelta?: { text: string; direction: 'up' | 'down' | 'flat' };
+  /**
+   * The periods the three numbers above cover, in words.
+   *
+   * Required rather than optional because the row mixes spans that look alike
+   * and are not: readiness is right now, sessions are the calendar week, volume
+   * is a rolling seven days. Insights states the rule this satisfies -- every
+   * number names the span it covers, next to the number itself -- and its own
+   * summary card and History's carry the same line. This card was the only one
+   * of the three without it.
+   */
+  spanNote: string;
   /** What the plan says is next, in one line. */
   upNext: string;
   /** Shape of that session -- lifts, sets, estimated minutes. */
@@ -51,6 +62,7 @@ export function TodayHero({
   volume,
   volumeUnit,
   volumeDelta,
+  spanNote,
   upNext,
   upNextDetail,
 }: TodayHeroProps) {
@@ -70,10 +82,18 @@ export function TodayHero({
           tone={readinessScore != null ? 'violet' : 'primary'}
         />
         <View style={styles.divider} />
+        {/*
+          No `unit` here on purpose. It used to carry "this week" / "on target",
+          which the note below now says once for the whole card -- and a phrase
+          in that slot breaks `StatBlock`'s layout contract: the unit holds its
+          full width and the value shrinks into what is left, which is right for
+          "kg" and wrong for two words. At the accessibility text sizes it
+          squeezed "0/4" down to almost nothing. Being on target is carried by
+          the cyan tone instead.
+        */}
         <StatBlock
           label="Sessions"
           value={`${sessionsDone}/${sessionsTarget}`}
-          unit={onTarget ? 'on target' : 'this week'}
           tone={onTarget ? 'cyan' : 'primary'}
         />
         <View style={styles.divider} />
@@ -85,6 +105,10 @@ export function TodayHero({
           {readinessBand}
         </Text>
       ) : null}
+
+      <Text variant="bodySm" tone="faint" style={styles.spanNote}>
+        {spanNote}
+      </Text>
 
       <View style={styles.next}>
         <Ionicons name="arrow-forward-circle-outline" size={15} color={color.violetBright} />
@@ -112,6 +136,7 @@ const styles = StyleSheet.create({
     marginHorizontal: space.md,
   },
   noScore: { marginTop: space.md },
+  spanNote: { marginTop: space.md, lineHeight: 18 },
   next: {
     flexDirection: 'row',
     alignItems: 'center',
