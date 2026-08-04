@@ -120,7 +120,13 @@ export default function ProgressScreen() {
         {keyLifts.map((lift, i) => (
           <View key={lift.id} style={[styles.liftRow, i > 0 && styles.divided]}>
             <View style={styles.liftHead}>
-              <Text variant="title3" numberOfLines={1} style={styles.liftName}>
+              {/*
+                Same fix as ListRow's title, same reason: this shares a row
+                with a trailing numeric value, and "Barbell Bench Press"
+                clipped to "Barbell Bench Pre…" at accessibility-extra-large,
+                confirmed on-device -- hiding which lift the row even was.
+              */}
+              <Text variant="title3" numberOfLines={2} style={styles.liftName}>
                 {lift.name}
               </Text>
               <Text variant="numeric" tone="violet">
