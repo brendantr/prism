@@ -38,3 +38,46 @@ jobs:
       # of the 8-week seed generator.
       - name: Test
         run: npm test -- --ci
+
+  rls:
+    name: RLS isolation suite
+    runs-on: ubuntu-latest
+
+    # A disposable Postgres for this job only -- torn down when the job ends.
+    # No real Supabase project is touched; supabase/tests/rls/00_setup_auth_emulation.sql
+    # reconstructs just enough of Supabase's auth schema/roles against plain
+    # Postgres to exercise the RLS policies faithfully. Pinned to the same
+    # Postgres 16 used in this suite's own disposable-instance verification
+    # (Docs/sprints/2026-08-01-rls-migration-fix.md), not tied to any
+    # particular hosted project's version.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ubuntu-latest already ships psql (postgresql-client-16 is a hard
+      # dependency of the PostgreSQL 16 the runner image documents as
+      # pre-installed), but installing it explicitly here means this job does
+      # not depend on that staying true if GitHub's runner image changes.
+      - name: Install postgresql-client-16
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
+
+      # Applies both migrations plus the auth-emulation and isolation-assertion
+      # suite in supabase/tests/rls/ against the disposable Postgres above.
+      # supabase/tests/rls/run.sh already exits non-zero on the first SQL
+      # error (set -euo pipefail, ON_ERROR_STOP=1 per psql call).
+      - name: Run RLS isolation suite
+        env:
+          PSQL_URI: postgresql://postgres:postgres@localhost:5432/postgres
+        run: supabase/tests/rls/run.sh
