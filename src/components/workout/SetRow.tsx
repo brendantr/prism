@@ -5,6 +5,7 @@ import { Text } from '@/components/ui';
 import { RpeSelector } from './RpeSelector';
 import { displayToKg, kgToDisplay, loadIncrementKg } from '@/domain/calc/loadRecommendation';
 import { formatWeight } from '@/utils/format';
+import { SET_TYPE_COPY, setTypeMark } from '@/content/setTypes';
 import { a11y, color, opacity, radius, space } from '@/theme';
 import type { Equipment, Unit, WorkoutSet } from '@/domain/types';
 
@@ -57,14 +58,17 @@ export const SetRow = memo(function SetRow({
       {/* Set index / type */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Set ${set.setIndex + 1}, ${isWarmup ? 'warm-up' : 'working set'}. Tap to switch type.`}
+        // The long press removes the set and there is no other affordance for
+        // it, so the label has to say so -- otherwise the only way to discover
+        // the gesture is to trigger it by accident.
+        accessibilityLabel={`Set ${set.setIndex + 1}, ${SET_TYPE_COPY[set.type].spoken}. Tap to switch type, long press to remove.`}
         onPress={() => onChange({ type: isWarmup ? 'working' : 'warmup' })}
         onLongPress={onRemove}
         hitSlop={6}
         style={({ pressed }) => [styles.indexCell, pressed && { opacity: opacity.pressed }]}
       >
-        <Text variant="numericSm" tone={isWarmup ? 'faint' : 'secondary'}>
-          {isWarmup ? 'W' : set.setIndex + 1}
+        <Text variant="numericSm" tone={set.type === 'working' ? 'secondary' : 'faint'}>
+          {setTypeMark(set.type, set.setIndex + 1)}
         </Text>
       </Pressable>
 
