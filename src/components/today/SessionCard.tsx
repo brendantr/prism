@@ -76,7 +76,17 @@ export function SessionCard({
               <Text variant="numericSm" tone="faint" style={styles.rowIndex}>
                 {String(i + 1).padStart(2, '0')}
               </Text>
-              <Text variant="body" style={styles.rowName} numberOfLines={1}>
+              {/*
+                Same fix as ListRow's title, Progress' lift names, and Plans'
+                day names, all found the same way this session: a name
+                sharing a row with other fixed-width values, capped at one
+                line. "Dumbbell Shoulder Press" clipped to "Dumbbell
+                Should…" at accessibility-extra-large, confirmed on-device
+                on this, the single most important card in the app -- the
+                row already has minHeight, not a fixed height, so it grows
+                to fit without any other change.
+              */}
+              <Text variant="body" style={styles.rowName} numberOfLines={2}>
                 {exercise?.name ?? 'Exercise'}
               </Text>
               <Text variant="numericSm" tone="muted">
