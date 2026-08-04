@@ -47,6 +47,21 @@ export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/** "March 2026" from a `YYYY-MM` key. Heads each month of workout history. */
+export function formatMonthLabel(key: string): string {
+  const [year, month] = key.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return key;
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+/** "10:32" wall-clock time, for stamping when a session started. */
+export function formatTimeOfDay(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 export function formatRpe(rpe: number | null): string {
   return rpe == null ? '—' : String(rpe);
 }

@@ -440,6 +440,14 @@ Per `Docs/agents.md` "Required handoff," these are stated as specific questions,
    that boundary. Recommend treating "History" as its own future sprint and keeping this feature's
    review surface to the existing summary screen, but this is a scope call for the engineer/owner, not
    this plan.
+
+   **Resolved 2026-08-03 — the recommendation was taken.** History was scoped as its own sprint
+   (`Docs/sprints/2026-08-03-workout-history-v1.md`), after `workout-session-continuity-v1`
+   deliberately left it out. That sprint built the list and a read-only session detail; it did not
+   make the post-finish summary screen reachable a second time, and it did not add editing or
+   deletion of a completed session. This question is closed; the open one it leaves behind is
+   whether a completed session should become editable or deletable, which that record states as its
+   own next decision.
 4. **Sequencing against `Docs/invariants.md` I-2 (non-atomic `saveWorkout`).** Should the future
    implementation sprint treat fixing I-2 as a precondition, given that workout-logging v1 is the
    feature I-2 is actually about? Or ship v1 against the existing non-atomic path with the risk

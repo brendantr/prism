@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, Chip, LinearSpectrum, Screen, SectionHeader, StatBlock, Text } from '@/components/ui';
 import { muscleDistribution, workoutRepCount, workoutVolume, workoutWorkingSetCount } from '@/domain/calc/volume';
 import { bestsFromHistory, detectWorkoutPrs } from '@/domain/calc/prs';
+import { workoutDurationMinutes } from '@/domain/history';
 import { MUSCLE_META } from '@/domain/muscles';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -39,10 +40,8 @@ export default function WorkoutSummaryScreen() {
 
   const stats = useMemo(() => {
     if (!workout) return null;
-    const durationMinutes =
-      workout.endedAt != null
-        ? (new Date(workout.endedAt).getTime() - new Date(workout.startedAt).getTime()) / 60_000
-        : null;
+    // Shared with History, so a session's duration is measured one way only.
+    const durationMinutes = workoutDurationMinutes(workout);
 
     // Compare against every OTHER completed session so the current one does not
     // count itself as its own precedent.

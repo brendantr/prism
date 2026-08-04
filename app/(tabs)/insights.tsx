@@ -304,11 +304,20 @@ export default function InsightsScreen() {
       <SectionHeader title="Go deeper" eyebrow="Detail screens" />
       <Card style={styles.gutterCard} padding="base">
         <ListRow
+          title="History"
+          subtitle="Every session you have finished, newest first"
+          icon="time"
+          iconTone="violet"
+          chevron
+          onPress={() => router.push('/history')}
+        />
+        <ListRow
           title="Progress"
           subtitle="Estimated 1RM and volume for your key lifts"
           icon="trending-up"
           iconTone="violet"
           chevron
+          divided
           onPress={() => router.push('/(tabs)/progress')}
         />
         <ListRow
