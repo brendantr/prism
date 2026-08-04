@@ -64,7 +64,18 @@ export function ListRow({
       ) : null}
 
       <View style={styles.text}>
-        <Text variant="title3" numberOfLines={1}>
+        {/*
+          Two lines, not one. A title short enough to fit on one line at the
+          app's default text size still renders on one line here -- this only
+          changes what happens when it doesn't fit, which was previously an
+          ellipsis regardless of how much was lost. At large accessibility
+          text sizes that hid real content, not just visual overflow: Social's
+          "A short list, not a following count" clipped to "...not a follo…",
+          losing the entire point of the sentence, and Exercises' "Single-Arm
+          Dumbbell Row" clipped to "...Dumbbell R…", losing which exercise it
+          even was. Confirmed on-device on both tabs before this change.
+        */}
+        <Text variant="title3" numberOfLines={2}>
           {title}
         </Text>
         {subtitle ? (

@@ -73,7 +73,14 @@ export default function PlansScreen() {
               {routine.days.map((day) => (
                 <View key={day.id} style={styles.day}>
                   <View style={styles.dayHead}>
-                    <Text variant="title3" numberOfLines={1} style={styles.dayName}>
+                    {/*
+                      Two lines, not one -- on a compact device at large
+                      accessibility text, this shares a row with the weekday
+                      and duration eyebrow, and a day name as short as "Lower
+                      — Hinge" no longer fit next to it. Confirmed on-device
+                      on the SE: "Lower — Hin…", hiding which day it was.
+                    */}
+                    <Text variant="title3" numberOfLines={2} style={styles.dayName}>
                       {day.name}
                     </Text>
                     <Text variant="eyebrow" tone="faint">
@@ -81,7 +88,17 @@ export default function PlansScreen() {
                       {` · ~${estimateDayMinutes(day)}m`}
                     </Text>
                   </View>
-                  <Text variant="bodySm" tone="faint" numberOfLines={2}>
+                  {/*
+                    No numberOfLines cap -- matches the routine description
+                    right above, which already grows freely. This line is the
+                    only place a day's exercises are listed on a screen whose
+                    cards are read-only (no drill-down), so at large
+                    accessibility text a fixed 2-line cap was silently cutting
+                    the list short: "Back Squat · Romanian Deadlift · Leg
+                    Press · Seated Leg Curl · St…", confirmed on-device on
+                    every day of every routine before this change.
+                  */}
+                  <Text variant="bodySm" tone="faint">
                     {day.exercises
                       .map((slot) => exerciseById.get(slot.exerciseId)?.name ?? '')
                       .filter(Boolean)
