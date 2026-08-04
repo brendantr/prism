@@ -12,7 +12,9 @@ import { color } from '@/theme';
 /**
  * Root layout. Loads the training data once, then hands off to the tabs.
  * Modal routes (logger, picker, summary) sit outside the tab navigator so they
- * cover the tab bar during a session.
+ * cover the tab bar during a session. History sits here too: it is a review
+ * surface reached from more than one tab, and pushing it on the root stack is
+ * what makes a plain "back" return where the lifter actually came from.
  *
  * First launch is routed through `onboarding/` instead. The decision waits on a
  * persisted flag, so the splash holds the screen rather than letting the tabs
@@ -70,6 +72,11 @@ export default function RootLayout() {
             />
             <Stack.Screen name="workout/picker" options={{ presentation: 'modal' }} />
             <Stack.Screen name="workout/templates" options={{ presentation: 'modal' }} />
+            {/* Registered rather than left to file-convention routing alone, so
+                every route this stack can show is visible in one place. */}
+            <Stack.Screen name="workout/summary" />
+            <Stack.Screen name="history/index" />
+            <Stack.Screen name="history/[id]" />
           </Stack>
         )}
       </SafeAreaProvider>

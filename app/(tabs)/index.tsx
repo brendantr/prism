@@ -369,11 +369,17 @@ export default function TodayScreen() {
             onPress: () => router.push('/(tabs)/body'),
           },
           {
-            key: 'plans',
-            label: 'Plans',
-            caption: 'Templates and rotation',
-            icon: 'grid-outline',
-            onPress: () => router.push('/(tabs)/plans'),
+            // Takes the slot Plans held: this row is for surfaces with no tab of
+            // their own (see `QuickAccess`), and Plans has one while History
+            // does not. Three tiles is also the most this row fits legibly on a
+            // compact device.
+            key: 'history',
+            label: 'History',
+            // Two words per line at this tile width -- "Every finished session"
+            // clipped to "Every finished s…" on an iPhone SE.
+            caption: 'Sessions you finished',
+            icon: 'time-outline',
+            onPress: () => router.push('/history'),
           },
         ]}
       />
