@@ -1,4 +1,5 @@
 import type { AuthFailure } from '@/domain/authErrors';
+import type { ResetCodeError } from '@/domain/authReset';
 import { PASSWORD_MIN_LENGTH, type AuthFieldError } from '@/domain/authValidation';
 import type { Equipment, Experience, Goal } from '@/domain/types';
 
@@ -201,6 +202,18 @@ export const AUTH_OUTCOME_COPY: Record<AuthFailure, string> = {
   network: 'PRism could not reach the server. Check your connection and try again.',
   sessionExpired: 'You have been signed out. Sign in to continue.',
   checkEmail: 'Check your email for a confirmation link, then sign in.',
+  /*
+    "If that address has an account" is load-bearing. Confirming that a code was
+    sent would confirm the address is registered, turning the reset form into the
+    account-enumeration oracle the sign-in message is carefully worded to avoid.
+    The server already behaves this way; the copy matches it.
+  */
+  resetSent: 'If that address has an account, a code is on its way. Check your email.',
+  /*
+    Wrong and expired are one message, for the same reason: "expired" would
+    confirm a code had been issued, and therefore that the account exists.
+  */
+  invalidCode: 'That code is not right, or it has expired. Request a new one.',
   unknown: 'Something went wrong. Try again.',
 };
 
@@ -217,7 +230,52 @@ export const AUTH_OUTCOME_TONE: Record<AuthFailure, 'error' | 'notice'> = {
   network: 'error',
   sessionExpired: 'notice',
   checkEmail: 'notice',
+  /** A success. Rendering it in the error tone would say the send had failed. */
+  resetSent: 'notice',
+  invalidCode: 'error',
   unknown: 'error',
+};
+
+/**
+ * PASSWORD RESET
+ * ==============
+ * Reset lives inside the auth screen rather than on a route of its own, so its
+ * copy sits beside `AUTH` rather than in a module of its own.
+ *
+ * The flow is code-based, not link-based: the lifter reads a code out of the
+ * email and types it here. That is a consequence of `detectSessionInUrl` being
+ * false with no deep-link handler in the app — the reasoning is in
+ * `Docs/production-posture-v1.md` §4.1 — and the copy has to make it feel
+ * intentional rather than like a link that failed to open.
+ */
+export const AUTH_RESET = {
+  forgotPasswordLabel: 'Forgot password?',
+
+  requestTitle: 'Reset your password',
+  requestBody: 'Enter the address you signed up with and we will send you a code.',
+  sendCodeCta: 'Send code',
+
+  sentTitle: 'Check your email',
+  sentBody: 'If that address has an account, a six-digit code is on its way. Enter it below.',
+  enterCodeCta: 'I have the code',
+
+  codeTitle: 'Enter your code',
+  codeBody: 'Paste the six-digit code from the email, then choose a new password.',
+  codeLabel: 'Code',
+  codePlaceholder: '123456',
+  newPasswordLabel: 'New password',
+  setPasswordCta: 'Set new password',
+
+  doneNotice: 'Password updated. Sign in with your new password.',
+
+  backToSignIn: 'Back to sign in',
+  resendCode: 'Send a new code',
+} as const;
+
+/** One sentence per reset field failure, keyed by the domain's codes. */
+export const AUTH_RESET_ERROR_COPY: Record<ResetCodeError, string> = {
+  code_required: 'Enter the code from your email.',
+  code_invalid: 'The code is six digits.',
 };
 
 export interface StepOption<T extends string | number> {

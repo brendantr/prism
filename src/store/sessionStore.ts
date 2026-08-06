@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import {
+  confirmPasswordReset,
   getCurrentUser,
   isAuthEnabled,
+  requestPasswordReset,
   signInWithPassword,
   signUpWithPassword,
   subscribeToAuthState,
@@ -55,7 +57,7 @@ export interface SessionState {
    */
   userId: string | null;
   email: string | null;
-  pending: 'signIn' | 'signUp' | null;
+  pending: 'signIn' | 'signUp' | 'resetRequest' | 'resetConfirm' | null;
   /**
    * Outcome of the last attempt. Note `'checkEmail'` rides this channel while
    * being a *success* -- see `AUTH_OUTCOME_TONE` in `src/content/onboarding.ts`,
@@ -73,6 +75,11 @@ export interface SessionState {
 
   signIn: (email: string, password: string) => Promise<boolean>;
   signUp: (email: string, password: string) => Promise<boolean>;
+
+  /** Step 1 of reset: ask for a code. Resolves true when the email was accepted. */
+  requestReset: (email: string) => Promise<boolean>;
+  /** Step 2: verify the code and set the new password. Ends signed out. */
+  confirmReset: (email: string, token: string, newPassword: string) => Promise<boolean>;
 }
 
 /**
@@ -80,6 +87,23 @@ export interface SessionState {
  * posture. Never torn down: the only thing that ends it is the process.
  */
 let authSubscribed = false;
+
+/**
+ * Suppresses phase changes while a password reset is mid-flight.
+ *
+ * `verifyOtp` signs the lifter in — that is the only way `updateUser` can change
+ * a password — and `confirmPasswordReset` signs them straight back out a moment
+ * later. Without this flag the intervening `SIGNED_IN` would flip the phase to
+ * `'authenticated'`, the route gate in `app/_layout.tsx` would redirect to
+ * Today, and the following `SIGNED_OUT` would bounce them back to `/auth`. The
+ * lifter would watch their app flash through the home screen in the middle of
+ * resetting a password they have not yet confirmed works.
+ *
+ * Module-level rather than store state on purpose: it is not something any
+ * screen renders, and putting it in state would re-render every subscriber
+ * twice per reset for no visible reason.
+ */
+let passwordResetInFlight = false;
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   phase: 'unknown',
@@ -103,6 +127,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!authSubscribed) {
       authSubscribed = true;
       subscribeToAuthState((event, user) => {
+        // A reset owns the session lifecycle for its duration -- see
+        // `passwordResetInFlight`. Both the sign-in and the sign-out it causes
+        // are internal steps, not things the lifter did.
+        if (passwordResetInFlight) return;
+
         if (event === 'SIGNED_OUT') {
           // The revoked/expired refresh token path: supabase-js emits this when
           // a refresh permanently fails. Routing, not an error state.
@@ -191,9 +220,59 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return false;
     }
   },
+
+  /**
+   * Step 1: send the code.
+   *
+   * `'resetSent'` is reported the same way whether or not the address has an
+   * account — the server behaves that way and the copy must not be more
+   * specific than the server (see `AUTH_OUTCOME_COPY`).
+   */
+  requestReset: async (email) => {
+    set({ pending: 'resetRequest', lastFailure: null });
+    try {
+      await requestPasswordReset(email);
+      get().finishAttempt('resetSent');
+      return true;
+    } catch (e) {
+      get().finishAttempt(toAuthFailure(e));
+      return false;
+    }
+  },
+
+  /**
+   * Step 2: verify the code, set the password, end signed out.
+   *
+   * The phase must be exactly where it started when this returns — the lifter
+   * has a new password and has not yet used it. The `try/finally` guarantees the
+   * suppression flag is cleared even when the call throws, because a stuck flag
+   * would leave the app deaf to every later sign-in and sign-out for the rest of
+   * the process.
+   */
+  confirmReset: async (email, token, newPassword) => {
+    set({ pending: 'resetConfirm', lastFailure: null });
+    passwordResetInFlight = true;
+    try {
+      await confirmPasswordReset(email, token, newPassword);
+      // Deliberately not `markAuthenticated`: the reset ends signed out.
+      set({ pending: null, lastFailure: null, phase: 'unauthenticated', userId: null, email: null });
+      return true;
+    } catch (e) {
+      get().finishAttempt(toAuthFailure(e, 'resetCode'));
+      return false;
+    } finally {
+      passwordResetInFlight = false;
+    }
+  },
 }));
 
-/** Test seam. Resets the module-level subscription latch alongside the store. */
+/** Test seam. Resets the module-level latches alongside the store. */
 export function __resetSessionSubscriptionForTests(): void {
   authSubscribed = false;
+  passwordResetInFlight = false;
+}
+
+/** Test seam. Whether auth events are currently being suppressed by a reset. */
+export function __isPasswordResetInFlightForTests(): boolean {
+  return passwordResetInFlight;
 }
