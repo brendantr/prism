@@ -60,7 +60,7 @@ RPE (`Docs/invariants.md` I-8, I-11, I-16) `[fact]`.
 | Surface | Route | Job in v1 | Status |
 |---|---|---|---|
 | Onboarding | `onboarding/{index,features,auth,steps,complete}` | Welcome → 3-slide carousel → account (presentation-only) → 4 skippable questions → completion summary | Built `[fact]` |
-| Today | `(tabs)/index` | The launch surface: where you stand, one action, then depth on scroll | Built; changes in D9 |
+| Today | `(tabs)/index` | The launch surface: where you stand, one action, then depth on scroll | Built, including D9 |
 | Template choice | `workout/templates` (modal) | "Choose a workout": every `RoutineDay`, grouped, plus "Start empty" | Built `[fact]` |
 | Logger | `workout/active` (slide-from-bottom, gestures disabled) | Set-by-set logging, the highest-frequency screen | Built `[fact]` |
 | Exercise picker | `workout/picker` (modal) | Search/filter → add a lift to the active session | Built `[fact]` |
@@ -264,7 +264,7 @@ from History detail to a read-only summary view — not making the capture scree
 
 **Statement** `[decision]` `QuickAccess`'s three-tile row on Today is replaced by the `ListRow` card
 pattern Insights already renders, both continuing to read from `src/content/deeperSurfaces.ts`. This is
-the one existing-UI change this document introduces. **Status: not implemented — needs its own sprint**
+the one existing-UI change this document introduces. **Status: implemented, `feature/today-v1-alignment`**
 `[fact]`.
 
 **Rationale** This closes `today-insights-cohesion`'s stated next decision. The two screens already
@@ -276,14 +276,18 @@ tile caption and long row subtitle, and make the two screens identical. The cost
 extra height at the very bottom of Today's scroll — the cheapest place in the app to spend it
 `[assumption; the 120pt figure is that sprint's estimate, not a measurement]`.
 
-**Evidence** `src/components/today/QuickAccess.tsx`; `app/(tabs)/insights.tsx`;
-`src/content/deeperSurfaces.ts` and its 10 content-invariant tests.
+**Evidence** `app/(tabs)/index.tsx` (the `ListRow` card, field-for-field identical to Insights');
+`app/(tabs)/insights.tsx`; `src/content/deeperSurfaces.ts` and its 10 content-invariant tests, unchanged.
 
 **Reversal** If the extra height measurably hurts Today, the alternative is reflowing the tiles at large
 text sizes — a size-dependent branch inside a shared component, which is why it was not chosen first.
 
-**Follow-on** `[open question]` Does the conversion retire `QuickAccess` as a component, or keep it as a
-thin wrapper around `ListRow`? Decide in the implementing sprint.
+**Follow-on, resolved** `[fact]` `QuickAccess` was retired outright rather than kept as a wrapper --
+`grep -rn "QuickAccess"` showed exactly one consumer (`app/(tabs)/index.tsx`) before this change, so
+nothing else depended on it. `tileCaption`/`tileIcon`/`TILE_CAPTION_MAX_LINE_CHARS`/`_LINES` in
+`src/content/deeperSurfaces.ts` are kept, unused, for any future compact layout -- deleting them would
+have meant rewriting `deeperSurfaces.test.ts`'s pinning tests for a data shape the module's own
+comment calls deliberate, which is churn beyond this decision's scope.
 
 ---
 
@@ -557,7 +561,7 @@ gestures this runtime recognises as a scroll, proven by the same failure on unto
 | Draft recovery with explicit Resume/Discard | **v1** | D5 | — |
 | Confirm-on-loss destructive actions | **v1** | D6 | — |
 | Read-only History | **v1** | D7 | — |
-| Today tiles → `ListRow` | **v1**, unimplemented | D9 | Its own sprint |
+| Today tiles → `ListRow` | **v1**, implemented | D9 | — |
 | Accessibility gate + cold-start method | **v1** | D10 | — |
 | `src/content/` vocabulary modules | **v1** | D11 | — |
 | Undo in the logger | v2 | Replaces D6's confirmations; interacts with D5's draft persistence | An undo design sprint |
@@ -596,14 +600,12 @@ readiness.
 
 1. **Does the `auth` step ship visible in a demo-only 1.0?** (§4.1) Engineer/owner. Blocks nothing; changes
    first-run length.
-2. **Does D9's conversion retire `QuickAccess`, or keep it as a wrapper?** (D9) Decide in the implementing
-   sprint.
-3. **Edit or delete first, in v2?** (D7) Engineer/owner, after I-2 is closed.
-4. **Do Progress and Body still return to Insights once Today also links to them?** (§4.8) Deliberately
+2. **Edit or delete first, in v2?** (D7) Engineer/owner, after I-2 is closed.
+3. **Do Progress and Body still return to Insights once Today also links to them?** (§4.8) Deliberately
    unchanged for now; revisit with evidence.
-5. **What is v1's success metric?** Explicitly deferred by ADR-0001 and still undefined. This matters for a
+4. **What is v1's success metric?** Explicitly deferred by ADR-0001 and still undefined. This matters for a
    launch whose stated purpose is real user feedback: without a metric, feedback has nothing to move.
-6. **Is a staleness policy needed for recovered drafts?** (D5) Not designed. A week-old draft currently
+5. **Is a staleness policy needed for recovered drafts?** (D5) Not designed. A week-old draft currently
    presents identically to a five-minute-old one.
 
 ---
@@ -613,3 +615,4 @@ readiness.
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-05 | Initial draft. Consolidates the UI/UX baseline across onboarding, Today, template choice, the logger, the picker, the summary, History, and Insights' deeper-surfaces role. Closes three previously-open next decisions: History stays read-only (D7, from `workout-history-v1`), confirmation rather than undo (D6, from `logger-ux-polish`), and Today's tiles become rows (D9, from `today-insights-cohesion`). No code changed. | Claude (agent), for engineer/owner review |
+| 2026-08-05 | `feature/today-v1-alignment` implements D9: Today's `QuickAccess` tile row replaced by the same `ListRow` card Insights renders, both still driven by `src/content/deeperSurfaces.ts`; `QuickAccess.tsx` retired (zero remaining consumers). Also fixes a duplicate-CTA bug found during D9's audit, not part of D9 itself: `SessionCard` previously rendered unconditionally, showing a filled "Start session" button alongside the "Resume workout" / "Session in progress" continuity affordances (D3, D5) whenever a session was already active or a draft pending review — now suppressed by an `!activeWorkout` guard. | Claude (agent) |

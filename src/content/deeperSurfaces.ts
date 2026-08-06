@@ -10,12 +10,13 @@ import type { Ionicons } from '@expo/vector-icons';
  * "Go deeper" heading. A lifter moving between the two screens met the same
  * three surfaces described as if they were different things.
  *
- * One list, in one order, in one voice. The two screens still *present* it
- * differently -- Today uses quiet `QuickAccess` tiles because the row sits at
- * the end of a long scroll, Insights uses `ListRow`s because it is the hub
- * those screens hang off -- but neither owns the words any more.
+ * One list, in one order, in one voice. Today and Insights both render it as
+ * a `ListRow` card now (`Docs/ui-ux-foundation-v1.md` D9) -- neither the
+ * words nor the container is owned by either screen any more.
  *
- * **Two captions per surface, on purpose.** A tile is roughly 75pt wide on a
+ * **Two captions per surface, on purpose.** `tileCaption` is currently
+ * unused (Today's tile layout was retired when it moved to `ListRow`) but is
+ * kept rather than deleted: a tile is roughly 75pt wide on a
  * compact device and clips at two short lines; a list row has the full screen
  * width and can afford a clause. Writing one string for both is what produced
  * "Every finished s…" on an iPhone SE. So each surface carries a short form and

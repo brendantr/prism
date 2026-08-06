@@ -4,9 +4,8 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
-import { Button, Card, Chip, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
+import { Button, Card, Chip, ListRow, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { CheckInPrompt } from '@/components/today/CheckInPrompt';
-import { QuickAccess } from '@/components/today/QuickAccess';
 import { ReadinessCard } from '@/components/today/ReadinessCard';
 import { SessionCard } from '@/components/today/SessionCard';
 import { TodayHero } from '@/components/today/TodayHero';
@@ -33,7 +32,7 @@ import {
   useActiveWorkoutStore,
 } from '@/store/activeWorkoutStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
-import { DEEPER_SECTION, DEEPER_SURFACES, tileIcon } from '@/content/deeperSurfaces';
+import { DEEPER_SECTION, DEEPER_SURFACES } from '@/content/deeperSurfaces';
 import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
 import { color, space } from '@/theme';
@@ -48,7 +47,7 @@ import { color, space } from '@/theme';
  *   3. Readiness       the score's full reasoning, and the input that sharpens it
  *   4. Consistency     the week's rhythm
  *   5. Recovery / PRs  context worth scrolling for, not worth opening on
- *   6. `QuickAccess`   the deeper surfaces that are not in the tab bar
+ *   6. `ListRow` card  the deeper surfaces that are not in the tab bar
  *
  * The hero deliberately restates numbers that appear in full further down. That
  * repetition is the point: the summary is readable in a glance at the top, and
@@ -258,29 +257,38 @@ export default function TodayScreen() {
 
       <View style={styles.heroGap} />
 
-      {today ? (
-        <SessionCard
-          day={today.day}
-          reason={today.reason}
-          targetMuscles={today.targetMuscles}
-          exerciseById={exerciseById}
-          lastSession={lastSessionForDay(completed, today.day.id)}
-          onStart={handleStart}
-          onBrowse={() => router.push('/workout/templates')}
-        />
-      ) : (
-        <Card style={styles.gutter}>
-          <Text variant="body" tone="secondary">
-            No plan is active yet. Pick one from Plans, or start an open session and add lifts as you go.
-          </Text>
-          <Button
-            label="Choose a workout"
-            variant="secondary"
-            style={styles.retry}
-            onPress={() => router.push('/workout/templates')}
+      {/*
+        Suppressed while a session already exists (in progress or a recovered
+        draft): the banner/card above already owns this screen's one dominant
+        action for that state, and this card's own "Start session" button
+        would otherwise sit right below "Resume workout" -- two filled
+        buttons resolving to the same session (`Docs/ui-ux-foundation-v1.md`
+        D3, D5).
+      */}
+      {!activeWorkout &&
+        (today ? (
+          <SessionCard
+            day={today.day}
+            reason={today.reason}
+            targetMuscles={today.targetMuscles}
+            exerciseById={exerciseById}
+            lastSession={lastSessionForDay(completed, today.day.id)}
+            onStart={handleStart}
+            onBrowse={() => router.push('/workout/templates')}
           />
-        </Card>
-      )}
+        ) : (
+          <Card style={styles.gutter}>
+            <Text variant="body" tone="secondary">
+              No plan is active yet. Pick one from Plans, or start an open session and add lifts as you go.
+            </Text>
+            <Button
+              label="Choose a workout"
+              variant="secondary"
+              style={styles.retry}
+              onPress={() => router.push('/workout/templates')}
+            />
+          </Card>
+        ))}
 
       <SectionHeader title="Readiness" eyebrow="Estimate" />
       {readiness ? <ReadinessCard readiness={readiness} /> : null}
@@ -357,23 +365,26 @@ export default function TodayScreen() {
 
       {/*
         Same three surfaces, same order, same words as the "Go deeper" card on
-        Insights -- both read from `DEEPER_SURFACES`. Tiles rather than rows
-        here because this sits at the end of a long scroll and should stay
-        quiet; Insights is the hub those screens hang off and gives them rows.
-        Plans is deliberately absent: this row is for surfaces with no tab of
-        their own, and three tiles is the most that stays legible on a compact
-        device.
+        Insights -- both read from `DEEPER_SURFACES`, and both now render them
+        as the same `ListRow` card rather than Today owning a separate tile
+        layout (`Docs/ui-ux-foundation-v1.md` D9). Plans is deliberately
+        absent: this row is for surfaces with no tab of their own.
       */}
       <SectionHeader title={DEEPER_SECTION.title} eyebrow={DEEPER_SECTION.eyebrow} />
-      <QuickAccess
-        items={DEEPER_SURFACES.map((surface) => ({
-          key: surface.key,
-          label: surface.label,
-          caption: surface.tileCaption,
-          icon: tileIcon(surface),
-          onPress: () => router.push(surface.route),
-        }))}
-      />
+      <Card style={styles.deeperCard} padding="base">
+        {DEEPER_SURFACES.map((surface, i) => (
+          <ListRow
+            key={surface.key}
+            title={surface.label}
+            subtitle={surface.rowSubtitle}
+            icon={surface.icon}
+            iconTone={surface.iconTone}
+            chevron
+            divided={i > 0}
+            onPress={() => router.push(surface.route)}
+          />
+        ))}
+      </Card>
 
       <Text variant="eyebrow" tone="faint" style={styles.version}>
         {`PRism v${Constants.expoConfig?.version ?? '0.0.0'}`}
@@ -424,6 +435,7 @@ function countStreakWeeks(
 const styles = StyleSheet.create({
   gutter: { marginHorizontal: space.lg },
   retry: { marginTop: space.base },
+  deeperCard: { marginHorizontal: space.lg, marginBottom: space.md },
   demoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
