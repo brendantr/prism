@@ -2,15 +2,16 @@
 
 ## Document status
 
-- **Status:** Decision recorded. **Auth blocker resolved 2026-08-06 (§2); sign-out surface added
-  2026-08-08; still not executable**, now for configuration and support reasons rather than a missing
-  auth path — see §4, §4.1 and §7.
-- **Date:** 2026-08-06; revised 2026-08-06 (`feature/v1-auth-session-docs`) and 2026-08-08
-  (`feature/v1-signout-surface`)
-- **Branch:** `feature/v1-production-posture`, revised on `feature/v1-auth-session-docs` after
-  `feature/v1-auth-and-session` (commit `0af00cd`), and again on `feature/v1-signout-surface`
-  (commit `0029a7f`). `[fact]` **None** of these branches is merged to `main` as of this writing, so this
-  document describes branch state, not `main`.
+- **Status:** Decision recorded. **Auth blocker resolved 2026-08-06 (§2); sign-out added 2026-08-08;
+  password reset added 2026-08-09. The client-side account lifecycle is complete and entirely
+  unverified against a real project** — the remaining gate is operational rather than a missing
+  capability. See §4, §4.1 and §7.
+- **Date:** 2026-08-06; revised 2026-08-06 (`feature/v1-auth-session-docs`), 2026-08-08
+  (`feature/v1-signout-surface`) and 2026-08-09 (`feature/v1-password-reset`)
+- **Branch:** `feature/v1-production-posture`, revised in turn on `feature/v1-auth-session-docs` after
+  `feature/v1-auth-and-session` (`0af00cd`), on `feature/v1-signout-surface` (`0029a7f`), and on
+  `feature/v1-password-reset` (`954d075`). `[fact]` **None** of these branches is merged to `main` as of
+  this writing, so this document describes branch state, not `main`.
 - **Decision owner:** Engineer/owner
 - **Labelling** per `Docs/invariants.md` I-15: `[fact]` / `[decision]` / `[assumption]` / `[open question]`.
 
@@ -66,16 +67,32 @@ Still open, and none of them advanced by this sprint `[fact]`:
   corrupts a real account's history.
 - **G-4** — no crash reporting or analytics. Explicitly untouched, so a failed sign-in in the field
   would be invisible.
-- **No password reset and no deep-link session capture** `[fact]`. A lifter who forgets their password
-  is recoverable only by hand in the Supabase dashboard, and email confirmation still ends in a manual
-  sign-in. See §4.1 and §7.
+- **No deep-link session capture** `[fact]`. `detectSessionInUrl` is false and no `Linking` handler
+  exists, so email confirmation still ends in a manual sign-in — and password reset is code-based for
+  the same reason. See §4.1.
+- **Password reset is unverified end to end** `[fact, 2026-08-09]`. It exists in the client (below), but
+  whether the recovery email actually carries a six-digit code depends on an **owner-side edit to the
+  Supabase recovery template** (`{{ .Token }}`) that this repository did not and cannot make. If the
+  template still sends only a link, the flow reaches "Enter your code" with nothing to enter. This is
+  the first thing to test once the template lands.
 
-**Closed since this section was written** `[fact, 2026-08-08, `feature/v1-signout-surface`]`: sign-out is
-no longer unreachable. Today's header carries an Account control — gated by `canOfferSignOut`, so it
-appears only for an authenticated session in a build with credentials — which opens the `account` modal
-and calls `signOutAndTearDown`, confirming first when logged work would be lost. A lifter can now both
-sign in and sign out. This closes §7's third decision and removes the "a lifter can sign in and cannot
-sign out" gap this list previously carried.
+**Closed since this section was written** `[fact]`, in two steps:
+
+- **2026-08-08 (`feature/v1-signout-surface`)** — sign-out is no longer unreachable. Today's header
+  carries an Account control, gated by `canOfferSignOut` so it appears only for an authenticated session
+  in a build with credentials, which opens the `account` modal and calls `signOutAndTearDown`,
+  confirming first when logged work would be lost.
+- **2026-08-09 (`feature/v1-password-reset`)** — a forgotten password is no longer a dead end. A
+  "Forgot password?" control in sign-in mode opens a code-based reset inside the same screen:
+  `resetPasswordForEmail` (no `redirectTo`), then `verifyOtp({ type: 'recovery' })` →
+  `updateUser({ password })` → `signOut()`, ending on sign-in so the lifter proves the new password
+  works. Code-based rather than link-based **because** deep-link capture is out of scope — see §4.1.
+
+Together these close §7's decisions 2 and 3, and the "a lifter can sign in and cannot sign out"
+and "recoverable only by hand in the Supabase dashboard" gaps this list previously carried. **The
+client-side account lifecycle is complete: sign up, sign in, sign out, recover.** That is a statement
+about code, not about a working release — see the two bullets above it, which are the ones that still
+bite.
 
 ---
 
@@ -179,8 +196,22 @@ the wording so it cannot drift into implying automatic capture.
 Automatic capture is a **future sprint** with three parts, two of them owner-only `[open question]`: a
 link handler in the app, a redirect URL allow-listed in the Supabase project, and `detectSessionInUrl`
 flipped alongside them. Whether confirmation stays on at all is likewise an **owner decision** — it is a
-Supabase project setting, and `CLAUDE.md` puts those behind explicit approval. It also determines whether
-a password-reset flow is nearly free (email delivery already working) or a separate problem.
+Supabase project setting, and `CLAUDE.md` puts those behind explicit approval.
+
+**Password reset uses the same recovery channel, and the same constraint shaped it**
+`[fact, 2026-08-09, `feature/v1-password-reset`]`. The SDK's contract is that reset is two steps — log in
+via the emailed link, then update the password — and `updateUser` requires a signed-in user. The return
+leg of that link *is* the deep-link capture deferred above, so the canonical flow cannot complete here.
+Reset therefore uses the **code** in the recovery email rather than the link: `resetPasswordForEmail` is
+called with **no `redirectTo`**, and the six digits the lifter types are exchanged via
+`verifyOtp({ type: 'recovery' })`. Nothing about the project's redirect configuration is involved, which
+is the point — it needs no URL allow-listed and no linking infrastructure.
+
+**One owner action it does depend on** `[open question — not done by this repository]`: the Supabase
+**recovery email template** must expose `{{ .Token }}`. The default template sends only
+`{{ .ConfirmationURL }}`, and against that template the flow reaches "Enter your code" with nothing to
+enter. This is a template edit, not the confirmation ON/OFF setting above, but it is still a project
+setting and therefore behind `CLAUDE.md`'s approval gate.
 
 ---
 
@@ -222,10 +253,11 @@ did. They are listed in the order I would take them, with the reasoning, not as 
 1. **Does email confirmation stay ON?** Owner; Supabase project setting, so it is behind `CLAUDE.md`'s
    approval gate. It decides whether the current manual-sign-in flow is the shipping flow, and it gates
    decision 2. This is the cheapest decision here and it blocks the most.
-2. **Is password reset in v1 or v1.x?** A v1 with real accounts and no reset means a lifter who forgets
-   their password is locked out permanently, recoverable only by hand in the Supabase dashboard — a
-   support dead end for a release whose stated purpose is real user feedback. `resetPasswordForEmail` is
-   small once email delivery is settled by decision 1. **Recommendation: v1.**
+2. ~~**Is password reset in v1 or v1.x?**~~ **Done 2026-08-09** (`feature/v1-password-reset`), answered
+   **v1**. Built code-based rather than link-based, because the canonical link flow needs the deep-link
+   capture decision 5 defers — see §4.1. It is complete in the client and **unverified in the world**:
+   it needs the recovery email template to expose `{{ .Token }}` (owner), and it has never run against a
+   live project.
 3. ~~**Where does sign-out live?**~~ **Done 2026-08-08** (`feature/v1-signout-surface`). An Account
    control in Today's `headerRight` — the slot `Screen` already exposed and nothing used — opening the
    `account` modal, which calls `signOutAndTearDown` and confirms first only when logged work would be
@@ -236,9 +268,20 @@ did. They are listed in the order I would take them, with the reasoning, not as 
    submission, both their own branches. `Docs/release-checklist.md` and an `npm run verify` script were
    expected from `feature/release-and-summary-hardening` and were never delivered — that branch merged
    without them, and neither has any git history `[fact]`.
+5. **Deep-link session capture.** Deferred throughout, and now the thing that shapes two flows rather
+   than one: confirmation ends in a manual sign-in *and* reset is code-based because of it. Its own
+   sprint — a link handler, an allow-listed redirect URL (owner), and `detectSessionInUrl` flipped
+   together. Not blocking; both flows complete without it.
 
-**Until 1, 2 and 4 are answered, the `production` profile still must not be built or submitted.** The
-reason has changed twice now, and the direction is worth naming: it was that the app could not function
-(no auth), then that it could not be supported (no way out, no reset). Sign-out closed half of the
-second. **Password reset is now the single largest supportability gap**, and decision 1 is what unblocks
-it.
+**The next gate is operational, not a decision** `[fact, 2026-08-09]`. Every client-side account flow now
+exists, and **not one of them has been run against a real Supabase project.** The 367 passing tests are
+hermetic: they prove the state machines, the call ordering, the routing and the copy rules, and they
+prove nothing about whether an email arrives. The next step is therefore a **`preview` build against a
+real project**, exercising sign-up → confirm → sign-in → reset → sign-out end to end. It needs three
+owner actions first: EAS variables for the `preview` environment (§4), the migrations applied, and
+`{{ .Token }}` in the recovery template (§4.1).
+
+**Until that build has been run, and 1, 4 are answered, the `production` profile must not be built or
+submitted.** The reason has now changed three times, and the direction is the point: the app could not
+function (no auth), then could not be supported (no way out, no reset), and now — as far as this
+repository can tell — does both, unverified. What is left is no longer construction. It is proof.

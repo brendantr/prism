@@ -104,7 +104,8 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
   reachable only in code. A lifter can sign in and cannot sign out.~~ **Resolved 2026-08-08 — see the
   follow-up below.**
 - **Confirmation requires a manual round trip** — open the link, return to the app, sign in.
-- **No password reset**, so a forgotten password is recoverable only by hand in the Supabase dashboard.
+- ~~**No password reset**, so a forgotten password is recoverable only by hand in the Supabase
+  dashboard.~~ **Resolved 2026-08-09 — see the follow-up below.**
 - **Nothing has been exercised against a live Supabase project.** The integration lane is credential-gated
   and skipped; the 287 passing tests are hermetic and prove the state machine, gate, teardown and copy
   rules, not a real project's behaviour.
@@ -143,6 +144,28 @@ deliberately claims none of them, and a copy test enforces that it cannot start 
 
 Record: `Docs/sprints/2026-08-08-signout-surface.md`.
 
+**2026-08-09, `feature/v1-password-reset` (commit `954d075`).** Password reset was added as a **code-based**
+flow inside `app/auth/index.tsx` — Supabase's recovery email, an OTP typed into the app, and a sign-out at
+the end. It extends decision 1 (email and password) without changing it, and it is a direct consequence of
+decision 6: because deep-link capture was deferred, the emailed link has no return leg, so the code is used
+instead and `resetPasswordForEmail` is called with no `redirectTo`.
+
+Two points that would otherwise read as arbitrary later. `confirmPasswordReset` ends with `signOut()`
+because `verifyOtp` leaves the app authenticated and continuing into Today off an emailed code is a
+surprising way to finish a reset on a shared device — the lifter proves the new password instead. And
+`sessionStore` suppresses auth events for the call's duration, because the `SIGNED_IN` in the middle would
+otherwise send the route gate to Today and the `SIGNED_OUT` after it would bounce back, flashing the home
+screen mid-reset.
+
+**Neither the deletion/export posture nor the deep-link posture changed.** I-10 is untouched and still
+open — reset modifies a credential and removes nothing, and the copy is constrained by test against
+implying otherwise. `detectSessionInUrl` is still false and no `Linking` handler exists; deep-link capture
+remains its own sprint and its own owner decisions. **One new owner dependency** was introduced and is not
+satisfied by this repository: the Supabase recovery email template must expose `{{ .Token }}`, or the flow
+reaches "Enter your code" with nothing to enter.
+
+Record: `Docs/sprints/2026-08-09-password-reset.md`.
+
 ## References
 
 **Implementation** — `src/store/sessionStore.ts`, `src/store/authActions.ts`, `src/data/authRequired.ts`,
@@ -162,7 +185,13 @@ Record: `Docs/sprints/2026-08-08-signout-surface.md`.
 Today's `headerRight`; tests `src/domain/__tests__/account.test.ts`,
 `src/content/__tests__/accountCopy.test.ts`.
 
+**Follow-up sprint (2026-08-09)** — `src/domain/authReset.ts`, `requestPasswordReset` and
+`confirmPasswordReset` in `src/data/supabase/auth.ts`, `sessionStore.requestReset`/`confirmReset`, the
+reset mode in `app/auth/index.tsx`, `AUTH_RESET` in `src/content/onboarding.ts`; tests
+`src/domain/__tests__/authReset.test.ts`, `src/data/__tests__/authReset.test.ts`.
+
 **Documents** — `Docs/sprints/2026-08-06-auth-and-session.md`,
-`Docs/sprints/2026-08-08-signout-surface.md`, `Docs/production-posture-v1.md`,
-`Docs/architecture.md` (G-1), `Docs/invariants.md` (I-1, I-6, I-10, I-19),
+`Docs/sprints/2026-08-08-signout-surface.md`, `Docs/sprints/2026-08-09-password-reset.md`,
+`Docs/production-posture-v1.md` (§2, §4.1, §7), `Docs/architecture.md` (G-1),
+`Docs/invariants.md` (I-1, I-4/I-5, I-6, I-8, I-10, I-19),
 `Docs/ui-ux-foundation-v1.md` (D2 → D2a, §4.9, §4.10, §8, §9).

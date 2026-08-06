@@ -78,12 +78,23 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   and adds nothing. Nothing was created on EAS. The session it now obtains is a user access/refresh
   token pair, which is not a build-time secret and is held only in the Keychain/Keystore by the existing
   chunked adapter, never in source, `eas.json`, or a doc.
+
+  **Still holds 2026-08-09** (sprint `v1-password-reset`). The recovery OTP is **user-supplied and
+  transient**: the lifter reads six digits out of an email, types them in, and they are sent once and
+  discarded with the component. It is never written to the Keychain, to `AsyncStorage`, to a log, or to
+  a doc, and it is not a build-time secret in any sense. No `redirectTo` URL is passed either, so
+  nothing about the project's configuration is embedded in the call.
 - **Exception process:** None for privileged credentials reaching the mobile client. Any feature that appears to need one (e.g., RevenueCat webhook verification, store API calls) requires a server-side component, decided via ADR — not a client-side workaround.
 
 ### I-5. No secret values in code, commits, documentation, prompts, logs, or generated artifacts
 - **Rule:** Secret-like values (API keys, tokens, passwords, private keys) are never written into source, Git history, `Docs/`, AI prompts/output, or logs — including partial or "example-looking" values that are actually real.
 - **Why:** Git history and documentation are effectively permanent and widely readable; a leaked secret cannot be un-leaked by deleting the file in a later commit.
 - **Enforcement evidence or expected validation:** This sprint's validation step searches all newly created documentation for secret-like patterns (`SUPABASE`, `REVENUECAT`, `API_KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE KEY`) without printing values. `.env` is confirmed git-ignored (`.gitignore`).
+
+  **Extended again 2026-08-09** (sprint `v1-password-reset`): the same assertions now run over the
+  reset strings, and the pattern list there additionally rejects `otp` and `verifyOtp` — the mechanism
+  has a name the lifter has no reason to learn, and "enter the code from your email" is the honest
+  description of what they are doing.
 
   **Extended to user-facing copy 2026-08-06** (sprint `v1-auth-and-session`). The rule now has an
   automated check on the one surface most likely to leak configuration detail into a lifter's hands:
@@ -144,6 +155,13 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   exactly why it was worth pinning before someone adds a reassuring sentence about recovery to a
   sign-up screen. It is a pattern for the copy review this invariant still expects, not a substitute
   for it: a regex cannot review a claim, and the readiness surfaces remain unchecked.
+
+  **Extended 2026-08-09** (sprint `v1-password-reset`) over the reset strings. Worth noting the word
+  that makes this less trivial than it looks: PRism uses **"recovery"** for both a training concept
+  (`estimateRecovery`, the Body screen) and an account one (Supabase's recovery email). The reset copy
+  deliberately never says "recovery" to the lifter — it says "reset your password" and "code" — so the
+  two senses cannot collide on screen and imply that resetting a password has anything to do with how
+  recovered they are.
 - **Exception process:** Requires specific, documented legal/product approval and supporting evidence — not currently granted for any claim beyond the existing "estimate, not a verdict" framing.
 
 ---
@@ -176,6 +194,15 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   and the account and its logged sessions are not. If deletion or export ever ships, that test is the
   thing that has to be deliberately changed — which is the point. **Neither capability exists**, and this
   invariant is unchanged and still open.
+
+  **Guarded again 2026-08-09** (sprint `v1-password-reset`). Password reset is the second surface whose
+  name a worried person can read as erasure — "reset my account" and "reset my password" are one word
+  apart. It **changes a credential and removes nothing**: no row is deleted, no data is exported, and
+  the account is the same account afterwards. `authCopy.test.ts` extends the same constraint over
+  `AUTH_RESET` and `AUTH_RESET_ERROR_COPY` (`delete`, `erase`, `export`, `wipe your`). **I-10 remains
+  open and blocking for store submission**, and the client-side account lifecycle being complete —
+  sign up, sign in, sign out, recover — must not be mistaken for it being closed. Deletion and export
+  are a separate branch and a separate gate.
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
