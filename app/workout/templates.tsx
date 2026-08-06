@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,16 +42,42 @@ export default function ChooseWorkoutScreen() {
 
   if (!profile) return null;
 
-  // Never starts a second session -- an active one just gets resumed.
+  /**
+   * Never starts a second session (`Docs/ui-ux-foundation-v1.md` D4) -- but it
+   * no longer does so silently.
+   *
+   * Picking a day while a session was already open used to drop the lifter
+   * into that *other* session with no explanation, their choice discarded; if
+   * the open session was an unreviewed recovered draft, this also pre-empted
+   * the Resume/Discard decision D5 makes explicit. The guard is unchanged --
+   * nothing here can create a second session -- only its silence is.
+   */
+  const confirmExistingSession = (onOpen: () => void) => {
+    Alert.alert(
+      'Session already in progress',
+      `"${activeWorkout?.title ?? 'A session'}" is still open. Finish or discard it before starting another one.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open it', onPress: onOpen },
+      ],
+    );
+  };
+
   const handleDay = (day: RoutineDay) => {
-    if (!activeWorkout) startWorkout({ profileId: profile.id, title: day.name, routineDay: day });
+    if (activeWorkout) {
+      confirmExistingSession(() => router.replace('/workout/active'));
+      return;
+    }
+    startWorkout({ profileId: profile.id, title: day.name, routineDay: day });
     router.replace('/workout/active');
   };
 
   const handleEmpty = () => {
-    if (!activeWorkout) {
-      startWorkout({ profileId: profile.id, title: 'Open session', routineDay: null });
+    if (activeWorkout) {
+      confirmExistingSession(() => router.replace('/workout/active'));
+      return;
     }
+    startWorkout({ profileId: profile.id, title: 'Open session', routineDay: null });
     router.replace('/workout/picker');
   };
 

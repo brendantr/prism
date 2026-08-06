@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -94,6 +94,7 @@ export default function ExercisesScreen() {
   const activeWorkout = useActiveWorkoutStore((s) => s.workout);
   const startWorkout = useActiveWorkoutStore((s) => s.start);
   const addExercise = useActiveWorkoutStore((s) => s.addExercise);
+  const draftPendingReview = useActiveWorkoutStore((s) => s.draftPendingReview);
 
   const [query, setQuery] = useState('');
   const [region, setRegion] = useState<MuscleRegion | null>(null);
@@ -133,10 +134,31 @@ export default function ExercisesScreen() {
 
   /**
    * Straight into the logger. Reuses the existing active-workout calls so this
-   * screen adds an entry point, not a second way to build a session.
+   * screen adds an entry point, not a second way to build a session -- the
+   * third of the three D4 names (`Docs/ui-ux-foundation-v1.md`), and the only
+   * one that starts an *open* session rather than a template one.
+   *
+   * The one case it must not act on is a recovered draft the lifter has not
+   * reviewed yet: adding a lift to it would silently accept a session they
+   * have not agreed to keep, pre-empting the Resume/Discard decision Today
+   * owns (D5). Adding to a session that is merely *active* is correct and
+   * unchanged -- that is the intent of tapping "log this lift" mid-session.
    */
   const logExercise = (exercise: Exercise) => {
     if (!profile) return;
+
+    if (draftPendingReview) {
+      Alert.alert(
+        'Recovered session waiting',
+        `"${activeWorkout?.title ?? 'A session'}" was still in progress when the app closed. Resume or discard it on Today before starting something new.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Today', onPress: () => router.push('/') },
+        ],
+      );
+      return;
+    }
+
     if (!activeWorkout) {
       startWorkout({ profileId: profile.id, title: 'Open session', routineDay: null });
     }

@@ -306,6 +306,79 @@ describe('resumeDraft()', () => {
     expect(store().draftPendingReview).toBe(false);
     expect(store().workout).toBe(before);
   });
+
+  /**
+   * The logger calls this on mount whenever a draft is pending review, because
+   * being on that screen IS resuming, whichever route arrived
+   * (`Docs/ui-ux-foundation-v1.md` D5, §4.4). Today's Recovered card already
+   * calls it before navigating, so the second call has to be free — and it must
+   * not disturb the restored session, which is the whole thing being recovered.
+   */
+  it('is idempotent -- calling it again changes nothing', () => {
+    useActiveWorkoutStore.setState({
+      workout: store().start({ profileId: 'p1', title: 'X', routineDay: null }),
+      draftPendingReview: true,
+    });
+    const before = store().workout;
+
+    store().resumeDraft();
+    store().resumeDraft();
+    store().resumeDraft();
+
+    expect(store().draftPendingReview).toBe(false);
+    expect(store().workout).toBe(before);
+  });
+
+  it('is a no-op when no draft was pending, and still leaves the session intact', () => {
+    useActiveWorkoutStore.setState({
+      workout: store().start({ profileId: 'p1', title: 'X', routineDay: null }),
+      draftPendingReview: false,
+    });
+    const before = store().workout;
+
+    store().resumeDraft();
+
+    expect(store().draftPendingReview).toBe(false);
+    expect(store().workout).toBe(before);
+  });
+
+  /**
+   * The logger's entry effect, in store terms: a draft restored by `hydrate()`
+   * is resumed, and the workout it restored survives byte-for-byte. This is the
+   * property that stops Today offering Resume/Discard for a session the lifter
+   * is already logging in (L1).
+   */
+  it('resumes a hydrated draft and leaves every logged set exactly as restored', async () => {
+    const draft = store().start({ profileId: 'p1', title: 'Lower — Squat', routineDay: null });
+    store().addExercise('ex1', { sets: 2, reps: 5, rest: 90 });
+    const setId = store().workout!.exercises[0].sets[0].id;
+    store().updateSet(setId, { weightKg: 100, reps: 5 });
+    store().toggleSetComplete(setId, 0);
+    await flush();
+    const persisted = (await AsyncStorage.getItem(DRAFT_KEY))!;
+
+    // Simulate a fresh process. Nulling `workout` fires the same persistence
+    // subscribe a real discard() would, so the draft has to be put back after
+    // that write has landed -- see the note in the hydrate() suite above.
+    useActiveWorkoutStore.setState({
+      workout: null,
+      draftPendingReview: false,
+      hydrationStatus: 'idle',
+    });
+    await flush();
+    await AsyncStorage.setItem(DRAFT_KEY, persisted);
+
+    await store().hydrate();
+    expect(store().draftPendingReview).toBe(true);
+    const restored = store().workout;
+
+    store().resumeDraft();
+
+    expect(store().draftPendingReview).toBe(false);
+    expect(store().workout).toBe(restored);
+    expect(JSON.stringify(store().workout)).toBe(persisted);
+    expect(store().workout!.id).toBe(draft.id);
+  });
 });
 
 /**
