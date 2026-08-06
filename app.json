@@ -10,7 +10,10 @@
     "icon": "./assets/brand/app-icon.png",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.prism.trainer"
+      "bundleIdentifier": "app.prism.trainer",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "app.prism.trainer",
@@ -39,6 +42,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "07531a6e-d8ce-480a-9adb-74d15db80f76"
+      }
     }
   }
 }

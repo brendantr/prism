@@ -114,7 +114,15 @@ export default function WorkoutSummaryScreen() {
                   <Ionicons name="flash" size={14} color={color.textOnAccent} />
                 </View>
                 <View style={styles.prText}>
-                  <Text variant="title3" numberOfLines={1}>
+                  {/*
+                    Same pattern as ListRow, Progress, Plans, and Today's
+                    SessionCard: a name sharing a row with a trailing numeric
+                    value, capped at one line. "Barbell Bench Press" clipped
+                    to "Barbell Bench P…" at accessibility-extra-large,
+                    confirmed on-device -- on the one screen whose entire job
+                    is telling a lifter which record they just set.
+                  */}
+                  <Text variant="title3" numberOfLines={2}>
                     {exerciseById.get(pr.exerciseId)?.name ?? 'Exercise'}
                   </Text>
                   <Text variant="bodySm" tone="faint">
@@ -137,13 +145,32 @@ export default function WorkoutSummaryScreen() {
       <Card style={styles.gutter} padding="lg">
         {topMuscles.map((m) => (
           <View key={m.muscle} style={styles.distRow}>
-            <Text variant="label" tone="secondary" style={styles.distLabel} numberOfLines={1}>
+            {/*
+              Two different failures in one row, two different fixes. The
+              label is real content ("Front Delts" clipped to "Front D…" at
+              accessibility-extra-large) so it gets the same numberOfLines={2}
+              fix as every other title this session. The value is a number,
+              not prose -- letting IT wrap is worse than letting it clip,
+              since "1.0" broke across two lines as "1." / "0", which reads as
+              a different, wrong number rather than an incomplete one. It
+              keeps one line and shrinks instead, the same
+              numberOfLines={1} + adjustsFontSizeToFit pattern StatBlock
+              already uses for exactly this "number in a narrow column" case.
+            */}
+            <Text variant="label" tone="secondary" style={styles.distLabel} numberOfLines={2}>
               {MUSCLE_META[m.muscle].label}
             </Text>
             <View style={styles.distTrack}>
               <LinearSpectrum height={6} progress={m.volumeKg / maxVolume} rounded />
             </View>
-            <Text variant="numericSm" tone="muted" style={styles.distValue}>
+            <Text
+              variant="numericSm"
+              tone="muted"
+              style={styles.distValue}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               {m.sets.toFixed(1)}
             </Text>
           </View>
@@ -251,7 +278,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     overflow: 'hidden',
   },
-  distValue: { width: 32, textAlign: 'right' },
+  // A little wider than the value itself needs at default text size, so the
+  // shrink-to-fit above has real headroom before it has to shrink at all.
+  distValue: { width: 40, textAlign: 'right' },
   distNote: { marginTop: space.xs, lineHeight: 18 },
   ratingRow: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
   ratingDot: {
