@@ -48,14 +48,44 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 ### I-2. Workout saves involving multiple records must be atomic, idempotent, or safely recoverable
 - **Rule:** A workout write that touches more than one table (workout, workout_exercises, sets) must not be able to leave the database in a partially-written state that is silently lost or silently duplicated.
 - **Why:** A logged workout is the user's primary data; a failed partial write (or a naive retry that duplicates it) destroys trust in the core product loop.
-- **Enforcement evidence or expected validation:** `Docs/architecture.md` documents this as a **confirmed gap, not yet met**: `SupabaseRepository.saveWorkout` performs three sequential, non-transactional upserts (architecture.md G-2). Expected validation: wrap the multi-record write in a Postgres function/RPC (single transaction) or add reconciliation/detection logic, with a test that simulates a mid-sequence failure.
+- **Enforcement evidence or expected validation:** **Met as of 2026-08-06** (sprint
+  `v1-workout-write-integrity`), replacing the "confirmed gap, not yet met" status this entry carried
+  from the baseline and the "reaffirmed as open" note the auth sprint added the same day.
+  `supabase/migrations/0003_workout_write_integrity.sql` introduces
+  `public.save_workout_graph(jsonb, jsonb)`: one plpgsql function, therefore one transaction, writing
+  the workout, its exercise blocks, its sets, and the personal records the session set.
+  `SupabaseRepository.saveWorkout` and the new `completeWorkout` both call it; the three sequential
+  upserts and the separate personal-record insert are gone.
 
-  **Reaffirmed as open 2026-08-06** (sprint `v1-auth-and-session`). That sprint touched no migration and
-  no write path, and deliberately did not fix this in passing — it is a separate branch under I-14. It
-  does, however, change the **severity**: until now a partial write corrupted device-local demo data
-  that a lifter could reset, and it now corrupts a real account's training history. The auth sprint is
-  therefore the moment this invariant starts costing something real, and its interim status is restated
-  here per this invariant's own exception process rather than being allowed to go quiet.
+  The audit that produced the fix found the gap was **wider than G-2 recorded** — three defects, not
+  one. (1) Non-atomicity, as described. (2) The write was *additive only*: it upserted what it was
+  given and deleted nothing, so an exercise removed in the logger stayed in Postgres and reappeared on
+  the next read. The function now treats the payload as authoritative for that workout and deletes the
+  children it omits. (3) Personal records were inserted separately, with freshly minted ids on every
+  retry, into a table with no uniqueness beyond its primary key — so a retry after a lost response
+  wrote a duplicate. A `(profile_id, workout_id, exercise_id, kind)` unique index plus `on conflict do
+  nothing` makes a repeat call a no-op.
+
+  Deterministic evidence: `supabase/tests/rls/03_run_write_integrity_tests.sql`, **31 assertions**, run
+  as the non-owning `authenticated` role against a disposable local Postgres 16.14 with all three
+  migrations applied exactly as committed — **31/31 passing from a clean database**, alongside the
+  unchanged **57/57** RLS isolation suite. The mid-sequence failure this invariant names as its
+  expected validation is assertion set 4: a set violating `reps <= 500` aborts the call, and the
+  workout row, the exercise block and the personal record that had already been written are all
+  confirmed absent afterwards. Also covered: exact-retry idempotency, child reconciliation, an
+  order-index swap inside one statement, cross-tenant rejection, and refusal of an unauthenticated
+  call. Demo mode holds the same two properties (`DemoRepository.completeWorkout`, tested in
+  `src/data/__tests__/repository.test.ts`) so demo and real modes do not diverge on the behaviour this
+  invariant governs.
+
+  **Two limits on this claim, stated rather than buried.** First, the function is `security invoker` by
+  deliberate choice — RLS still applies to every statement inside it and ownership still comes from
+  `auth.uid()`, so I-1 and I-6 are not weakened. A `security definer` version would have been shorter
+  and would have become the one hole in the authorization boundary those two invariants describe.
+  Second, **this is verified against local Postgres only.** The migration has not been applied to the
+  real Supabase project, and until it is, `save_workout_graph` does not exist there and every workout
+  save against it fails outright. That is a loud failure rather than a silent partial write, but it is
+  a release gate — see `Docs/release-checklist.md` §3.
 - **Exception process:** Any interim non-atomic write path must be explicitly called out in the relevant sprint document until fixed; it may not be silently treated as production-ready.
 
 ### I-3. Raw set-level data must remain available even when derived metrics are cached

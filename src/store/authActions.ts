@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resetRepository } from '@/data/repository';
 import { signOut as signOutRemote } from '@/data/supabase/auth';
-import { DRAFT_STORAGE_KEY, useActiveWorkoutStore } from './activeWorkoutStore';
+import { DRAFT_STORAGE_KEY, flushDraftWrites, useActiveWorkoutStore } from './activeWorkoutStore';
 import { useSessionStore } from './sessionStore';
 import { useTrainingStore } from './trainingStore';
 
@@ -45,11 +45,15 @@ export async function signOutAndTearDown(): Promise<void> {
   }
 
   // 2. Drop the in-progress draft. `discard()` sets `workout` to null, which
-  //    the store's own subscriber turns into a `removeItem`; that write is
-  //    fire-and-forget, so the key is removed explicitly here too. Otherwise
-  //    teardown would be complete only eventually, which is not a property a
-  //    test can assert or a user can rely on.
+  //    the store's own subscriber turns into a queued `removeItem`.
+  //
+  //    `flushDraftWrites()` then waits for the queue to drain. Removing the key
+  //    without that wait was not enough on its own: a `setItem` from the last
+  //    logged set could still be in flight, and landing after this line would
+  //    put the draft back on disk for whoever signs in next. Draining first and
+  //    removing after makes the order total.
   useActiveWorkoutStore.getState().discard();
+  await flushDraftWrites();
   await AsyncStorage.removeItem(DRAFT_STORAGE_KEY);
 
   // 3. Empty the read model. This is the actual leak fix: the arrays here are

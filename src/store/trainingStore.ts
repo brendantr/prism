@@ -41,6 +41,15 @@ interface TrainingState {
   reset: () => void;
   upsertWorkout: (workout: Workout) => Promise<void>;
   addPersonalRecords: (records: PersonalRecord[]) => Promise<void>;
+  /**
+   * Finish a session in one operation -- see `Repository.completeWorkout`.
+   *
+   * `upsertWorkout` followed by `addPersonalRecords` is still available for the
+   * paths that genuinely are separate edits (the summary screen changing a
+   * rating, say). Finishing is not one of them: it is a single user action and
+   * splitting it is what let a session commit while its records did not.
+   */
+  completeWorkout: (workout: Workout, records: PersonalRecord[]) => Promise<void>;
   saveCheckIn: (checkIn: CheckIn) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   toggleFavourite: (exerciseId: string) => void;
@@ -143,6 +152,26 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     if (records.length === 0) return;
     await getRepository().savePersonalRecords(records);
     set((s) => ({ personalRecords: [...s.personalRecords, ...records] }));
+  },
+
+  completeWorkout: async (workout, records) => {
+    await getRepository().completeWorkout(workout, records);
+    // One `set` for both, so the read model can never show a finished workout
+    // without the records it set. The repository already refused to commit one
+    // without the other; doing it in two calls here would reintroduce the same
+    // split a layer higher.
+    //
+    // Records are merged by id rather than appended: the repository treats a
+    // repeat call as a no-op, so a retry must not grow the array either.
+    set((s) => {
+      const known = new Set(s.personalRecords.map((r) => r.id));
+      return {
+        workouts: [...s.workouts.filter((w) => w.id !== workout.id), workout].sort((a, b) =>
+          a.startedAt.localeCompare(b.startedAt),
+        ),
+        personalRecords: [...s.personalRecords, ...records.filter((r) => !known.has(r.id))],
+      };
+    });
   },
 
   saveCheckIn: async (checkIn) => {

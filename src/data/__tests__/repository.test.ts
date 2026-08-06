@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRepository, resetDemoData } from '../repository';
-import type { CheckIn, CheckInPatch } from '@/domain/types';
+import type { CheckIn, CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -160,5 +160,88 @@ describe('DemoRepository check-ins', () => {
     expect(sameDay[0].energy).toBe(1);
     // The rest of the seeded record survived the patch.
     expect(sameDay[0].sleepQuality).toBe(seeded.sleepQuality);
+  });
+});
+
+/**
+ * DemoRepository.completeWorkout
+ * ==============================
+ * Demo mode is the rehearsal for the real write path, so it has to hold the
+ * same two properties `save_workout_graph` holds in Postgres
+ * (`supabase/migrations/0003_workout_write_integrity.sql`): the workout and the
+ * records it set land together, and running it twice does not produce two
+ * copies of the same record.
+ *
+ * The idempotency case is not hypothetical. `app/workout/active.tsx` re-derives
+ * the records on every attempt and mints a fresh `id` each time, so a retry
+ * after a failure arrives looking like a brand new set of records.
+ */
+describe('DemoRepository.completeWorkout', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+  });
+
+  const workout = (): Workout => ({
+    id: 'w_complete_1',
+    profileId: 'p1',
+    routineDayId: null,
+    title: 'Session',
+    status: 'completed',
+    startedAt: '2020-05-05T10:00:00.000Z',
+    endedAt: '2020-05-05T11:00:00.000Z',
+    reflection: null,
+    sessionRating: null,
+    exercises: [],
+  });
+
+  const record = (id: string): PersonalRecord => ({
+    id,
+    profileId: 'p1',
+    exerciseId: 'ex_1',
+    kind: 'e1rm',
+    value: 116.67,
+    reps: 5,
+    weightKg: 100,
+    achievedAt: '2020-05-05T10:00:00.000Z',
+    workoutId: 'w_complete_1',
+  });
+
+  const mine = async (repo: ReturnType<typeof getRepository>) =>
+    (await repo.listPersonalRecords()).filter((r) => r.workoutId === 'w_complete_1');
+
+  it('stores the workout and its records together', async () => {
+    const repo = getRepository();
+    await repo.completeWorkout(workout(), [record('pr_1')]);
+
+    expect((await repo.listWorkouts()).some((w) => w.id === 'w_complete_1')).toBe(true);
+    expect(await mine(repo)).toHaveLength(1);
+  });
+
+  it('does not duplicate a record when the same session is saved twice', async () => {
+    const repo = getRepository();
+    await repo.completeWorkout(workout(), [record('pr_1')]);
+    // The retry: same session, same PR, new id -- exactly what the logger sends
+    // on a second attempt.
+    await repo.completeWorkout(workout(), [record('pr_2')]);
+
+    expect(await mine(repo)).toHaveLength(1);
+    expect((await mine(repo))[0].id).toBe('pr_1');
+    expect((await repo.listWorkouts()).filter((w) => w.id === 'w_complete_1')).toHaveLength(1);
+  });
+
+  it('leaves nothing behind when the write to storage fails', async () => {
+    const repo = getRepository();
+    const failure = new Error('storage full');
+    const spy = jest.spyOn(AsyncStorage, 'multiSet').mockRejectedValueOnce(failure);
+
+    await expect(repo.completeWorkout(workout(), [record('pr_1')])).rejects.toThrow('storage full');
+
+    // The in-memory arrays must not have moved ahead of what is on disk. This
+    // is the demo-mode form of the partial write: the process believing it had
+    // saved a session that a relaunch would not find.
+    expect((await repo.listWorkouts()).some((w) => w.id === 'w_complete_1')).toBe(false);
+    expect(await mine(repo)).toHaveLength(0);
+
+    spy.mockRestore();
   });
 });

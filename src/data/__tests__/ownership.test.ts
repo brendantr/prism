@@ -70,6 +70,16 @@ jest.mock('../supabase/client', () => {
         }),
       },
       from: (table: string) => builder(table),
+      /*
+        `save_workout_graph` (0003_workout_write_integrity.sql). Captured under
+        the function name so the sweep at the bottom of this file covers RPC
+        arguments as well as table writes -- moving a write behind an RPC must
+        not move it out of this test's reach.
+      */
+      rpc: (fn: string, args: unknown) => {
+        captured.push({ table: fn, op: 'rpc', payload: args });
+        return Promise.resolve({ error: null });
+      },
     }),
   };
 });
@@ -117,11 +127,34 @@ const payloadFor = (table: string) =>
   captured.find((c) => c.table === table)?.payload as Record<string, unknown>;
 
 describe('the repository is the source of truth for ownership', () => {
-  it('uses the session uid when saving a workout, not the one on the object', async () => {
+  /*
+    Saving a workout no longer sends `profile_id` at all.
+
+    It used to stamp the session uid onto the payload client-side. Since
+    0003_workout_write_integrity.sql the write goes through `save_workout_graph`,
+    which reads `auth.uid()` itself and ignores anything the payload might say
+    about ownership -- so the correct assertion changed from "the client sends
+    the right owner" to "the client sends no owner." The second is stronger: it
+    cannot be got wrong by a caller.
+  */
+  it('sends no caller-chosen owner when saving a workout', async () => {
     await repo.saveWorkout(hostileWorkout());
 
-    expect(payloadFor('workouts').profile_id).toBe(SESSION_UID);
-    expect(payloadFor('workouts').profile_id).not.toBe(ATTACKER_SUPPLIED_UID);
+    const args = payloadFor('save_workout_graph');
+    const graph = args.p_workout as Record<string, unknown>;
+    expect(graph).toBeDefined();
+    expect(graph.profile_id).toBeUndefined();
+    expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
+  });
+
+  it('sends no caller-chosen owner when completing a workout with records', async () => {
+    await repo.completeWorkout(hostileWorkout(), [hostileRecord()]);
+
+    const args = payloadFor('save_workout_graph');
+    const records = args.p_records as Record<string, unknown>[];
+    expect(records).toHaveLength(1);
+    expect(records[0].profile_id).toBeUndefined();
+    expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
   });
 
   it('uses the session uid when saving a check-in', async () => {

@@ -54,34 +54,44 @@ what PRism calls its first public version is a product decision and is not made 
 
 ## 3. The environment a production build currently inherits
 
-**Finding, and the most consequential one in this document** `[fact, observed 2026-08-06 via
-`npx eas config --platform ios --profile production`]`:
+> **Corrected 2026-08-06** `[fact]`. This section previously stated the opposite of what the code
+> does — that an unset flag defaults to demo and that "a production EAS build today ships in demo
+> mode." Both were true when written and are false now: `feature/v1-production-posture` inverted the
+> default, and `eas.json` sets the flag explicitly. The original text is not preserved here, because
+> a release checklist that has to be read historically is not a checklist. Its reasoning survives in
+> `Docs/production-posture-v1.md` and in the commit that changed the default (`5c18d93`).
+>
+> The correction matters more than the wording: an operator following the old §3 would have expected
+> a safe, self-contained demo build and produced one that opens into a permanent data-load failure.
 
-> `No environment variables with visibility "Plain text" and "Sensitive" found for the "production"
-> environment on EAS.`
+**What a production build does today** `[fact, traced through `eas.json` and
+`src/data/supabase/client.ts`]`:
 
-Consequences, traced through `src/data/supabase/client.ts` `[fact]`:
+- `eas.json`'s `build.production.env` sets `EXPO_PUBLIC_DEMO_MODE` to **`"false"`** explicitly. It is
+  not unset, and it is not inherited from the EAS environment.
+- Even without that, an unset flag would still resolve to non-demo: `DEMO_MODE` falls back to
+  `__DEV__`, which is false in any EAS/release bundle (`client.ts`).
+- So a production build runs **against the real backend**, and needs `EXPO_PUBLIC_SUPABASE_URL` and
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY` to be present to function at all.
+- If those are absent, `isSupabaseConfigured` is false with demo off. That state **fails loudly by
+  design** — it does not fall back to demo. A silent fallback would ship a build that claims to be
+  live while writing every logged session to local storage only.
 
-- `EXPO_PUBLIC_DEMO_MODE` is unset, and the code **defaults it to `true`**.
-- `EXPO_PUBLIC_SUPABASE_URL` / `..._ANON_KEY` are absent, so `isSupabaseConfigured` is false regardless.
-- **A production EAS build today ships in demo mode**: deterministic seeded data, zero network calls,
-  everything written to `AsyncStorage` on that one device.
+**Therefore the pre-submission check is a positive one, not an absence check** `[decision]`:
 
-**This is not currently wrong.** It is the *only* mode a real user can reach, because no
-authentication path exists (`Docs/architecture.md` G-1), and shipping a build that pointed at Supabase
-without a way to sign in would be worse. What matters is that it becomes **deliberate rather than
-incidental** `[decision]`: the demo-mode default must be a stated release position, not something a
-future reader discovers by decompiling a build.
+1. Confirm the `production` profile actually resolves both Supabase variables
+   (`npx eas config --platform ios --profile production`). Absent variables are now a release
+   blocker, not a fallback into demo.
+2. Confirm the Supabase project those variables point at has had every migration in
+   `supabase/migrations/` applied — including `0003_workout_write_integrity.sql`, without which
+   `save_workout_graph` does not exist and **every workout save fails**.
+3. Confirm sign-in works against that project on a real build. Authentication exists now
+   (`Docs/decisions/ADR-0004-authentication-and-session.md`); the older G-1 framing of this document,
+   which assumed no auth path existed, no longer applies.
 
-**Not changed by this branch** `[fact]`: no EAS environment variable was created, and `eas.json` was not
-edited. Both are production configuration and are gated behind explicit engineer/owner approval
-(`CLAUDE.md` § Scope discipline). The two options, when someone is ready to decide:
-
-1. Ship v1 explicitly demo-only — set `EXPO_PUBLIC_DEMO_MODE=true` on the EAS `production` environment
-   so the intent is recorded rather than inferred from a default.
-2. Hold the store build until auth lands (G-1), then configure the Supabase variables.
-
-Either is defensible; silence is not.
+**Not changed by this branch** `[fact]`: no EAS environment variable was created and `eas.json` was
+not edited. Both are production configuration, gated behind explicit engineer/owner approval
+(`CLAUDE.md` § Scope discipline).
 
 **Secrets posture** `[fact]`: only `EXPO_PUBLIC_*` variables are ever referenced, and those are inlined
 into the client bundle by design — RLS is the authorization boundary, not variable secrecy
