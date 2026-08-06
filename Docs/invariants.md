@@ -30,12 +30,32 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   policies-as-committed; it does not by itself mean production/non-demo mode should be enabled — that
   still requires an authentication path (`Docs/architecture.md` G-1) and applying this migration to a
   real production Supabase project, neither of which is in scope here.
+
+  **Strengthened 2026-08-06** (sprint `v1-auth-and-session`). One of the two remaining conditions above
+  is now met: an authentication path exists, so identity is sourced from a live Supabase session rather
+  than being unreachable. `SupabaseRepository.uid()` reads `auth.getSession()` and throws
+  `AuthRequiredError` when there is none; it remains the single accessor, called at the top of the ten
+  methods that need an owner and deliberately absent from `listExercises`, `listRoutines` and
+  `getActiveRoutine` — world-readable system rows and RLS-only scoping, the documented I-6 exception,
+  unchanged. `getSession()` replaced `getUser()` for cost, not for trust: the access token is what
+  Postgres evaluates policies against either way, and `getUser()` was issuing a network round-trip on
+  each of the six `uid()` calls inside a single parallel `refresh()`. **The other condition is still
+  open** — no migration has been applied to a real production project, and no code path in this
+  repository has been executed against one (the integration lane is credential-gated and skipped). RLS
+  remains verified against a disposable local Postgres, not against production.
 - **Exception process:** None. This is a hard gate before enabling non-demo mode for real users; no engineer/owner override applies to skipping RLS verification itself.
 
 ### I-2. Workout saves involving multiple records must be atomic, idempotent, or safely recoverable
 - **Rule:** A workout write that touches more than one table (workout, workout_exercises, sets) must not be able to leave the database in a partially-written state that is silently lost or silently duplicated.
 - **Why:** A logged workout is the user's primary data; a failed partial write (or a naive retry that duplicates it) destroys trust in the core product loop.
 - **Enforcement evidence or expected validation:** `Docs/architecture.md` documents this as a **confirmed gap, not yet met**: `SupabaseRepository.saveWorkout` performs three sequential, non-transactional upserts (architecture.md G-2). Expected validation: wrap the multi-record write in a Postgres function/RPC (single transaction) or add reconciliation/detection logic, with a test that simulates a mid-sequence failure.
+
+  **Reaffirmed as open 2026-08-06** (sprint `v1-auth-and-session`). That sprint touched no migration and
+  no write path, and deliberately did not fix this in passing — it is a separate branch under I-14. It
+  does, however, change the **severity**: until now a partial write corrupted device-local demo data
+  that a lifter could reset, and it now corrupts a real account's training history. The auth sprint is
+  therefore the moment this invariant starts costing something real, and its interim status is restated
+  here per this invariant's own exception process rather than being allowed to go quiet.
 - **Exception process:** Any interim non-atomic write path must be explicitly called out in the relevant sprint document until fixed; it may not be silently treated as production-ready.
 
 ### I-3. Raw set-level data must remain available even when derived metrics are cached
@@ -52,18 +72,47 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 - **Rule:** Supabase service-role keys, RevenueCat secret/API keys, App Store/Play Console credentials, and any other privileged/server-only credential must never be embedded in, bundled with, or reachable from the mobile client.
 - **Why:** `EXPO_PUBLIC_*` variables are inlined into the client bundle by design (README, `Docs/architecture.md` §Security). A privileged credential in client code is exposed to every install of the app.
 - **Enforcement evidence or expected validation:** `Docs/architecture.md` confirms only three `EXPO_PUBLIC_*` variables exist today (`DEMO_MODE`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`) and no service-role key or other server-only secret was found anywhere in the repository. This invariant must continue to hold as RevenueCat, store operations, or any server-side component are added.
+
+  **Still holds 2026-08-06** (sprint `v1-auth-and-session`). Authentication introduced **no fourth
+  variable and no credential of any kind** — it consumes the two Supabase values that already existed
+  and adds nothing. Nothing was created on EAS. The session it now obtains is a user access/refresh
+  token pair, which is not a build-time secret and is held only in the Keychain/Keystore by the existing
+  chunked adapter, never in source, `eas.json`, or a doc.
 - **Exception process:** None for privileged credentials reaching the mobile client. Any feature that appears to need one (e.g., RevenueCat webhook verification, store API calls) requires a server-side component, decided via ADR — not a client-side workaround.
 
 ### I-5. No secret values in code, commits, documentation, prompts, logs, or generated artifacts
 - **Rule:** Secret-like values (API keys, tokens, passwords, private keys) are never written into source, Git history, `Docs/`, AI prompts/output, or logs — including partial or "example-looking" values that are actually real.
 - **Why:** Git history and documentation are effectively permanent and widely readable; a leaked secret cannot be un-leaked by deleting the file in a later commit.
 - **Enforcement evidence or expected validation:** This sprint's validation step searches all newly created documentation for secret-like patterns (`SUPABASE`, `REVENUECAT`, `API_KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE KEY`) without printing values. `.env` is confirmed git-ignored (`.gitignore`).
+
+  **Extended to user-facing copy 2026-08-06** (sprint `v1-auth-and-session`). The rule now has an
+  automated check on the one surface most likely to leak configuration detail into a lifter's hands:
+  `src/content/__tests__/authCopy.test.ts` asserts that no string on the auth surface matches
+  `EXPO_PUBLIC_`, `SUPABASE`, `ANON_KEY`, `SERVICE_ROLE`, `API_KEY`, `SECRET`, `TOKEN`, or internal
+  identifiers such as `auth/v1`, `RLS`, `profile_id` or `postgres`. The contrast is deliberate and
+  documented: `SUPABASE_MISCONFIGURED_MESSAGE` *does* name two environment variables, because its
+  audience is whoever built the app, and it is the only such string in the product.
 - **Exception process:** None. If a secret is ever committed, the response is rotation of the credential and history remediation, not documentation.
 
 ### I-6. A user may only access their own protected data unless a documented server-side policy permits otherwise
 - **Rule:** Every RLS policy scopes access to `profile_id = auth.uid()` (directly or via an `EXISTS` walk to the owning parent), with any exception documented at the schema level.
 - **Why:** This is the actual authorization mechanism given the client-holds-anon-key trust model (see I-1, I-4).
 - **Enforcement evidence or expected validation:** `Docs/architecture.md` confirms policies are written this way for all 11 tables. The one documented exception is `exercises` rows with `profile_id = null`, which are intentionally world-readable system rows (migration comments, README "Connecting Supabase" step 3). Verification of correct *enforcement* (not just intent) is covered by I-1.
+
+  **Strengthened 2026-08-06** (sprint `v1-auth-and-session`), in two directions.
+
+  *The client still never asserts identity.* No repository method accepts a caller-supplied id — the
+  auth sprint added none, and changed no signature. `sessionStore.userId` exists for display and test
+  assertions and is never passed into a query; `saveWorkout` still overwrites `profile_id` from the
+  session rather than from the passed-in object, and `deleteWorkout` still scopes by owner as well as
+  id. `src/data/__tests__/ownership.test.ts` asserts this against a deliberately hostile payload and was
+  updated to the `getSession` shape without any change to what it claims.
+
+  *Own-data-only now also covers what is already on the device.* RLS governs what the server returns and
+  says nothing about what a previous user left in memory or in `AsyncStorage`. On a shared phone that
+  gap is a real path to one lifter seeing another's data, so it is now closed explicitly by the
+  sign-out teardown contract and the draft-ownership check — see **I-19**, which exists to keep that
+  from being re-derived every time a new store is added.
 - **Exception process:** Any new shared/world-readable data pattern must be documented in the schema/migration and referenced from this invariant's evidence, not introduced silently.
 
 ---
@@ -80,6 +129,13 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 - **Rule:** No copy, UI element, or feature description asserts diagnostic, clinical-measurement, or preventive-medical capability. PRism is not described as an "AI coach," and no scientific/medical validation claim is made unless specifically approved and evidenced.
 - **Why:** Same as I-7 — mandatory product boundary; also the existing recovery-estimate copy already models the correct posture ("What this model does not know... It is a prompt to check in with your own body, not a verdict" — `README.md`).
 - **Enforcement evidence or expected validation:** The existing `RECOVERY_MODEL_EXPLANATION` framing (README, `Docs/architecture.md` §Runtime Architecture) is consistent with this invariant and should be treated as the tone baseline for any new readiness copy. No formal copy review process exists yet — expected validation is a copy/claims review before any readiness-suggestion UI ships.
+
+  **First automated check added 2026-08-06** (sprint `v1-auth-and-session`). `authCopy.test.ts` asserts
+  that no auth-surface string matches `/diagnos|clinical|medical|injur|overtrain|prevent/i`. This is
+  trivially satisfied today — the auth screens have no readiness content to overclaim about — which is
+  exactly why it was worth pinning before someone adds a reassuring sentence about recovery to a
+  sign-up screen. It is a pattern for the copy review this invariant still expects, not a substitute
+  for it: a regex cannot review a claim, and the readiness surfaces remain unchecked.
 - **Exception process:** Requires specific, documented legal/product approval and supporting evidence — not currently granted for any claim beyond the existing "estimate, not a verdict" framing.
 
 ---
@@ -96,6 +152,13 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 - **Rule:** A user-facing account deletion flow and a data export mechanism must exist and work before PRism is submitted to the App Store or Play Store.
 - **Why:** Store policy and user trust requirements; also directly relevant given the health-adjacent data PRism stores.
 - **Enforcement evidence or expected validation:** `Docs/architecture.md` confirms neither exists today — the README lists both as Phase 6 ("planned"), not implemented. The schema's `on delete cascade` from `auth.users` (migration) makes deletion straightforward to implement once auth exists, but this is a design note, not evidence of completion.
+
+  **Reaffirmed as open 2026-08-06, and now more exposed** (sprint `v1-auth-and-session`). Auth landing
+  does not advance this invariant by even a step: accounts can now be created and signed into, and there
+  is still no way to delete one or export its data. The gap has moved from theoretical to reachable by a
+  real user. The precondition named above — "once auth exists" — is now satisfied, so the cascade-based
+  implementation is unblocked and this is squarely a scheduling decision rather than a dependency.
+  Remains blocking for store submission; its own branch, per I-14.
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
@@ -132,6 +195,14 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 - **Rule:** Documentation, code, schema, and configuration changes happen on a dedicated branch named for their sprint/purpose, not directly on `main`; each branch corresponds to one sprint's scope.
 - **Why:** Keeps `main` reviewable and revertible, and keeps each unit of work traceable to one documented intent (this sprint's own workflow is an example).
 - **Enforcement evidence or expected validation:** `git log` shows a merge-PR pattern into `main` (e.g., `4785bc9 Merge pull request #1 ...`). This sprint itself follows the rule (branch `docs/product-intent-and-guardrails`).
+
+  **Further instances 2026-08-06:** `feature/v1-auth-and-session` (implementation, commit `0af00cd`) and
+  `feature/v1-auth-session-docs` (this documentation pass) are separate branches with one purpose each,
+  and the implementation branch was cut from `feature/v1-production-posture` rather than `main` so it
+  would inherit the demo-fallback throw. Splitting code from docs also keeps the docs able to cite a
+  real commit hash rather than an uncommitted working tree. Note `[fact]`: as of this writing neither
+  `5c18d93` nor `0af00cd` has been merged to `main`, so the auth and production-posture claims
+  throughout `Docs/` describe branches, not `main`.
 - **Exception process:** Requires explicit engineer/owner approval to commit directly to `main`; not to be done by default under any circumstance.
 
 ---
@@ -167,3 +238,56 @@ Continued from I-11/I-12 above; grouped separately here only to keep invariant I
 - **Why:** A confident-looking number built on absent data misleads the user and violates the explainability/honesty intent of [ADR-0002](decisions/ADR-0002-readiness-suggestion-safety.md).
 - **Enforcement evidence or expected validation:** **Met as of 2026-07-29** (sprint `readiness-inputs-and-confidence-foundation`), replacing the "not met" finding of the 2026-07-27 reconciliation review. The three branches in `src/domain/calc/readiness.ts` that substituted a neutral 0.7 — `workloadFactor`'s `chronicWeekly < 1`, and `wellbeingFactor`'s missing-check-in and stale-check-in cases — now report `sufficient: false` and are excluded from the composite instead of scored. `computeReadiness` re-normalises weights across the factors that do have data, and returns `score: null`, `band: null`, `confidence: 'insufficient'` when both the workload and wellbeing signals are missing; `ReadinessCard` renders that state without a numeric ring. Partial check-ins are scored only from the fields actually answered, never from a stand-in for the rest. Deterministic evidence: 11 tests added to `src/domain/calc/__tests__/calc.test.ts` covering the workload history threshold, the 36-hour staleness boundary, single-factor exclusion with re-normalisation, the both-missing no-score result, and four partial-check-in cases — plus two equivalence tests proving the data-present calculation is unchanged (`READINESS_WEIGHTS` is untouched). Full suite: 61 tests passing across 3 suites. **Scope note:** `recoveryFactor` and `consistencyFactor` still have no missing-data branch, so a lifter with no history is scored 1.0 on recovery (via `averageReadiness`'s empty-input return) and 0 on consistency. Both are acknowledged residual gaps, deliberately out of this sprint's scope, and neither is claimed as met by this invariant.
 - **Exception process:** None without an ADR update.
+
+---
+
+## Session and device hygiene
+
+### I-19. Sign-out leaves no prior user's training data or drafts on the device
+
+- **Rule:** Ending a session must clear the in-memory read model, the in-progress workout draft, and any
+  cached repository handle **before** the app navigates away from the authenticated surfaces. A
+  recovered draft must never be resumed under an account other than the one that created it.
+- **Why:** RLS governs what the *server* returns; it says nothing about what is already in device memory
+  or `AsyncStorage`. On a shared phone the concrete failure is one lifter's sessions painting on Today
+  before the next lifter's own load resolves — or worse, their unfinished draft being finished and saved
+  under the new account, because `saveWorkout` correctly stamps `profile_id` from the current session and
+  knows nothing about where the draft came from. That is a data-integrity failure no policy change could
+  catch, and it sits underneath I-6 rather than beside it: own-data-only has to mean the device too.
+- **Enforcement evidence or expected validation:** **Met as of 2026-08-06** (sprint
+  `v1-auth-and-session`). `signOutAndTearDown` (`src/store/authActions.ts`) runs a fixed sequence:
+  remote sign-out (wrapped, so an offline or already-revoked failure cannot abort local teardown), then
+  `activeWorkoutStore.discard()` plus an explicit `AsyncStorage.removeItem` of
+  `prism.activeWorkout.draft.v1`, then `trainingStore.reset()`, then `resetRepository()`, and **only
+  then** the phase flip to `'unauthenticated'`. The phase is last *by construction*: the route gate in
+  `app/_layout.tsx` redirects on phase, so navigation cannot precede an empty store, and reordering the
+  sequence breaks the guarantee rather than merely contradicting a comment. `trainingStore.reset()`
+  restores a named `INITIAL_DATA` constant shared with the store's initialiser, so a field added to the
+  store is cleared on sign-out for free rather than silently surviving it — including
+  `favouriteExerciseIds`, which is never persisted and would otherwise have carried one lifter's
+  preferences into the next one's session unnoticed. `hydrate()` takes a `DraftOwner` and discards any
+  draft whose `profileId` does not match the signed-in user, which also covers a device moving from demo
+  to a real session, where the stored id is the `DEMO_PROFILE_ID` literal.
+
+  Two deliberate exceptions, both tested: `prism.onboarding.v1` **survives** a sign-out (first-run state
+  belongs to the device, not the account — clearing it would replay the carousel for a returning
+  lifter), and the `prism.demo.*` keys are untouched (unreachable from a build that has a session to
+  end). Evidence: 16 assertions in `src/store/__tests__/authActions.test.ts`, including one that
+  observes the store's contents at the exact moment the phase flips, and one that drives a failing
+  remote sign-out to prove teardown still completes.
+
+  Two limits, stated so they are not overread. `resetRepository()` is **defence in depth, not the fix**:
+  `SupabaseRepository` is stateless and re-derives identity on every call, so resetting it changes
+  nothing observable today — the data that actually survives is `trainingStore`'s arrays, and clearing
+  those is the remedy. And the `DraftOwner` comparison is **not an authorization check**: it discards
+  local state and grants nothing. The security boundary remains RLS plus the session-derived
+  `profile_id` stamped on write. This is why `activeWorkoutStore.start()`'s standing warning — that
+  `profileId` must not be read back as a permission or used to gate UI — is unchanged and still correct:
+  the value can throw a draft away, and can never let one through.
+
+  **Not yet enforceable by the user.** There is no sign-out control anywhere in the app, because there
+  is no settings screen. The contract above is implemented and tested but reachable only in code. Until
+  an affordance exists, this invariant is met in the sense that sign-out is *correct*, not in the sense
+  that a lifter can perform one.
+- **Exception process:** None. Any new store or persisted key holding user-scoped data must be added to
+  the teardown sequence in the same change that introduces it — not in a follow-up.
