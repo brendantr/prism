@@ -151,23 +151,39 @@ compact number in the hero, the full ring and factor breakdown further down — 
 
 ---
 
-### D4 — Exactly two entry points into a session, and never two sessions at once
+### D4 — Three entry points into a session, and never two sessions at once
 
-**Statement** `[decision]` (1) The auto-resolved suggestion via `resolveTodaySession`, and (2) the
-explicit "Choose a workout" modal, which also contains "Start empty". No third path in v1.
+**Statement** `[decision]` (1) The auto-resolved suggestion on Today via `resolveTodaySession`; (2) the
+explicit "Choose a workout" modal, which also contains "Start empty"; (3) Exercises' "log this lift",
+which starts an **open session only** — never a template session — and adds the chosen lift to it. All
+three guard on `if (!activeWorkout)` before creating anything, so no path can produce a second
+concurrent session. No fourth path in v1.
 
-**Rationale** One algorithmic path plus one deliberate path covers both "tell me what's next" and "I
-know what I'm doing". Before `workout-session-continuity-v1`, template choice was not a real choice at
-all — an algorithm's suggestion plus a manual escape hatch `[fact, `workout-logging-v1-planning` §2.1]`.
-That sprint added the choice without removing the suggestion. Resuming into an existing session rather
-than permitting a second one is pre-existing correct behaviour and is preserved
-`[fact, `workout-logging-v1-planning` §2.1]`.
+**Corrected 2026-08-05** `[fact]` This decision previously read "exactly two entry points… no third path
+in v1" and named Exercises as a hypothetical *future* addition. That was wrong about this repository:
+`app/(tabs)/exercises.tsx`'s `logExercise` already created sessions and had done since
+`ui-ux-foundation-expansion`, whose in-scope item 4 is "a low-friction 'log this lift' path"
+`[fact, `2026-07-29-ui-ux-foundation-expansion.md` §In scope]`. **This is a correction of the document to
+match shipped reality, not a change of product direction** — no entry point was added, removed, or
+re-scoped to make D4 true.
 
-**Evidence** `app/workout/templates.tsx`; `src/domain/schedule.ts` (`listTemplateChoices`);
-`app/(tabs)/index.tsx`.
+**Rationale** One algorithmic path plus one deliberate path covers both "tell me what's next" and "I know
+what I'm doing"; the third serves the different job of "I know the lift, not the session", and reaches
+the logger through the same `start`/`addExercise` store calls rather than a parallel session builder
+`[fact, `app/(tabs)/exercises.tsx` header comment]`. Before `workout-session-continuity-v1`, template
+choice was not a real choice at all — an algorithm's suggestion plus a manual escape hatch
+`[fact, `workout-logging-v1-planning` §2.1]`. That sprint added the choice without removing the
+suggestion. Resuming into an existing session rather than permitting a second one is pre-existing
+correct behaviour and is preserved `[fact, `workout-logging-v1-planning` §2.1]`.
 
-**Reversal** A third entry point (e.g. from Exercises, or a repeat-last-session action) is v2 work and
-must state how it stays consistent with these two.
+**Evidence** `app/(tabs)/index.tsx` (`handleStart`, which returns early into an existing session);
+`app/workout/templates.tsx` (`handleDay`/`handleEmpty`) with `src/domain/schedule.ts`
+(`listTemplateChoices`); `app/(tabs)/exercises.tsx` (`logExercise`). `app/workout/picker.tsx` is **not** an
+entry point — it only adds to a session that already exists `[fact]`.
+
+**Reversal** A fourth entry point (e.g. repeat-last-session, or a widget/deep link) is v2 work and must
+state how it stays consistent with these three — specifically, how it guards against a second session and
+what it does when a recovered draft is pending review.
 
 ---
 
@@ -175,7 +191,9 @@ must state how it stays consistent with these two.
 
 **Statement** `[decision]` (a) no session, (b) "Session in progress" one-line banner, (c) "Recovered
 session" card with **Resume workout** and a confirmed **Discard draft**. Exactly one renders at a time.
-The rest timer is excluded from the persisted draft.
+The rest timer is excluded from the persisted draft. **Entering the logger *is* resuming**: whatever
+route reaches `workout/active`, `draftPendingReview` is cleared on arrival, so state (c) can never
+outlive the moment the lifter is already logging in that session.
 
 **Rationale** A wall-clock countdown surviving an arbitrary kill-to-relaunch gap is misleading UI
 state, not workout data `[fact, `workout-session-continuity-v1` §3]`. Recovery is an explicit user
@@ -185,7 +203,16 @@ on absent data (I-18).
 
 **Evidence** `src/store/activeWorkoutStore.ts` (`hydrate`, `resumeDraft`, `draftPendingReview`,
 AsyncStorage key `prism.activeWorkout.draft.v1`, module-level `subscribe`); `app/(tabs)/index.tsx`;
-`app/_layout.tsx` (calls `hydrate()` once on mount).
+`app/_layout.tsx` (calls `hydrate()` once on mount); `app/workout/active.tsx` (clears
+`draftPendingReview` on entry, so the flag does not depend on which route got the lifter there).
+
+**Entry-path independence** `[fact, added 2026-08-05]` `resumeDraft()` used to be called from exactly one
+place — Today's Recovered card — so any other route into the logger left `draftPendingReview` set and
+Today kept rendering state (c) for a session the lifter was already logging in. The logger now clears it
+itself. The two session-creating paths that could previously reach an unreviewed draft
+(`workout/templates`, Exercises' "log this lift") no longer act on one silently — see §4.3 and D4.
+Exercises has no §4 subsection of its own: its internals are out of scope per §1, and only its role as
+D4's third entry point is governed here.
 
 **Note** `[fact]` `hydrate()` guards the race where a stale on-disk draft would overwrite a session
 started while its read was in flight; this is covered by a deterministic unit test, not by manual
@@ -390,9 +417,16 @@ interrupted**.
   §1]`: starting from a template seeds a session that is freely editable in the logger; the reusable
   template definition is never written back. `activeWorkoutStore.start()` only ever *reads* the
   `RoutineDay` `[fact, §3]`.
+- **A session already in progress is surfaced, not overridden** `[decision, 2026-08-05]`. Picking a day
+  (or "Start empty") while `activeWorkout` is non-null used to `router.replace` straight into the
+  *existing* session — the lifter's choice silently discarded, and a recovered draft acted on before they
+  had reviewed it. Both handlers now raise an `Alert` naming the session already in progress, offering to
+  open it or cancel. Cancel writes nothing. This preserves D4's "never two sessions" guard while making
+  its effect visible `[fact]`.
 - **States** Loading/error: inherits Today's, since the modal is only reachable after a successful load
   `[assumption; this screen does not itself branch on `trainingStore.status`]`. Empty: not reachable —
-  two templates ship in `src/data/routineTemplates.ts`. Interrupted: dismissing writes nothing.
+  two templates ship in `src/data/routineTemplates.ts`. Interrupted: dismissing writes nothing; picking
+  anything while a session exists writes nothing either, per the bullet above.
 
 ### 4.4 Logger (`workout/active`)
 
@@ -416,6 +450,11 @@ interrupted**.
   second confirmation) → confirms with set count and elapsed time → `finish()` builds the completed
   workout **without clearing the store** → persist → detect and persist PRs → only then route to the
   summary and discard `[fact]`.
+- **Entering the logger resumes a recovered draft** `[decision, 2026-08-05]`. On mount, if a workout is
+  present and `draftPendingReview` is set, the screen calls `resumeDraft()`. Landing here *is* the
+  decision D5's Recovered card asks for, whichever route arrived — so Today cannot go on offering
+  Resume/Discard for a session already being logged. `resumeDraft()` is idempotent, so Today's own Resume
+  button (which already calls it before navigating) is unaffected `[fact]`.
 - **States** Loading: does not branch on `trainingStore.status` — carried-forward gap
   `[fact, `logger-ux-polish` §7]`. Error: save failure keeps every set on screen behind a visible retry
   banner with `accessibilityRole="alert"`; nothing is discarded until a save succeeds `[fact]`. Empty:
@@ -615,4 +654,5 @@ readiness.
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-05 | Initial draft. Consolidates the UI/UX baseline across onboarding, Today, template choice, the logger, the picker, the summary, History, and Insights' deeper-surfaces role. Closes three previously-open next decisions: History stays read-only (D7, from `workout-history-v1`), confirmation rather than undo (D6, from `logger-ux-polish`), and Today's tiles become rows (D9, from `today-insights-cohesion`). No code changed. | Claude (agent), for engineer/owner review |
+| 2026-08-05 | `feature/logger-v1-alignment`. **D4 corrected** from "exactly two entry points… no third path in v1" to three, documenting Exercises' "log this lift" — which has created open sessions since `ui-ux-foundation-expansion` and which D4 had wrongly named as hypothetical v2 work. This is a correction of the document to match shipped reality, **not** a change of product direction: no entry point was added, removed, or re-scoped. **L1 fixed:** the logger now clears `draftPendingReview` on entry, so Today's "Recovered session" card can no longer outlive the moment the lifter is already logging in that session (previously only Today's own Resume button cleared it, leaving the flag set for every other route in). **L2 fixed:** `workout/templates` and Exercises' "log this lift" no longer act silently when a session already exists or a recovered draft is unreviewed — both now surface an `Alert` and leave the existing session untouched on cancel. D5's "never two sessions" guard is unchanged; only its silence was. | Claude (agent) |
 | 2026-08-05 | `feature/today-v1-alignment` implements D9: Today's `QuickAccess` tile row replaced by the same `ListRow` card Insights renders, both still driven by `src/content/deeperSurfaces.ts`; `QuickAccess.tsx` retired (zero remaining consumers). Also fixes a duplicate-CTA bug found during D9's audit, not part of D9 itself: `SessionCard` previously rendered unconditionally, showing a filled "Start session" button alongside the "Resume workout" / "Session in progress" continuity affordances (D3, D5) whenever a session was already active or a draft pending review — now suppressed by an `!activeWorkout` guard. | Claude (agent) |
