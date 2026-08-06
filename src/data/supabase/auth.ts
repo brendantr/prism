@@ -35,6 +35,14 @@ export function isAuthEnabled(): boolean {
 
 export interface SessionUser {
   userId: string;
+  /**
+   * Display only, and null whenever Supabase has none (a provider that does not
+   * return one). It answers "which account am I in?" on a shared device, which
+   * is the question a sign-out control exists to settle. It is **never** used to
+   * scope a query or identify a row — that is `auth.uid()`'s job, checked by RLS
+   * (`Docs/invariants.md` I-6).
+   */
+  email: string | null;
 }
 
 /**
@@ -52,18 +60,14 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!isAuthEnabled()) return null;
   const { data, error } = await getSupabase().auth.getSession();
   if (error || !data.session?.user) return null;
-  return { userId: data.session.user.id };
-}
-
-export interface SignInResult {
-  userId: string;
+  return { userId: data.session.user.id, email: data.session.user.email ?? null };
 }
 
 /** Rejects with the raw Supabase error; callers map it via `toAuthFailure`. */
 export async function signInWithPassword(
   email: string,
   password: string,
-): Promise<SignInResult> {
+): Promise<SessionUser> {
   const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
   if (error) throw error;
   if (!data.session?.user) {
@@ -71,7 +75,7 @@ export async function signInWithPassword(
     // reporting "signed in" to a store that would then load nothing.
     throw new Error('Sign-in returned no session.');
   }
-  return { userId: data.session.user.id };
+  return { userId: data.session.user.id, email: data.session.user.email ?? null };
 }
 
 export interface SignUpResult {
@@ -80,7 +84,7 @@ export interface SignUpResult {
    * the created user with no session until the address is verified. The caller
    * must not treat sign-up as sign-in; see `sessionStore.signUp`.
    */
-  userId: string | null;
+  user: SessionUser | null;
   /** True when there is a live session, i.e. confirmation is disabled. */
   sessionEstablished: boolean;
 }
@@ -91,9 +95,10 @@ export async function signUpWithPassword(
 ): Promise<SignUpResult> {
   const { data, error } = await getSupabase().auth.signUp({ email, password });
   if (error) throw error;
+  const user = data.session?.user;
   return {
-    userId: data.session?.user?.id ?? null,
-    sessionEstablished: data.session?.user != null,
+    user: user ? { userId: user.id, email: user.email ?? null } : null,
+    sessionEstablished: user != null,
   };
 }
 
@@ -125,17 +130,20 @@ export type AuthStateEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'O
  * when a refresh permanently fails.
  */
 export function subscribeToAuthState(
-  handler: (event: AuthStateEvent, userId: string | null) => void,
+  handler: (event: AuthStateEvent, user: SessionUser | null) => void,
 ): Subscription | null {
   if (!isAuthEnabled()) return null;
 
   const { data } = getSupabase().auth.onAuthStateChange((event, session) => {
-    const userId = session?.user?.id ?? null;
+    const supabaseUser = session?.user;
+    const user: SessionUser | null = supabaseUser
+      ? { userId: supabaseUser.id, email: supabaseUser.email ?? null }
+      : null;
     if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-      handler(event, userId);
+      handler(event, user);
       return;
     }
-    handler('OTHER', userId);
+    handler('OTHER', user);
   });
 
   return data.subscription;

@@ -5,6 +5,7 @@ import {
   signInWithPassword,
   signUpWithPassword,
   subscribeToAuthState,
+  type SessionUser,
 } from '@/data/supabase/auth';
 import { toAuthFailure, type AuthFailure } from '@/domain/authErrors';
 import type { SessionPhase } from '@/domain/routing';
@@ -40,12 +41,20 @@ import type { SessionPhase } from '@/domain/routing';
 export interface SessionState {
   phase: SessionPhase;
   /**
-   * Display and test assertions only. **Never passed into a repository
-   * method** -- identity reaches Postgres through the access token and is
-   * checked by RLS (`Docs/invariants.md` I-6). A client that hands its own id
-   * to a query is a client asserting ownership.
+   * IDENTITY, FOR LOOKING AT ONLY
+   * -----------------------------
+   * `userId` and `email` are display and test assertions. **Neither is ever
+   * passed into a repository method** -- identity reaches Postgres through the
+   * access token and is checked by RLS (`Docs/invariants.md` I-6). A client that
+   * hands its own id to a query is a client asserting ownership.
+   *
+   * `email` exists so the account sheet can answer "which account am I in?" on a
+   * shared device, which is the question a sign-out control is usually opened to
+   * settle. Both are cleared by `markUnauthenticated`, which is what sign-out
+   * teardown calls last (I-19).
    */
   userId: string | null;
+  email: string | null;
   pending: 'signIn' | 'signUp' | null;
   /**
    * Outcome of the last attempt. Note `'checkEmail'` rides this channel while
@@ -55,7 +64,7 @@ export interface SessionState {
   lastFailure: AuthFailure | null;
 
   initialize: () => Promise<void>;
-  markAuthenticated: (userId: string) => void;
+  markAuthenticated: (user: SessionUser) => void;
   markUnauthenticated: () => void;
   startSignIn: () => void;
   startSignUp: () => void;
@@ -75,6 +84,7 @@ let authSubscribed = false;
 export const useSessionStore = create<SessionState>((set, get) => ({
   phase: 'unknown',
   userId: null,
+  email: null,
   pending: null,
   lastFailure: null,
 
@@ -86,26 +96,27 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // misconfigured build must be allowed to reach `getRepository()`'s throw
     // rather than being diverted to a sign-in form that cannot work.
     if (!isAuthEnabled()) {
-      set({ phase: 'disabled', userId: null, pending: null, lastFailure: null });
+      set({ phase: 'disabled', userId: null, email: null, pending: null, lastFailure: null });
       return;
     }
 
     if (!authSubscribed) {
       authSubscribed = true;
-      subscribeToAuthState((event, userId) => {
+      subscribeToAuthState((event, user) => {
         if (event === 'SIGNED_OUT') {
           // The revoked/expired refresh token path: supabase-js emits this when
           // a refresh permanently fails. Routing, not an error state.
           set({
             phase: 'unauthenticated',
             userId: null,
+            email: null,
             pending: null,
             lastFailure: 'sessionExpired',
           });
           return;
         }
-        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && userId) {
-          set({ phase: 'authenticated', userId, pending: null });
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && user) {
+          set({ phase: 'authenticated', userId: user.userId, email: user.email, pending: null });
         }
       });
     }
@@ -113,17 +124,29 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const user = await getCurrentUser();
     set(
       user
-        ? { phase: 'authenticated', userId: user.userId, lastFailure: null }
-        : { phase: 'unauthenticated', userId: null },
+        ? { phase: 'authenticated', userId: user.userId, email: user.email, lastFailure: null }
+        : { phase: 'unauthenticated', userId: null, email: null },
     );
   },
 
-  markAuthenticated: (userId) =>
-    set({ phase: 'authenticated', userId, pending: null, lastFailure: null }),
+  markAuthenticated: (user) =>
+    set({
+      phase: 'authenticated',
+      userId: user.userId,
+      email: user.email,
+      pending: null,
+      lastFailure: null,
+    }),
 
   /** Idempotent: safe to call from both the auth listener and a failed load. */
   markUnauthenticated: () =>
-    set({ phase: 'unauthenticated', userId: null, pending: null, lastFailure: null }),
+    set({
+      phase: 'unauthenticated',
+      userId: null,
+      email: null,
+      pending: null,
+      lastFailure: null,
+    }),
 
   startSignIn: () => set({ pending: 'signIn', lastFailure: null }),
   startSignUp: () => set({ pending: 'signUp', lastFailure: null }),
@@ -133,8 +156,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   signIn: async (email, password) => {
     get().startSignIn();
     try {
-      const { userId } = await signInWithPassword(email, password);
-      get().markAuthenticated(userId);
+      get().markAuthenticated(await signInWithPassword(email, password));
       return true;
     } catch (e) {
       get().finishAttempt(toAuthFailure(e));
@@ -157,9 +179,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   signUp: async (email, password) => {
     get().startSignUp();
     try {
-      const { userId, sessionEstablished } = await signUpWithPassword(email, password);
-      if (sessionEstablished && userId) {
-        get().markAuthenticated(userId);
+      const { user, sessionEstablished } = await signUpWithPassword(email, password);
+      if (sessionEstablished && user) {
+        get().markAuthenticated(user);
         return true;
       }
       get().finishAttempt('checkEmail');

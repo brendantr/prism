@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEMO_PROFILE_ID } from '@/data/demoSeed';
 import { AuthRequiredError } from '@/data/authRequired';
+import { canOfferSignOut, shouldConfirmSignOut } from '@/domain/account';
 import type { Workout } from '@/domain/types';
 import { DRAFT_STORAGE_KEY, useActiveWorkoutStore } from '../activeWorkoutStore';
 import { signOutAndTearDown } from '../authActions';
@@ -76,6 +77,7 @@ beforeEach(async () => {
   useSessionStore.setState({
     phase: 'authenticated',
     userId: 'user_a',
+    email: 'user_a@example.com',
     pending: null,
     lastFailure: null,
   });
@@ -173,6 +175,69 @@ describe('signOutAndTearDown', () => {
     unsubscribe();
 
     expect(workoutsWhenPhaseFlipped).toEqual([]);
+  });
+
+  it('discards an in-progress session, which is why the surface confirms first', async () => {
+    /*
+      The reason `shouldConfirmSignOut` exists. Teardown is indiscriminate by
+      design -- leaving one lifter's unfinished session on a shared device is
+      worse than losing it -- so the warning has to happen before this runs, not
+      inside it.
+    */
+    const draft = draftFor('user_a');
+    draft.exercises = [
+      {
+        id: 'we_1',
+        workoutId: draft.id,
+        exerciseId: 'ex_1',
+        orderIndex: 0,
+        notes: null,
+        sets: [
+          {
+            id: 'st_1',
+            workoutExerciseId: 'we_1',
+            setIndex: 0,
+            type: 'working',
+            weightKg: 100,
+            reps: 5,
+            rpe: null,
+            completed: true,
+            restSeconds: null,
+            notes: null,
+          },
+        ],
+      },
+    ];
+    useActiveWorkoutStore.setState({ workout: draft });
+    await AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    expect(shouldConfirmSignOut(draft)).toBe(true);
+
+    await signOutAndTearDown();
+
+    expect(useActiveWorkoutStore.getState().workout).toBeNull();
+    expect(await AsyncStorage.getItem(DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
+  it('leaves no session for the control to be offered against', async () => {
+    // The affordance cannot survive its own action.
+    seedLoadedTrainingData();
+
+    await signOutAndTearDown();
+
+    expect(
+      canOfferSignOut({ authEnabled: true, sessionPhase: useSessionStore.getState().phase }),
+    ).toBe(false);
+  });
+
+  it('clears the signed-in identity, not just the phase', async () => {
+    // The account sheet renders `email`. A stale one would name the previous
+    // lifter on the next sign-in's first frame.
+    useSessionStore.setState({ phase: 'authenticated', userId: 'user_a', email: 'a@example.com' });
+
+    await signOutAndTearDown();
+
+    expect(useSessionStore.getState().userId).toBeNull();
+    expect(useSessionStore.getState().email).toBeNull();
   });
 
   it('completes teardown even when the server sign-out fails', async () => {
