@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EXERCISE_LIBRARY } from './exerciseLibrary';
 import { ROUTINE_TEMPLATES, SPECTRUM_FOUR } from './routineTemplates';
 import { generateDemoData, DEMO_PROFILE_ID } from './demoSeed';
+import { AuthRequiredError } from './authRequired';
 import {
   DEMO_MODE,
   SUPABASE_MISCONFIGURED,
@@ -218,10 +219,25 @@ const WORKOUT_SELECT = `
 class SupabaseRepository implements Repository {
   readonly kind = 'supabase' as const;
 
+  /**
+   * The signed-in user's id, and the only source of identity in this class.
+   *
+   * Two changes from the original, both deliberate:
+   *
+   * 1. `getSession()` rather than `getUser()`. `getUser()` makes a network
+   *    round-trip per call, and `trainingStore.refresh()` fans out eight
+   *    repository calls at once, six of which land here -- six requests before
+   *    any data is fetched. RLS evaluates the access token server-side on every
+   *    query anyway, so a second client-side validation proves nothing the
+   *    query itself will not (`Docs/invariants.md` I-1, I-6).
+   * 2. `AuthRequiredError` rather than a bare `Error`. The store layer has to
+   *    be able to route "no session" to sign-in instead of rendering a retry
+   *    that cannot succeed. See `src/data/authRequired.ts`.
+   */
   private async uid(): Promise<string> {
-    const { data, error } = await getSupabase().auth.getUser();
-    if (error || !data.user) throw new Error('Not signed in.');
-    return data.user.id;
+    const { data, error } = await getSupabase().auth.getSession();
+    if (error || !data.session?.user) throw new AuthRequiredError();
+    return data.session.user.id;
   }
 
   async getProfile(): Promise<Profile> {
@@ -508,6 +524,21 @@ export function getRepository(): Repository {
     instance = isSupabaseConfigured ? new SupabaseRepository() : new DemoRepository();
   }
   return instance;
+}
+
+/**
+ * Drop the cached repository so the next `getRepository()` builds a fresh one.
+ *
+ * **Defence in depth, not the fix.** `SupabaseRepository` holds no state -- it
+ * re-derives identity from the session on every call -- so resetting it changes
+ * nothing observable today. The data that actually survives a sign-out is
+ * `trainingStore`'s populated arrays and the local workout draft, and those are
+ * cleared explicitly (`src/store/authActions.ts`). This exists so that the day
+ * someone caches a profile id or a client handle on the instance, the teardown
+ * path already covers it rather than needing to be rediscovered.
+ */
+export function resetRepository(): void {
+  instance = null;
 }
 
 /**

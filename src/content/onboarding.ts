@@ -1,3 +1,4 @@
+import type { AuthFailure } from '@/domain/authErrors';
 import { PASSWORD_MIN_LENGTH, type AuthFieldError } from '@/domain/authValidation';
 import type { Equipment, Experience, Goal } from '@/domain/types';
 
@@ -147,10 +148,25 @@ export const AUTH = {
   primaryCtaSignIn: 'Sign in',
   toggleToSignIn: 'Already have an account? Sign in',
   toggleToSignUp: 'New here? Create an account',
-  skipLabel: 'Later',
-  /** Accounts are not wired up yet; this is stated rather than implied. */
-  placeholderNotice:
-    'Accounts are not connected yet. Continue to explore PRism on this device with sample training data.',
+  /*
+    `skipLabel` and `placeholderNotice` are gone, together and on purpose.
+
+    They were the honest half of a screen that could not create an account
+    (UX decision D2). The form works now, so the notice would be false and the
+    skip would lead somewhere that no longer exists -- every data screen needs a
+    session. D2's reversal clause requires copy, skip semantics, the completion
+    gate and the autofill attributes to change as one unit, which is why their
+    absence is asserted by `src/content/__tests__/onboarding.test.ts`: a partial
+    reversal is the failure mode worth pinning.
+
+    TODO(docs): supersede D2 in `Docs/ui-ux-foundation-v1.md` and close §9
+    open question 1 (auth is hidden in demo builds -- `src/domain/routing.ts`).
+  */
+  checkEmailTitle: 'Confirm your email',
+  checkEmailBody:
+    'We sent a confirmation link to your address. Open it, then come back here and sign in.',
+  checkEmailCta: 'Back to sign in',
+  signedOutNotice: 'You have been signed out. Sign in to continue.',
 } as const;
 
 /** One sentence per validation failure. Keyed by the domain's error codes. */
@@ -159,6 +175,49 @@ export const AUTH_ERROR_COPY: Record<AuthFieldError, string> = {
   email_invalid: 'That does not look like an email address.',
   password_required: 'Enter a password.',
   password_too_short: `Use at least ${PASSWORD_MIN_LENGTH} characters.`,
+};
+
+/**
+ * One sentence per auth outcome. Keyed by `src/domain/authErrors.ts`.
+ *
+ * ACCOUNT ENUMERATION
+ * -------------------
+ * `invalidCredentials` covers a wrong password *and* an address with no
+ * account, and says so in neither case. Splitting them would turn this form
+ * into an oracle for "does this person use PRism", against a product that
+ * stores sleep, soreness and bodyweight. Supabase returns the same 400 for
+ * both, so the single message is what the server already behaves like.
+ *
+ * Sign-up is subject to the same rule from the other direction: an address
+ * that already has an account gets the same `checkEmail` outcome as a new one.
+ *
+ * Nothing here names an environment variable, an endpoint, or a raw error --
+ * `toAuthFailure` maps unrecognised shapes to `unknown` precisely so nothing
+ * unreviewed can reach a screen. Pinned by the copy tests.
+ */
+export const AUTH_OUTCOME_COPY: Record<AuthFailure, string> = {
+  invalidCredentials: 'That email and password do not match an account.',
+  rateLimited: 'Too many attempts. Wait a minute and try again.',
+  network: 'PRism could not reach the server. Check your connection and try again.',
+  sessionExpired: 'You have been signed out. Sign in to continue.',
+  checkEmail: 'Check your email for a confirmation link, then sign in.',
+  unknown: 'Something went wrong. Try again.',
+};
+
+/**
+ * Whether an outcome is a failure or a normal next step.
+ *
+ * `checkEmail` is the reason this exists: it travels in the same channel as the
+ * failures (`sessionStore.lastFailure`) because it is the result of the same
+ * attempt, but it is a success and must not be rendered in the error tone.
+ */
+export const AUTH_OUTCOME_TONE: Record<AuthFailure, 'error' | 'notice'> = {
+  invalidCredentials: 'error',
+  rateLimited: 'error',
+  network: 'error',
+  sessionExpired: 'notice',
+  checkEmail: 'notice',
+  unknown: 'error',
 };
 
 export interface StepOption<T extends string | number> {

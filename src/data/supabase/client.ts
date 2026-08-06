@@ -66,7 +66,29 @@ export function getSupabase(): SupabaseClient {
         storage: secureSessionStorage,
         autoRefreshToken: true,
         persistSession: true,
-        // React Native has no URL bar to parse a session out of.
+        /*
+          React Native has no URL bar to parse a session out of.
+
+          Left false deliberately, and it was reconsidered: the auth/session
+          sprint assumes email confirmation is ON for the project, so sign-up
+          returns no session and the lifter has to come back through a
+          confirmation link. Turning this on would not help. `detectSessionInUrl`
+          reads `window.location` -- a web mechanism -- and nothing in this repo
+          handles an incoming deep link: `app.json` declares `scheme: "prism"`,
+          but a repo-wide search finds no `expo-linking` import and no `Linking`
+          listener anywhere in `app/` or `src/`. Setting it true would change
+          nothing on device except to imply a capture path that does not exist.
+
+          Consequence, stated rather than implied: confirmation ends in a
+          **manual sign-in**, and `app/auth/index.tsx` says exactly that on its
+          "Confirm your email" state. Automatic capture needs its own sprint --
+          a link handler, a redirect URL allow-listed in the Supabase project
+          (owner-only, `CLAUDE.md`), and a test path.
+
+          TODO(docs): record this in ADR-0004 and in
+          `Docs/production-posture-v1.md` §4 alongside the preview-flip
+          dependencies.
+        */
         detectSessionInUrl: false,
       },
     });

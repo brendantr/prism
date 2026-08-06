@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { getRepository } from '@/data/repository';
+import { isAuthRequiredError } from '@/data/authRequired';
+import { useSessionStore } from './sessionStore';
 import type {
   BodyMeasurement,
   CheckIn,
@@ -35,6 +37,8 @@ interface TrainingState {
 
   load: () => Promise<void>;
   refresh: () => Promise<void>;
+  /** Returns the store to its pre-load state. Part of sign-out teardown. */
+  reset: () => void;
   upsertWorkout: (workout: Workout) => Promise<void>;
   addPersonalRecords: (records: PersonalRecord[]) => Promise<void>;
   saveCheckIn: (checkIn: CheckIn) => Promise<void>;
@@ -42,13 +46,23 @@ interface TrainingState {
   toggleFavourite: (exerciseId: string) => void;
 }
 
-export const useTrainingStore = create<TrainingState>((set, get) => ({
-  status: 'idle',
+/**
+ * Everything this store holds that belongs to a user, at its pre-load value.
+ *
+ * Named and reused by `reset()` so sign-out cannot drift from construction:
+ * a field added here is cleared on sign-out for free, and a field added only
+ * to the initializer below would be a field that survives a sign-out. That is
+ * the whole failure mode `reset()` exists to prevent (proposed I-19).
+ *
+ * `favouriteExerciseIds` is included even though it is never persisted -- it is
+ * still one lifter's preference sitting in memory when the next one signs in.
+ */
+const INITIAL_DATA = {
+  status: 'idle' as const,
   error: null,
-
   profile: null,
   exercises: [],
-  exerciseById: new Map(),
+  exerciseById: new Map<string, Exercise>(),
   routines: [],
   activeRoutine: null,
   workouts: [],
@@ -56,6 +70,10 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   measurements: [],
   personalRecords: [],
   favouriteExerciseIds: ['ex_back_squat', 'ex_bench_press', 'ex_deadlift', 'ex_pullup'],
+};
+
+export const useTrainingStore = create<TrainingState>((set, get) => ({
+  ...INITIAL_DATA,
 
   load: async () => {
     if (get().status === 'loading' || get().status === 'ready') return;
@@ -91,9 +109,27 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         personalRecords,
       });
     } catch (e) {
+      // "No session" is a routing problem, not a load failure. Left as
+      // `status: 'error'` it rendered `ScreenState`'s "Could not load this"
+      // behind a Retry that could never succeed, with no way to a sign-in
+      // screen. Status goes back to 'idle' rather than 'error' because
+      // `load()`'s re-entry guard blocks on 'loading'/'ready' -- leaving a
+      // stale status here would silently swallow the load that runs after a
+      // successful sign-in.
+      if (isAuthRequiredError(e)) {
+        set({ status: 'idle', error: null });
+        useSessionStore.getState().markUnauthenticated();
+        return;
+      }
       set({ status: 'error', error: e instanceof Error ? e.message : 'Could not load your training data.' });
     }
   },
+
+  /**
+   * Sign-out teardown. Ordered by `signOutAndTearDown` in `authActions.ts`,
+   * which is the only caller -- this is not a "reload" affordance.
+   */
+  reset: () => set({ ...INITIAL_DATA, exerciseById: new Map<string, Exercise>() }),
 
   upsertWorkout: async (workout) => {
     await getRepository().saveWorkout(workout);

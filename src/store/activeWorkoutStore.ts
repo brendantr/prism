@@ -4,8 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { newId } from '@/utils/id';
 import type { RoutineDay, SetType, Workout, WorkoutExercise, WorkoutSet } from '@/domain/types';
 
-/** Local-only draft key, independent of the repository -- see the module-level `subscribe` below. */
-const DRAFT_STORAGE_KEY = 'prism.activeWorkout.draft.v1';
+/**
+ * Local-only draft key, independent of the repository -- see the module-level
+ * `subscribe` below. Exported so sign-out teardown can remove it deterministically
+ * rather than relying on the subscriber's fire-and-forget write
+ * (`src/store/authActions.ts`).
+ */
+export const DRAFT_STORAGE_KEY = 'prism.activeWorkout.draft.v1';
 
 /**
  * ACTIVE WORKOUT
@@ -21,6 +26,26 @@ const DRAFT_STORAGE_KEY = 'prism.activeWorkout.draft.v1';
  * purely so a killed process can recover the in-progress draft on relaunch --
  * that mirror is never read by anything except this store's own `hydrate()`.
  */
+
+/**
+ * Who a recovered draft has to belong to for `hydrate()` to keep it.
+ *
+ * `{ enforce: false }` is the demo/single-identity case: there is one lifter on
+ * the device and `DEMO_PROFILE_ID` is a constant, so there is nothing to check.
+ * The caller decides, because only the caller knows the build's mode -- this
+ * store stays mode-agnostic, as `Docs/architecture.md` describes it.
+ *
+ * NOT AN AUTHORIZATION CHECK -- see the note on `start()` below, which this
+ * deliberately does not contradict. Discarding local state is not the same as
+ * granting access to remote state: the security boundary is still RLS plus the
+ * session-derived `profile_id` that `SupabaseRepository.saveWorkout` stamps on
+ * write. What this prevents is a *data-integrity* accident -- one lifter's
+ * unfinished session being saved onto the next lifter's account when a shared
+ * phone changes hands, which the write path would happily do, because the write
+ * path correctly trusts the session and knows nothing about where the draft
+ * came from.
+ */
+export type DraftOwner = { enforce: false } | { enforce: true; profileId: string };
 
 export interface RestTimer {
   /** Epoch ms when the rest period ends. */
@@ -39,6 +64,12 @@ interface ActiveWorkoutState {
   /** Whether `hydrate()` has finished reading any locally persisted draft yet. */
   hydrationStatus: 'idle' | 'loading' | 'ready';
   /**
+   * Set when a recovered draft was thrown away because it belonged to a
+   * different account. Surfaced nowhere in v1 -- it exists so the discard is
+   * observable in a test rather than being a silent deletion.
+   */
+  draftDiscardedForOwner: boolean;
+  /**
    * True only when the current `workout` was just restored from disk on this
    * app launch and the user has not yet chosen to resume or discard it. Drives
    * the "Recovered session" decision on Today rather than silently dropping the
@@ -46,7 +77,7 @@ interface ActiveWorkoutState {
    */
   draftPendingReview: boolean;
   /** Reads any locally persisted draft from a prior, killed session. Idempotent. */
-  hydrate: () => Promise<void>;
+  hydrate: (owner?: DraftOwner) => Promise<void>;
   /** Clears the pending-review flag; the restored `workout` is left untouched. */
   resumeDraft: () => void;
 
@@ -58,6 +89,11 @@ interface ActiveWorkoutState {
    * id from the signed-in session and Postgres checks the result against its
    * own policies — so nothing the client puts here can decide who owns a row.
    * Do not read it back as a permission, and do not gate UI on it.
+   *
+   * `hydrate()` compares it against `DraftOwner` on launch, which is not a
+   * reversal of the above: it decides whether to keep a *local* draft, grants
+   * no access to anything, and gates no UI. The rule stands — this value can
+   * throw a draft away, and can never let one through.
    */
   start: (params: { profileId: string; title: string; routineDay?: RoutineDay | null }) => Workout;
   discard: () => void;
@@ -98,12 +134,14 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
   lastCompletedSetId: null,
   hydrationStatus: 'idle',
   draftPendingReview: false,
+  draftDiscardedForOwner: false,
 
-  hydrate: async () => {
+  hydrate: async (owner = { enforce: false }) => {
     if (get().hydrationStatus !== 'idle') return;
     set({ hydrationStatus: 'loading' });
 
     let restored: Workout | null = null;
+    let discardedForOwner = false;
     try {
       const raw = await AsyncStorage.getItem(DRAFT_STORAGE_KEY);
       if (raw) {
@@ -118,19 +156,31 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
       restored = null;
     }
 
+    // A draft from a different account -- or from a demo run on a device that
+    // has since signed in, where the id is the `DEMO_PROFILE_ID` literal -- is
+    // dropped rather than resumed. Resuming it would let `finish()` hand the
+    // previous lifter's sets to `upsertWorkout`, which stamps the *current*
+    // session's id on write and would file someone else's training under this
+    // account. See `DraftOwner`.
+    if (restored && owner.enforce && restored.profileId !== owner.profileId) {
+      restored = null;
+      discardedForOwner = true;
+      await AsyncStorage.removeItem(DRAFT_STORAGE_KEY).catch(() => {});
+    }
+
     // The read above is async; the user may have already started a new
     // session (e.g. tapping "Start session" before this resolves) while it
     // was in flight. A workout already sitting in the store by now is never
     // the stale on-disk draft -- it's real, current state, and must win.
     if (get().workout) {
-      set({ hydrationStatus: 'ready' });
+      set({ hydrationStatus: 'ready', draftDiscardedForOwner: discardedForOwner });
       return;
     }
 
     set(
       restored
         ? { workout: restored, draftPendingReview: true, hydrationStatus: 'ready' }
-        : { hydrationStatus: 'ready' },
+        : { hydrationStatus: 'ready', draftDiscardedForOwner: discardedForOwner },
     );
   },
 

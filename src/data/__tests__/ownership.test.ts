@@ -55,7 +55,19 @@ jest.mock('../supabase/client', () => {
     isSupabaseConfigured: true,
     getSupabase: () => ({
       auth: {
-        getUser: async () => ({ data: { user: { id: SESSION_UID } }, error: null }),
+        /*
+          `getSession`, not `getUser`, since the auth/session sprint: `getUser`
+          round-trips to the auth server on every call and `uid()` is hit by six
+          of the eight repository calls `trainingStore.refresh()` fires at once.
+          The access token is what RLS evaluates anyway.
+
+          What this test asserts is unchanged by that: identity still comes from
+          the session and never from the caller.
+        */
+        getSession: async () => ({
+          data: { session: { user: { id: SESSION_UID } } },
+          error: null,
+        }),
       },
       from: (table: string) => builder(table),
     }),
