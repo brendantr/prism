@@ -10,7 +10,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useActiveWorkoutStore } from '../activeWorkoutStore';
+import {
+  selectCompletedSetCount,
+  selectHasActiveWorkout,
+  selectTotalSetCount,
+  useActiveWorkoutStore,
+} from '../activeWorkoutStore';
 import type { RoutineDay, Workout } from '@/domain/types';
 
 const DRAFT_KEY = 'prism.activeWorkout.draft.v1';
@@ -391,8 +396,117 @@ describe('resumeDraft()', () => {
  * shown in the logger is `setIndex + 1` and a gap there would misnumber every
  * row below the one removed.
  */
+/**
+ * `start()` is the store's half of D4's "never two sessions at once".
+ *
+ * The three entry points each guard on `if (!activeWorkout)` before calling it
+ * (`Docs/ui-ux-foundation-v1.md` D4), but the store is the single source of
+ * truth for session state, so what matters here is that it cannot *hold* two:
+ * a second call replaces, it never accumulates. It also has to reset the
+ * continuity flags, or a fresh session would inherit the previous one's rest
+ * timer and — the case that actually reaches a user — a recovered draft's
+ * pending-review flag, leaving Today offering Resume/Discard for a session that
+ * no longer exists (D5).
+ */
+describe('start()', () => {
+  it('seeds one incomplete set per prescribed set, carrying the day’s reps and rest', () => {
+    store().start({ profileId: 'p1', title: 'Lower — Hinge', routineDay: day });
+
+    const sets = store().workout!.exercises[0].sets;
+    expect(sets).toHaveLength(2);
+    expect(sets.map((s) => s.setIndex)).toEqual([0, 1]);
+    for (const s of sets) {
+      expect(s.reps).toBe(5);
+      expect(s.restSeconds).toBe(120);
+      // A seeded set is a plan, never a record -- nothing arrives pre-ticked.
+      expect(s.completed).toBe(false);
+      expect(s.type).toBe('working');
+    }
+  });
+
+  it('starts an open session with no exercises when there is no routine day', () => {
+    const workout = store().start({ profileId: 'p1', title: 'Open session', routineDay: null });
+
+    expect(workout.exercises).toEqual([]);
+    expect(workout.routineDayId).toBeNull();
+    expect(workout.status).toBe('in_progress');
+    expect(workout.endedAt).toBeNull();
+  });
+
+  it('replaces any existing session rather than accumulating a second one', () => {
+    const first = store().start({ profileId: 'p1', title: 'First', routineDay: day });
+    const second = store().start({ profileId: 'p1', title: 'Second', routineDay: null });
+
+    expect(second.id).not.toBe(first.id);
+    // One session, and it is the new one -- the store cannot hold both.
+    expect(store().workout).toBe(second);
+    expect(store().workout!.title).toBe('Second');
+  });
+
+  it('clears the rest timer, the last-completed marker and a pending draft review', () => {
+    startWithOneCompletedSet();
+    useActiveWorkoutStore.setState({ draftPendingReview: true });
+    expect(store().restTimer).not.toBeNull();
+    expect(store().lastCompletedSetId).not.toBeNull();
+
+    store().start({ profileId: 'p1', title: 'Fresh', routineDay: null });
+
+    expect(store().restTimer).toBeNull();
+    expect(store().lastCompletedSetId).toBeNull();
+    expect(store().draftPendingReview).toBe(false);
+  });
+});
+
 describe('set and exercise editing', () => {
   const firstExercise = () => store().workout!.exercises[0];
+
+  /**
+   * `updateSet` is a partial patch, and the field it must never touch by
+   * accident is `completed`. The logger patches load and reps from the
+   * steppers and the copy-previous affordance while sets are already ticked,
+   * so a patch that dropped the flag would silently un-log finished work --
+   * and `finish()` keeps only completed sets, so that loss would reach the
+   * saved record, not just the screen.
+   */
+  describe('updateSet()', () => {
+    it('patches only the target set and leaves its siblings alone', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: day });
+      const [first, second] = firstExercise().sets;
+
+      store().updateSet(first.id, { weightKg: 60, reps: 3 });
+
+      expect(firstExercise().sets[0].weightKg).toBe(60);
+      expect(firstExercise().sets[0].reps).toBe(3);
+      expect(firstExercise().sets[1].weightKg).toBe(second.weightKg);
+      expect(firstExercise().sets[1].reps).toBe(second.reps);
+    });
+
+    it('leaves sets under other exercises untouched', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: day });
+      store().addExercise('ex-2', { sets: 1, reps: 8, rest: 90 });
+      const target = firstExercise().sets[0].id;
+
+      store().updateSet(target, { weightKg: 80 });
+
+      expect(store().workout!.exercises[1].sets[0].weightKg).toBe(0);
+    });
+
+    it('never silently un-completes a set it was not asked to un-complete', () => {
+      startWithOneCompletedSet();
+      const setId = firstExercise().sets[0].id;
+      expect(firstExercise().sets[0].completed).toBe(true);
+
+      store().updateSet(setId, { weightKg: 102.5 });
+
+      expect(firstExercise().sets[0].completed).toBe(true);
+      expect(firstExercise().sets[0].weightKg).toBe(102.5);
+    });
+
+    it('does nothing when there is no session', () => {
+      store().updateSet('st-nope', { weightKg: 100 });
+      expect(store().workout).toBeNull();
+    });
+  });
 
   describe('addSet()', () => {
     it('inherits the last set’s load and reps rather than starting empty', () => {
@@ -486,5 +600,326 @@ describe('set and exercise editing', () => {
       expect(store().workout).not.toBeNull();
       expect(store().workout!.exercises).toHaveLength(0);
     });
+  });
+
+  describe('addExercise()', () => {
+    it('applies the given defaults to every set it generates', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: null });
+
+      store().addExercise('ex-9', { sets: 2, reps: 6, rest: 90 });
+
+      expect(firstExercise().exerciseId).toBe('ex-9');
+      expect(firstExercise().sets).toHaveLength(2);
+      for (const s of firstExercise().sets) {
+        expect(s.reps).toBe(6);
+        expect(s.restSeconds).toBe(90);
+        expect(s.completed).toBe(false);
+      }
+      expect(firstExercise().sets.map((s) => s.setIndex)).toEqual([0, 1]);
+    });
+
+    it('appends after whatever is already in the session, leaving it untouched', () => {
+      startWithOneCompletedSet();
+      const original = firstExercise().id;
+
+      store().addExercise('ex-2', { sets: 1, reps: 8, rest: 90 });
+
+      expect(store().workout!.exercises).toHaveLength(2);
+      expect(store().workout!.exercises[0].id).toBe(original);
+      expect(store().workout!.exercises[1].exerciseId).toBe('ex-2');
+      expect(store().workout!.exercises[1].orderIndex).toBe(1);
+    });
+
+    it('does nothing when there is no session', () => {
+      store().addExercise('ex-9', { sets: 2, reps: 6, rest: 90 });
+      expect(store().workout).toBeNull();
+    });
+  });
+
+  describe('toggleSetComplete()', () => {
+    it('marks the set complete, records it as the last one, and starts the rest timer', () => {
+      store().start({ profileId: 'p1', title: 'Lower — Hinge', routineDay: day });
+      const setId = firstExercise().sets[0].id;
+
+      store().toggleSetComplete(setId, 90);
+
+      expect(firstExercise().sets[0].completed).toBe(true);
+      expect(store().lastCompletedSetId).toBe(setId);
+      expect(store().restTimer).not.toBeNull();
+      expect(store().restTimer!.setId).toBe(setId);
+      expect(store().restTimer!.durationSeconds).toBe(90);
+    });
+
+    it('does not start a rest timer when restSeconds is zero', () => {
+      store().start({ profileId: 'p1', title: 'Lower — Hinge', routineDay: day });
+      const setId = firstExercise().sets[0].id;
+
+      store().toggleSetComplete(setId, 0);
+
+      expect(firstExercise().sets[0].completed).toBe(true);
+      expect(store().restTimer).toBeNull();
+    });
+
+    it('un-completing clears both the last-completed marker and the rest timer', () => {
+      store().start({ profileId: 'p1', title: 'Lower — Hinge', routineDay: day });
+      const setId = firstExercise().sets[0].id;
+      store().toggleSetComplete(setId, 90);
+      expect(store().restTimer).not.toBeNull(); // sanity: the first toggle did start one
+
+      store().toggleSetComplete(setId, 90);
+
+      expect(firstExercise().sets[0].completed).toBe(false);
+      expect(store().lastCompletedSetId).toBeNull();
+      expect(store().restTimer).toBeNull();
+    });
+
+    it('does nothing when there is no session', () => {
+      store().toggleSetComplete('whatever', 90);
+      expect(store().workout).toBeNull();
+      expect(store().restTimer).toBeNull();
+    });
+  });
+
+  describe('reorderExercise()', () => {
+    function startWithThreeExercises() {
+      store().start({ profileId: 'p1', title: 'X', routineDay: null });
+      store().addExercise('ex-a', { sets: 1, reps: 8, rest: 90 });
+      store().addExercise('ex-b', { sets: 1, reps: 8, rest: 90 });
+      store().addExercise('ex-c', { sets: 1, reps: 8, rest: 90 });
+    }
+    const exerciseIds = () => store().workout!.exercises.map((e) => e.exerciseId);
+    const orderIndexes = () => store().workout!.exercises.map((e) => e.orderIndex);
+
+    it('swaps a middle exercise with the one above it', () => {
+      startWithThreeExercises();
+      const middle = store().workout!.exercises[1].id;
+
+      store().reorderExercise(middle, 'up');
+
+      expect(exerciseIds()).toEqual(['ex-b', 'ex-a', 'ex-c']);
+      // Re-indexed to match the new positions, not left stale.
+      expect(orderIndexes()).toEqual([0, 1, 2]);
+    });
+
+    it('swaps a middle exercise with the one below it', () => {
+      startWithThreeExercises();
+      const middle = store().workout!.exercises[1].id;
+
+      store().reorderExercise(middle, 'down');
+
+      expect(exerciseIds()).toEqual(['ex-a', 'ex-c', 'ex-b']);
+      expect(orderIndexes()).toEqual([0, 1, 2]);
+    });
+
+    it('does nothing when asked to move the top exercise up', () => {
+      startWithThreeExercises();
+      const top = store().workout!.exercises[0].id;
+
+      store().reorderExercise(top, 'up');
+
+      expect(exerciseIds()).toEqual(['ex-a', 'ex-b', 'ex-c']);
+    });
+
+    it('does nothing when asked to move the bottom exercise down', () => {
+      startWithThreeExercises();
+      const bottom = store().workout!.exercises[2].id;
+
+      store().reorderExercise(bottom, 'down');
+
+      expect(exerciseIds()).toEqual(['ex-a', 'ex-b', 'ex-c']);
+    });
+
+    it('does nothing for an id that is not in the session', () => {
+      startWithThreeExercises();
+
+      store().reorderExercise('not-a-real-id', 'up');
+
+      expect(exerciseIds()).toEqual(['ex-a', 'ex-b', 'ex-c']);
+    });
+
+    it('does nothing when there is no session', () => {
+      store().reorderExercise('whatever', 'up');
+      expect(store().workout).toBeNull();
+    });
+  });
+
+  describe('setExerciseNotes()', () => {
+    it('sets notes on the matching exercise only', () => {
+      startWithOneCompletedSet();
+      store().addExercise('ex-2', { sets: 1, reps: 8, rest: 90 });
+      const [a, b] = store().workout!.exercises;
+
+      store().setExerciseNotes(a.id, 'Felt heavy today');
+
+      expect(store().workout!.exercises.find((e) => e.id === a.id)!.notes).toBe(
+        'Felt heavy today',
+      );
+      expect(store().workout!.exercises.find((e) => e.id === b.id)!.notes).toBeNull();
+    });
+
+    it('does nothing when there is no session', () => {
+      store().setExerciseNotes('whatever', 'x');
+      expect(store().workout).toBeNull();
+    });
+  });
+});
+
+/**
+ * Rest timer control.
+ *
+ * `toggleSetComplete()` is the usual way a timer starts (covered above); these
+ * exercise the three actions the rest bar itself calls directly -- the ±15s
+ * adjustment buttons and skip.
+ */
+describe('rest timer control', () => {
+  describe('startRest()', () => {
+    it('sets a timer ending the given number of seconds from now', () => {
+      const before = Date.now();
+
+      store().startRest(60, 'set-1');
+
+      const after = Date.now();
+      expect(store().restTimer).toMatchObject({ durationSeconds: 60, setId: 'set-1' });
+      expect(store().restTimer!.endsAt).toBeGreaterThanOrEqual(before + 60_000);
+      expect(store().restTimer!.endsAt).toBeLessThanOrEqual(after + 60_000);
+    });
+  });
+
+  describe('adjustRest()', () => {
+    it('moves the end time and the displayed duration together', () => {
+      store().startRest(60, 'set-1');
+      const before = store().restTimer!.endsAt;
+
+      store().adjustRest(15);
+
+      expect(store().restTimer!.durationSeconds).toBe(75);
+      expect(store().restTimer!.endsAt).toBe(before + 15_000);
+    });
+
+    it('clamps the duration at zero rather than going negative', () => {
+      store().startRest(10, 'set-1');
+
+      store().adjustRest(-999);
+
+      expect(store().restTimer!.durationSeconds).toBe(0);
+    });
+
+    it('clamps the end time so it can never move into the past', () => {
+      store().startRest(5, 'set-1');
+      // What the end time would be with no clamp at all -- used only to prove
+      // the clamp actually engaged, not just that the result looks plausible.
+      const unclamped = store().restTimer!.endsAt - 120_000;
+      // Captured before the store computes its own Date.now() inside
+      // adjustRest(), not after -- asserting against a bound taken afterward
+      // races the two calls and can fail by a stray millisecond.
+      const before = Date.now();
+
+      store().adjustRest(-120);
+
+      expect(store().restTimer!.endsAt).toBeGreaterThanOrEqual(before);
+      expect(store().restTimer!.endsAt).toBeGreaterThan(unclamped);
+    });
+
+    it('does nothing when there is no active rest timer', () => {
+      store().adjustRest(15);
+      expect(store().restTimer).toBeNull();
+    });
+  });
+
+  describe('clearRest()', () => {
+    it('clears an active timer', () => {
+      store().startRest(60, 'set-1');
+
+      store().clearRest();
+
+      expect(store().restTimer).toBeNull();
+    });
+
+    it('is safe to call when there is no timer', () => {
+      store().clearRest();
+      expect(store().restTimer).toBeNull();
+    });
+  });
+});
+
+/**
+ * The subjective half of a session -- captured on the summary screen, stored
+ * on the workout itself so it round-trips through the same save as everything
+ * else (`Docs/sprints/2026-08-03-workout-history-v1.md`).
+ */
+describe('session reflection and rating', () => {
+  describe('setReflection()', () => {
+    it('sets the reflection text on the session', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: null });
+
+      store().setReflection('Bar speed held all the way up.');
+
+      expect(store().workout!.reflection).toBe('Bar speed held all the way up.');
+    });
+
+    it('does nothing when there is no session', () => {
+      store().setReflection('x');
+      expect(store().workout).toBeNull();
+    });
+  });
+
+  describe('setRating()', () => {
+    it('sets the session rating', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: null });
+
+      store().setRating(4);
+
+      expect(store().workout!.sessionRating).toBe(4);
+    });
+
+    it('does nothing when there is no session', () => {
+      store().setRating(4);
+      expect(store().workout).toBeNull();
+    });
+  });
+});
+
+/**
+ * Selectors.
+ *
+ * These are not incidental helpers: they are what two user-facing counts are
+ * built from. `selectCompletedSetCount`/`selectTotalSetCount` render the
+ * logger's "Sets done n/m" header and the "n/m sets logged" line on Today's
+ * recovered-session card (`Docs/ui-ux-foundation-v1.md` §4.2, §4.4), so a
+ * miscount here is a miscount a lifter reads mid-session.
+ *
+ * Note "Sets done" counts every ticked set INCLUDING warm-ups, which is
+ * deliberately not the summary's warm-up-excluding "Working sets" -- the two
+ * numbers are different on purpose and the labels were split so they stop
+ * looking equivalent (`logger-ux-polish` §2 B).
+ */
+describe('selectors', () => {
+  it('count completed and total sets across every exercise, warm-ups included', () => {
+    store().start({ profileId: 'p1', title: 'X', routineDay: day });
+    store().addExercise('ex-2', { sets: 3, reps: 8, rest: 90 });
+
+    const first = store().workout!.exercises[0].sets[0];
+    const warmup = store().workout!.exercises[1].sets[0];
+    store().updateSet(warmup.id, { type: 'warmup' });
+    store().toggleSetComplete(first.id, 0);
+    store().toggleSetComplete(warmup.id, 0);
+
+    expect(selectTotalSetCount(store())).toBe(5);
+    // Two ticked, one of which is a warm-up -- "Sets done" counts it.
+    expect(selectCompletedSetCount(store())).toBe(2);
+  });
+
+  it('report zero and no active workout when there is no session', () => {
+    expect(selectHasActiveWorkout(store())).toBe(false);
+    expect(selectCompletedSetCount(store())).toBe(0);
+    expect(selectTotalSetCount(store())).toBe(0);
+  });
+
+  it('report an active workout once one is started, and none again after discard', () => {
+    store().start({ profileId: 'p1', title: 'X', routineDay: day });
+    expect(selectHasActiveWorkout(store())).toBe(true);
+
+    store().discard();
+    expect(selectHasActiveWorkout(store())).toBe(false);
   });
 });
