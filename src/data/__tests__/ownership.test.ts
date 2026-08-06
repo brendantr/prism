@@ -157,7 +157,12 @@ describe('the repository is the source of truth for ownership', () => {
     expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
   });
 
-  it('uses the session uid when saving a check-in', async () => {
+  /*
+    As with the workout graph above: since 0004 this goes through
+    `save_check_in`, which reads `auth.uid()` itself, so the client sends no
+    owner at all rather than sending the right one.
+  */
+  it('sends no caller-chosen owner when saving a check-in', async () => {
     await repo.saveCheckIn({
       id: '55555555-5555-4555-8555-555555555555',
       profileId: ATTACKER_SUPPLIED_UID,
@@ -168,7 +173,34 @@ describe('the repository is the source of truth for ownership', () => {
       stress: 2,
     });
 
-    expect(payloadFor('check_ins').profile_id).toBe(SESSION_UID);
+    const args = payloadFor('save_check_in');
+    const patch = args.p_patch as Record<string, unknown>;
+    expect(patch.profile_id).toBeUndefined();
+    expect(patch.sleep_quality).toBe(4);
+    expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
+  });
+
+  /*
+    The distinction the whole jsonb payload exists for. An omitted property must
+    not reach the database as a key, or the function cannot tell "leave my
+    earlier answer alone" from "erase it".
+  */
+  it('sends only the scales the caller actually supplied', async () => {
+    await repo.saveCheckIn({
+      id: '55555555-5555-4555-8555-555555555555',
+      profileId: ATTACKER_SUPPLIED_UID,
+      checkedInAt: '2026-07-30T07:00:00.000Z',
+      sleepQuality: 4,
+      // energy and soreness omitted entirely; stress explicitly cleared.
+      stress: null,
+    });
+
+    const patch = payloadFor('save_check_in').p_patch as Record<string, unknown>;
+    expect(Object.keys(patch)).toContain('sleep_quality');
+    expect(Object.keys(patch)).toContain('stress');
+    expect(Object.keys(patch)).not.toContain('energy');
+    expect(Object.keys(patch)).not.toContain('soreness');
+    expect(patch.stress).toBeNull();
   });
 
   it('uses the session uid on every personal record in a batch', async () => {
