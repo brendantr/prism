@@ -40,15 +40,70 @@ describe('account copy', () => {
     expect(ALL_COPY).not.toMatch(/diagnos|clinical|medical|injur|overtrain/i);
   });
 
-  it('never promises deletion or export', () => {
+  it('keeps sign-out copy clear of any claim about deletion or export', () => {
     /*
-      I-10 is open: there is no way to delete an account or export its data.
-      "Sign out" is exactly the phrase a worried person reads as "erase me", so
-      the copy must not meet them halfway. If deletion ever ships, this test is
-      the thing that has to be deliberately changed.
+      This assertion is unchanged; its reason is not.
+
+      It was written while I-10 was open, to stop the copy implying a deletion
+      that did not exist. Deletion and export shipped in
+      `v1-account-deletion-export`, and the rule now matters MORE rather than
+      less: erasing an account is a real button two rows below this sentence, so
+      "sign out" blurring into "erase me" is no longer a hypothetical
+      misreading -- it is a lifter tapping the wrong one of two adjacent, very
+      different actions.
+
+      Scoped to `explanation` deliberately. The delete strings are supposed to
+      say "delete"; this is the one sentence that must not.
     */
     expect(ACCOUNT.explanation).not.toMatch(/delete|erase|export|wipe|permanently/i);
     expect(ACCOUNT.explanation).not.toMatch(/remove your account|close your account/i);
+  });
+
+  it('states permanence in the deletion copy rather than softening it', () => {
+    // I-10. The one action in the product with no undo, no backup and no
+    // support path. Copy that reads as reversible is the failure mode.
+    const deletionCopy = [
+      ACCOUNT.deleteSubtitle,
+      ACCOUNT.deleteConfirmMessageEmpty,
+      ACCOUNT.deleteConfirmMessage({ workouts: 4, sets: 40, checkIns: 9 }),
+      ACCOUNT.deleteFinalTitle,
+      ACCOUNT.deleteFinalMessage,
+    ].join(' ');
+
+    expect(deletionCopy).toMatch(/permanent/i);
+    expect(deletionCopy).toMatch(/cannot be undone|cannot recover/i);
+    // No hedging that implies a grace period or a recycle bin.
+    expect(deletionCopy).not.toMatch(/archive|deactivat|suspend|30 days|recoverable/i);
+  });
+
+  it('names real counts before deleting, so the decision is made on specifics', () => {
+    const message = ACCOUNT.deleteConfirmMessage({ workouts: 4, sets: 40, checkIns: 9 });
+    expect(message).toContain('4');
+    expect(message).toContain('40');
+    expect(message).toContain('9');
+  });
+
+  it('pluralises the deletion counts rather than saying "1 workouts"', () => {
+    const one = ACCOUNT.deleteConfirmMessage({ workouts: 1, sets: 1, checkIns: 1 });
+    expect(one).toContain('1 workout,');
+    expect(one).toContain('1 logged set');
+    expect(one).toContain('1 check-in');
+  });
+
+  it('tells a lifter what did NOT happen when deletion fails', () => {
+    /*
+      The worst outcome on this screen is someone walking away believing their
+      data is gone when it is not. The failure message has to assert the
+      account still exists, not merely apologise.
+    */
+    expect(ACCOUNT.deleteFailedMessage).toMatch(/unchanged|still|not deleted/i);
+  });
+
+  it('does not promise deletion in the export copy', () => {
+    // Exporting is the reversible neighbour of an irreversible action. It must
+    // not borrow any of its vocabulary.
+    const exportCopy = [ACCOUNT.exportSubtitle, ACCOUNT.exportEmptyMessage].join(' ');
+    expect(exportCopy).not.toMatch(/delete|erase|permanent/i);
   });
 
   it('says what sign-out does on both sides of the device boundary', () => {

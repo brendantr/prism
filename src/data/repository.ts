@@ -3,6 +3,7 @@ import { EXERCISE_LIBRARY } from './exerciseLibrary';
 import { ROUTINE_TEMPLATES, SPECTRUM_FOUR } from './routineTemplates';
 import { generateDemoData, DEMO_PROFILE_ID } from './demoSeed';
 import { AuthRequiredError } from './authRequired';
+import { buildAccountExport, type AccountExport } from '@/domain/accountExport';
 import {
   DEMO_MODE,
   SUPABASE_MISCONFIGURED,
@@ -76,6 +77,26 @@ export interface Repository {
   listMeasurements(): Promise<BodyMeasurement[]>;
   listPersonalRecords(): Promise<PersonalRecord[]>;
   savePersonalRecords(records: PersonalRecord[]): Promise<void>;
+
+  /**
+   * Everything this account holds, as one document (`Docs/invariants.md` I-10).
+   *
+   * A method rather than "call the six list methods from the screen", because
+   * the guarantee I-10 asks for is *completeness*: a table added later must not
+   * be able to fall out of the export because a caller forgot it. One place to
+   * update, next to the interface that names the tables.
+   */
+  exportAccountData(): Promise<AccountExport>;
+
+  /**
+   * Permanently erase this account and everything it owns (I-10).
+   *
+   * Irreversible, and takes no arguments — the implementation derives the
+   * account from the session, never from a caller-supplied id. Idempotent:
+   * deleting an account that is already gone succeeds, so a retry after a lost
+   * response is safe.
+   */
+  deleteAccount(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +261,34 @@ class DemoRepository implements Repository {
     await this.hydrate();
     this.userRecords.push(...records);
     await AsyncStorage.setItem(STORAGE_KEYS.records, JSON.stringify(this.userRecords));
+  }
+
+  async exportAccountData(): Promise<AccountExport> {
+    await this.hydrate();
+    return buildAccountExport(
+      {
+        profile: await this.getProfile(),
+        exercises: await this.listExercises(),
+        workouts: await this.listWorkouts(),
+        checkIns: await this.listCheckIns(),
+        measurements: await this.listMeasurements(),
+        personalRecords: await this.listPersonalRecords(),
+      },
+      new Date().toISOString(),
+    );
+  }
+
+  /**
+   * Demo mode has no account, so this is the closest honest equivalent: erase
+   * everything stored on the device and return to the pristine seed.
+   *
+   * The screen that offers deletion is gated on an authenticated session and is
+   * therefore unreachable in a demo build (`canOfferSignOut`, and the account
+   * route behind it). This exists so the interface has one meaning in both
+   * implementations rather than a method that throws in one of them.
+   */
+  async deleteAccount(): Promise<void> {
+    await this.resetDemo();
   }
 
   /** Wipe locally logged demo data and return to the pristine seed. */
@@ -488,6 +537,48 @@ class SupabaseRepository implements Repository {
         workout_id: r.workoutId,
       })),
     );
+    if (error) throw error;
+  }
+
+  /**
+   * Every row RLS lets this session see, assembled into one document.
+   *
+   * The reads run in parallel and are individually already owner-scoped -- each
+   * list method filters on the session uid and Postgres enforces it again -- so
+   * this adds no new authorization surface. It is a fan-out, not a privilege.
+   */
+  async exportAccountData(): Promise<AccountExport> {
+    const [profile, exercises, workouts, checkIns, measurements, personalRecords] =
+      await Promise.all([
+        this.getProfile(),
+        this.listExercises(),
+        this.listWorkouts(),
+        this.listCheckIns(),
+        this.listMeasurements(),
+        this.listPersonalRecords(),
+      ]);
+
+    return buildAccountExport(
+      { profile, exercises, workouts, checkIns, measurements, personalRecords },
+      new Date().toISOString(),
+    );
+  }
+
+  /**
+   * Delete the account, via `delete_my_account`
+   * (`supabase/migrations/0005_account_deletion.sql`).
+   *
+   * No arguments are sent and none can be: the function takes none, and derives
+   * the account from `auth.uid()`. That is the containment on the one
+   * `security definer` function in this schema -- there is no id here to get
+   * wrong, and no id the server would accept if there were.
+   *
+   * `uid()` first so an unauthenticated call fails with `AuthRequiredError`
+   * rather than a database error, matching every other write here.
+   */
+  async deleteAccount(): Promise<void> {
+    await this.uid();
+    const { error } = await getSupabase().rpc('delete_my_account');
     if (error) throw error;
   }
 }

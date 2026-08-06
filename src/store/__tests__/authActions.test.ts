@@ -4,7 +4,7 @@ import { AuthRequiredError } from '@/data/authRequired';
 import { canOfferSignOut, shouldConfirmSignOut } from '@/domain/account';
 import type { Workout } from '@/domain/types';
 import { DRAFT_STORAGE_KEY, useActiveWorkoutStore } from '../activeWorkoutStore';
-import { signOutAndTearDown } from '../authActions';
+import { deleteAccountAndTearDown, signOutAndTearDown } from '../authActions';
 import { useSessionStore } from '../sessionStore';
 import { useTrainingStore } from '../trainingStore';
 
@@ -370,5 +370,102 @@ describe('refresh error routing', () => {
     await useTrainingStore.getState().load();
 
     expect(useTrainingStore.getState().status).toBe('ready');
+  });
+});
+
+/**
+ * ACCOUNT DELETION
+ * ================
+ * `Docs/invariants.md` I-10. The ordering here is the safety property, and it
+ * is the *opposite* of sign-out's in one specific way: sign-out swallows a
+ * failed remote call because local teardown must happen regardless, and
+ * deletion must not, because wiping the device after a failed server delete
+ * would tell a lifter their data was erased while all of it is still there.
+ */
+describe('deleteAccountAndTearDown()', () => {
+  beforeEach(() => {
+    mockGetRepository.mockClear();
+    useSessionStore.setState({ phase: 'authenticated', email: 'a@example.com' });
+  });
+
+  /** A repository whose deleteAccount resolves or rejects on demand. */
+  function repositoryWhoseDeleteWill(outcome: 'succeed' | 'fail') {
+    const actual = jest.requireActual('@/data/repository');
+    const real = actual.getRepository();
+    const deleteAccount = jest.fn(async () => {
+      if (outcome === 'fail') throw new Error('network');
+    });
+    mockGetRepository.mockImplementation(() => ({ ...real, deleteAccount }));
+    return deleteAccount;
+  }
+
+  it('deletes remotely, then tears the device down', async () => {
+    const deleteAccount = repositoryWhoseDeleteWill('succeed');
+    useActiveWorkoutStore.setState({ workout: draftFor('user-1') });
+    await AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftFor('user-1')));
+
+    await deleteAccountAndTearDown();
+
+    expect(deleteAccount).toHaveBeenCalledTimes(1);
+    expect(useActiveWorkoutStore.getState().workout).toBeNull();
+    expect(await AsyncStorage.getItem(DRAFT_STORAGE_KEY)).toBeNull();
+    expect(useTrainingStore.getState().workouts).toEqual([]);
+    // Last, as with sign-out: the route gate watches this.
+    expect(useSessionStore.getState().phase).toBe('unauthenticated');
+  });
+
+  it('does NOT touch the device when the remote delete fails', async () => {
+    /*
+      The assertion this whole flow exists for. If the server still holds the
+      account, the lifter must still be signed into it -- being returned to a
+      sign-in screen with an intact account and an emptied phone is the single
+      most misleading outcome available here.
+    */
+    const deleteAccount = repositoryWhoseDeleteWill('fail');
+    useActiveWorkoutStore.setState({ workout: draftFor('user-1') });
+
+    await expect(deleteAccountAndTearDown()).rejects.toThrow('network');
+
+    expect(deleteAccount).toHaveBeenCalledTimes(1);
+    expect(useActiveWorkoutStore.getState().workout).not.toBeNull();
+    expect(useSessionStore.getState().phase).toBe('authenticated');
+  });
+
+  it('sends no account identifier -- the server derives it from the session', async () => {
+    // The containment on the one `security definer` function in the schema is
+    // that it takes no arguments. This pins the client half of that.
+    const deleteAccount = repositoryWhoseDeleteWill('succeed');
+
+    await deleteAccountAndTearDown();
+
+    expect(deleteAccount).toHaveBeenCalledWith();
+  });
+
+  it('clears the read model, so no deleted account’s data survives in memory', async () => {
+    repositoryWhoseDeleteWill('succeed');
+    // Seeded directly rather than via `load()`: that returns early once the
+    // status is 'ready', which an earlier test in this file leaves it at. What
+    // is under test is the teardown, not the loader.
+    useTrainingStore.setState({
+      workouts: [draftFor('user-1')],
+      checkIns: [
+        {
+          id: 'c1',
+          profileId: 'user-1',
+          checkedInAt: '2026-01-01T07:00:00.000Z',
+          sleepQuality: 4,
+          energy: 4,
+          soreness: 2,
+          stress: 2,
+        },
+      ],
+    });
+    expect(useTrainingStore.getState().workouts.length).toBeGreaterThan(0);
+
+    await deleteAccountAndTearDown();
+
+    expect(useTrainingStore.getState().workouts).toEqual([]);
+    expect(useTrainingStore.getState().checkIns).toEqual([]);
+    expect(useTrainingStore.getState().personalRecords).toEqual([]);
   });
 });
