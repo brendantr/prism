@@ -36,7 +36,14 @@ export default function WorkoutSummaryScreen() {
 
   const [rating, setRating] = useState(workout?.sessionRating ?? 0);
   const [reflection, setReflection] = useState(workout?.reflection ?? '');
-  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  /**
+   * Set when the rating/reflection write fails. The workout itself is already
+   * saved by this point -- the logger persisted it before routing here -- so
+   * this is a retry prompt for the subjective half only, never a suggestion
+   * that the session was lost.
+   */
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const stats = useMemo(() => {
     if (!workout) return null;
@@ -61,7 +68,8 @@ export default function WorkoutSummaryScreen() {
   if (!workout || !stats || !profile) {
     return (
       <Screen title="Session not found">
-        <Card style={styles.gutter}>
+        {/* A real error state, so it announces itself like the other two. */}
+        <Card style={styles.gutter} accessibilityRole="alert">
           <Text variant="body" tone="secondary">
             That workout is no longer available.
           </Text>
@@ -74,14 +82,39 @@ export default function WorkoutSummaryScreen() {
   const topMuscles = stats.distribution.slice(0, 6);
   const maxVolume = topMuscles[0]?.volumeKg ?? 1;
 
+  /**
+   * Writes the rating and reflection onto the already-saved workout.
+   *
+   * This is the same write the logger's finish path makes, and it gets the
+   * same treatment (`Docs/ui-ux-foundation-v1.md` §4.4): guarded against a
+   * second tap, and honest when it fails. Before this, `upsertWorkout` was
+   * awaited with no `catch` -- a rejected write produced an unhandled promise
+   * rejection, no navigation and no message, so the button simply appeared to
+   * do nothing. The double-tap guard matters for its own reason: `saveWorkout`
+   * is still three sequential non-transactional upserts (`Docs/invariants.md`
+   * I-2), and two of them racing is exactly the duplicate write that
+   * invariant is about.
+   */
   const handleSave = async () => {
-    await upsertWorkout({
-      ...workout,
-      sessionRating: rating > 0 ? rating : null,
-      reflection: reflection.trim().length > 0 ? reflection.trim() : null,
-    });
-    setSaved(true);
-    router.replace('/');
+    if (saving) return;
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      await upsertWorkout({
+        ...workout,
+        sessionRating: rating > 0 ? rating : null,
+        reflection: reflection.trim().length > 0 ? reflection.trim() : null,
+      });
+      router.replace('/');
+    } catch (e) {
+      // Nothing is lost: the session was persisted before this screen opened.
+      // Only the rating and reflection are still unsaved, and they are still
+      // on screen to retry with.
+      console.warn('[summary] rating/reflection save failed', e);
+      setSaveFailed(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -223,20 +256,57 @@ export default function WorkoutSummaryScreen() {
           style={styles.reflectionInput}
           accessibilityLabel="Session reflection notes"
           maxLength={280}
+          // Matches the `Input`/`SearchField` primitives' cap rather than the
+          // app-wide 1.6x: this is a fixed-height box, and text scaled past
+          // 1.4x scrolls out of a field a lifter is mid-sentence in.
+          maxFontSizeMultiplier={1.4}
         />
         <Text variant="eyebrow" tone="faint" style={styles.counter}>
           {`${reflection.length}/280`}
         </Text>
       </Card>
 
-      <View style={styles.actions}>
+      {/*
+        Same wording discipline as the logger's save-failure banner: it says
+        only what is true. The workout is already saved -- this screen never
+        had the power to lose it -- so the message is about the note, not the
+        session, and it does not guess why the write was refused.
+      */}
+      {saveFailed ? (
+        <View
+          style={styles.saveError}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Ionicons name="cloud-offline-outline" size={16} color={color.coral} />
+          <Text variant="bodySm" tone="coral" style={styles.saveErrorText}>
+            Could not save your note. The session itself is safely recorded — try again, or skip.
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.actions, saveFailed && styles.actionsAfterError]}>
         <Button
-          label={saved ? 'Saved' : 'Save and finish'}
+          label={saving ? 'Saving…' : saveFailed ? 'Try again' : 'Save and finish'}
           icon="checkmark"
           onPress={handleSave}
+          loading={saving}
+          disabled={saving}
           fullWidth
         />
-        <Button label="Skip for now" variant="ghost" size="sm" onPress={() => router.replace('/')} fullWidth />
+        {/*
+          Disabled mid-write so a stray tap cannot navigate away from a save
+          that is still in flight. Skipping remains free at any other moment --
+          it discards nothing already saved.
+        */}
+        <Button
+          label="Skip for now"
+          variant="ghost"
+          size="sm"
+          onPress={() => router.replace('/')}
+          disabled={saving}
+          fullWidth
+        />
       </View>
 
       <View style={styles.chipRow}>
@@ -304,7 +374,22 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   counter: { marginTop: space.xs, textAlign: 'right' },
+  // Mirrors the logger's save-failure banner so the two read as one pattern.
+  saveError: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    marginTop: space.xxl,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    backgroundColor: color.coralWash,
+  },
+  saveErrorText: { flex: 1, lineHeight: 18 },
   actions: { marginHorizontal: space.lg, marginTop: space.xxl, gap: space.sm },
+  // The banner already owns the gap above the actions when it is showing.
+  actionsAfterError: { marginTop: space.md },
   chipRow: {
     flexDirection: 'row',
     justifyContent: 'center',

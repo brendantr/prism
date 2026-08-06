@@ -478,10 +478,28 @@ interrupted**.
   `workout-history-v1` §4]`.
 - "Save and finish" and "Skip for now" both `router.replace('/')`; skipping discards nothing already
   saved `[fact]`.
+- **The rating/reflection write is guarded and honest** `[decision, 2026-08-06]`. It is the same
+  `upsertWorkout` the logger's finish path makes, so it gets the same treatment as §4.4: a single-flight
+  guard (a second tap while a write is in flight is ignored), `loading`/`disabled` on both actions, and
+  on failure a coral banner with `accessibilityRole="alert"` plus a "Try again" primary. Previously the
+  `await` had no `catch`, so a rejected write produced an unhandled rejection, no navigation and no
+  message — the button appeared to do nothing. The single-flight guard also matters for I-2: two racing
+  `saveWorkout` calls are exactly the duplicate write that invariant is about `[fact]`.
+- **The failure copy is scoped to the note, not the session** `[decision]`. The workout is persisted by
+  the logger *before* this screen renders, so a failure here can only lose the rating and reflection. The
+  banner says that, and does not imply the session is at risk.
+- **Summary is a capture screen, not an editor** `[fact]`. It writes exactly two fields onto an
+  already-completed workout (`sessionRating`, `reflection`) and touches no exercise or set. D7's
+  read-only rule and D8's capture-once rule both hold unchanged.
 - Per D8, reachable once.
-- **States** Loading/error: n/a — reached with the workout already in the store. Empty: unreachable, the
-  finish path refuses a session with no completed sets. Interrupted: the workout is already persisted
-  before this screen renders; only the rating/reflection would be lost.
+- **States** Loading/error: n/a for the workout itself — reached with it already in the store; the
+  *rating write* has its own loading and error states, above. The not-found branch (an `id` that no
+  longer resolves) announces itself with `accessibilityRole="alert"` and offers a way back to Today.
+  Empty: unreachable, the finish path refuses a session with no completed sets. Interrupted: the workout
+  is already persisted before this screen renders; only the rating/reflection would be lost.
+- **Text scaling** The reflection field caps at 1.4×, matching the `Input`/`SearchField` primitives
+  rather than the app-wide 1.6× — it is a fixed-height box, and text scaled further scrolls out of a
+  field the lifter is mid-sentence in `[decision, §6]`.
 
 ### 4.7 History (`history/index`, `history/[id]`)
 
@@ -654,5 +672,6 @@ readiness.
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-05 | Initial draft. Consolidates the UI/UX baseline across onboarding, Today, template choice, the logger, the picker, the summary, History, and Insights' deeper-surfaces role. Closes three previously-open next decisions: History stays read-only (D7, from `workout-history-v1`), confirmation rather than undo (D6, from `logger-ux-polish`), and Today's tiles become rows (D9, from `today-insights-cohesion`). No code changed. | Claude (agent), for engineer/owner review |
+| 2026-08-06 | `feature/v1-release-readiness`. **Summary hardening:** the rating/reflection write gained a single-flight guard, loading/disabled states on both actions, and a failure banner with a "Try again" primary — it previously had no `catch` at all, so a rejected write silently did nothing (§4.6). Failure copy is scoped to the note, since the session is already saved by then. The not-found branch and the reflection field gained `accessibilityRole="alert"` and a 1.4× scaling cap respectively. Summary remains a capture screen, not an editor — D7 and D8 unchanged. **Release tooling:** added `npm run verify` (typecheck + test, mirroring CI) and `Docs/release-checklist.md`, which records the verification commands, the EAS profiles, and the finding that a production build currently inherits `EXPO_PUBLIC_DEMO_MODE=true` by default. `eas.json` and the EAS environment were **not** changed — production configuration is gated (`CLAUDE.md`). No v2 behaviour was added. | Claude (agent) |
 | 2026-08-05 | `feature/logger-v1-alignment`. **D4 corrected** from "exactly two entry points… no third path in v1" to three, documenting Exercises' "log this lift" — which has created open sessions since `ui-ux-foundation-expansion` and which D4 had wrongly named as hypothetical v2 work. This is a correction of the document to match shipped reality, **not** a change of product direction: no entry point was added, removed, or re-scoped. **L1 fixed:** the logger now clears `draftPendingReview` on entry, so Today's "Recovered session" card can no longer outlive the moment the lifter is already logging in that session (previously only Today's own Resume button cleared it, leaving the flag set for every other route in). **L2 fixed:** `workout/templates` and Exercises' "log this lift" no longer act silently when a session already exists or a recovered draft is unreviewed — both now surface an `Alert` and leave the existing session untouched on cancel. D5's "never two sessions" guard is unchanged; only its silence was. | Claude (agent) |
 | 2026-08-05 | `feature/today-v1-alignment` implements D9: Today's `QuickAccess` tile row replaced by the same `ListRow` card Insights renders, both still driven by `src/content/deeperSurfaces.ts`; `QuickAccess.tsx` retired (zero remaining consumers). Also fixes a duplicate-CTA bug found during D9's audit, not part of D9 itself: `SessionCard` previously rendered unconditionally, showing a filled "Start session" button alongside the "Resume workout" / "Session in progress" continuity affordances (D3, D5) whenever a session was already active or a draft pending review — now suppressed by an `!activeWorkout` guard. | Claude (agent) |
