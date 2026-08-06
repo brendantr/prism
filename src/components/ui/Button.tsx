@@ -62,7 +62,16 @@ export function Button({
       {...rest}
       style={({ pressed }) => [
         styles.base,
-        { height: HEIGHT[size] },
+        // minHeight, not height: the label has no numberOfLines cap, so at
+        // accessibility-extra-large a label narrow enough to need two lines
+        // (a half-width button, or a longer word) would render its second
+        // line straight past a fixed-height box with nothing to show for it
+        // -- no ellipsis, just an abrupt cut mid-word. Confirmed on-device on
+        // Today's "Resume workout" / "Discard draft" pair, rendered at half
+        // width: "Resume w…" with the "…" not even real, just the edge of
+        // the box. minHeight keeps every single-line button pixel-identical
+        // to today and only grows the rare one that needs it.
+        { minHeight: HEIGHT[size] },
         VARIANT_STYLE[variant],
         fullWidth && styles.fullWidth,
         pressed && !isDisabled && { opacity: opacity.pressed },
