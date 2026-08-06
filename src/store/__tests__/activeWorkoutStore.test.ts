@@ -10,7 +10,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useActiveWorkoutStore } from '../activeWorkoutStore';
+import {
+  selectCompletedSetCount,
+  selectHasActiveWorkout,
+  selectTotalSetCount,
+  useActiveWorkoutStore,
+} from '../activeWorkoutStore';
 import type { RoutineDay, Workout } from '@/domain/types';
 
 const DRAFT_KEY = 'prism.activeWorkout.draft.v1';
@@ -391,8 +396,117 @@ describe('resumeDraft()', () => {
  * shown in the logger is `setIndex + 1` and a gap there would misnumber every
  * row below the one removed.
  */
+/**
+ * `start()` is the store's half of D4's "never two sessions at once".
+ *
+ * The three entry points each guard on `if (!activeWorkout)` before calling it
+ * (`Docs/ui-ux-foundation-v1.md` D4), but the store is the single source of
+ * truth for session state, so what matters here is that it cannot *hold* two:
+ * a second call replaces, it never accumulates. It also has to reset the
+ * continuity flags, or a fresh session would inherit the previous one's rest
+ * timer and — the case that actually reaches a user — a recovered draft's
+ * pending-review flag, leaving Today offering Resume/Discard for a session that
+ * no longer exists (D5).
+ */
+describe('start()', () => {
+  it('seeds one incomplete set per prescribed set, carrying the day’s reps and rest', () => {
+    store().start({ profileId: 'p1', title: 'Lower — Hinge', routineDay: day });
+
+    const sets = store().workout!.exercises[0].sets;
+    expect(sets).toHaveLength(2);
+    expect(sets.map((s) => s.setIndex)).toEqual([0, 1]);
+    for (const s of sets) {
+      expect(s.reps).toBe(5);
+      expect(s.restSeconds).toBe(120);
+      // A seeded set is a plan, never a record -- nothing arrives pre-ticked.
+      expect(s.completed).toBe(false);
+      expect(s.type).toBe('working');
+    }
+  });
+
+  it('starts an open session with no exercises when there is no routine day', () => {
+    const workout = store().start({ profileId: 'p1', title: 'Open session', routineDay: null });
+
+    expect(workout.exercises).toEqual([]);
+    expect(workout.routineDayId).toBeNull();
+    expect(workout.status).toBe('in_progress');
+    expect(workout.endedAt).toBeNull();
+  });
+
+  it('replaces any existing session rather than accumulating a second one', () => {
+    const first = store().start({ profileId: 'p1', title: 'First', routineDay: day });
+    const second = store().start({ profileId: 'p1', title: 'Second', routineDay: null });
+
+    expect(second.id).not.toBe(first.id);
+    // One session, and it is the new one -- the store cannot hold both.
+    expect(store().workout).toBe(second);
+    expect(store().workout!.title).toBe('Second');
+  });
+
+  it('clears the rest timer, the last-completed marker and a pending draft review', () => {
+    startWithOneCompletedSet();
+    useActiveWorkoutStore.setState({ draftPendingReview: true });
+    expect(store().restTimer).not.toBeNull();
+    expect(store().lastCompletedSetId).not.toBeNull();
+
+    store().start({ profileId: 'p1', title: 'Fresh', routineDay: null });
+
+    expect(store().restTimer).toBeNull();
+    expect(store().lastCompletedSetId).toBeNull();
+    expect(store().draftPendingReview).toBe(false);
+  });
+});
+
 describe('set and exercise editing', () => {
   const firstExercise = () => store().workout!.exercises[0];
+
+  /**
+   * `updateSet` is a partial patch, and the field it must never touch by
+   * accident is `completed`. The logger patches load and reps from the
+   * steppers and the copy-previous affordance while sets are already ticked,
+   * so a patch that dropped the flag would silently un-log finished work --
+   * and `finish()` keeps only completed sets, so that loss would reach the
+   * saved record, not just the screen.
+   */
+  describe('updateSet()', () => {
+    it('patches only the target set and leaves its siblings alone', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: day });
+      const [first, second] = firstExercise().sets;
+
+      store().updateSet(first.id, { weightKg: 60, reps: 3 });
+
+      expect(firstExercise().sets[0].weightKg).toBe(60);
+      expect(firstExercise().sets[0].reps).toBe(3);
+      expect(firstExercise().sets[1].weightKg).toBe(second.weightKg);
+      expect(firstExercise().sets[1].reps).toBe(second.reps);
+    });
+
+    it('leaves sets under other exercises untouched', () => {
+      store().start({ profileId: 'p1', title: 'X', routineDay: day });
+      store().addExercise('ex-2', { sets: 1, reps: 8, rest: 90 });
+      const target = firstExercise().sets[0].id;
+
+      store().updateSet(target, { weightKg: 80 });
+
+      expect(store().workout!.exercises[1].sets[0].weightKg).toBe(0);
+    });
+
+    it('never silently un-completes a set it was not asked to un-complete', () => {
+      startWithOneCompletedSet();
+      const setId = firstExercise().sets[0].id;
+      expect(firstExercise().sets[0].completed).toBe(true);
+
+      store().updateSet(setId, { weightKg: 102.5 });
+
+      expect(firstExercise().sets[0].completed).toBe(true);
+      expect(firstExercise().sets[0].weightKg).toBe(102.5);
+    });
+
+    it('does nothing when there is no session', () => {
+      store().updateSet('st-nope', { weightKg: 100 });
+      expect(store().workout).toBeNull();
+    });
+  });
 
   describe('addSet()', () => {
     it('inherits the last set’s load and reps rather than starting empty', () => {
@@ -762,5 +876,50 @@ describe('session reflection and rating', () => {
       store().setRating(4);
       expect(store().workout).toBeNull();
     });
+  });
+});
+
+/**
+ * Selectors.
+ *
+ * These are not incidental helpers: they are what two user-facing counts are
+ * built from. `selectCompletedSetCount`/`selectTotalSetCount` render the
+ * logger's "Sets done n/m" header and the "n/m sets logged" line on Today's
+ * recovered-session card (`Docs/ui-ux-foundation-v1.md` §4.2, §4.4), so a
+ * miscount here is a miscount a lifter reads mid-session.
+ *
+ * Note "Sets done" counts every ticked set INCLUDING warm-ups, which is
+ * deliberately not the summary's warm-up-excluding "Working sets" -- the two
+ * numbers are different on purpose and the labels were split so they stop
+ * looking equivalent (`logger-ux-polish` §2 B).
+ */
+describe('selectors', () => {
+  it('count completed and total sets across every exercise, warm-ups included', () => {
+    store().start({ profileId: 'p1', title: 'X', routineDay: day });
+    store().addExercise('ex-2', { sets: 3, reps: 8, rest: 90 });
+
+    const first = store().workout!.exercises[0].sets[0];
+    const warmup = store().workout!.exercises[1].sets[0];
+    store().updateSet(warmup.id, { type: 'warmup' });
+    store().toggleSetComplete(first.id, 0);
+    store().toggleSetComplete(warmup.id, 0);
+
+    expect(selectTotalSetCount(store())).toBe(5);
+    // Two ticked, one of which is a warm-up -- "Sets done" counts it.
+    expect(selectCompletedSetCount(store())).toBe(2);
+  });
+
+  it('report zero and no active workout when there is no session', () => {
+    expect(selectHasActiveWorkout(store())).toBe(false);
+    expect(selectCompletedSetCount(store())).toBe(0);
+    expect(selectTotalSetCount(store())).toBe(0);
+  });
+
+  it('report an active workout once one is started, and none again after discard', () => {
+    store().start({ profileId: 'p1', title: 'X', routineDay: day });
+    expect(selectHasActiveWorkout(store())).toBe(true);
+
+    store().discard();
+    expect(selectHasActiveWorkout(store())).toBe(false);
   });
 });
