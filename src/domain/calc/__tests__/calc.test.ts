@@ -53,13 +53,35 @@ const BENCH = EXERCISE_BY_ID.get('ex_bench_press') as Exercise;
 // --- Epley -----------------------------------------------------------------
 
 describe('estimated 1RM (Epley)', () => {
+  /*
+    This test was previously named for the documented behaviour and asserted
+    the opposite of it -- `toBeCloseTo(100 * (1 + 1 / 30))`, i.e. 103.33 under
+    the heading "returns the weight itself for a single". It therefore locked
+    in the bug under a name that read as a guarantee against it. Asserting the
+    literal expected value, not a restatement of the implementation, is the
+    point: a test that recomputes the formula can only ever agree with it.
+  */
   it('returns the weight itself for a single', () => {
-    expect(estimateOneRepMax(100, 1)).toBeCloseTo(100 * (1 + 1 / 30), 6);
+    expect(estimateOneRepMax(100, 1)).toBe(100);
+    expect(estimateOneRepMax(142.5, 1)).toBe(142.5);
   });
 
-  it('matches the formula weight * (1 + reps / 30)', () => {
+  it('matches the formula weight * (1 + reps / 30) above one rep', () => {
     expect(estimateOneRepMax(100, 5)).toBeCloseTo(116.667, 3);
     expect(estimateOneRepMax(80, 8)).toBeCloseTo(101.333, 3);
+  });
+
+  it('never rates a single below a multi-rep set at the same weight', () => {
+    // The ordering that matters to a lifter: two reps at 100 is a better
+    // showing than one rep at 100, and the single is never inflated past it.
+    expect(estimateOneRepMax(100, 1)).toBeLessThan(estimateOneRepMax(100, 2));
+  });
+
+  it('does not let an estimate from a single beat the lift itself', () => {
+    // The regression this fix exists for. A completed 103 kg single must
+    // out-rank a 100 kg single; under the old behaviour the 100 kg single
+    // scored 103.33 and swallowed it.
+    expect(estimateOneRepMax(103, 1)).toBeGreaterThan(estimateOneRepMax(100, 1));
   });
 
   it('returns 0 for non-positive input', () => {
@@ -77,6 +99,14 @@ describe('estimated 1RM (Epley)', () => {
   it('inverts cleanly', () => {
     const e1rm = estimateOneRepMax(100, 5);
     expect(weightForReps(e1rm, 5)).toBeCloseTo(100, 6);
+  });
+
+  it('inverts cleanly at one rep too', () => {
+    // The single-rep rule has to hold on both sides or the round trip breaks.
+    // With only `estimateOneRepMax` special-cased, this returned 96.77.
+    const e1rm = estimateOneRepMax(100, 1);
+    expect(weightForReps(e1rm, 1)).toBeCloseTo(100, 6);
+    expect(weightForReps(140, 1)).toBe(140);
   });
 });
 
