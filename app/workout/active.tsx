@@ -53,6 +53,8 @@ export default function ActiveWorkoutScreen() {
   const removeExercise = useActiveWorkoutStore((s) => s.removeExercise);
   const finish = useActiveWorkoutStore((s) => s.finish);
   const discard = useActiveWorkoutStore((s) => s.discard);
+  const draftPendingReview = useActiveWorkoutStore((s) => s.draftPendingReview);
+  const resumeDraft = useActiveWorkoutStore((s) => s.resumeDraft);
 
   const profile = useTrainingStore((s) => s.profile);
   const exerciseById = useTrainingStore((s) => s.exerciseById);
@@ -98,6 +100,22 @@ export default function ActiveWorkoutScreen() {
   useEffect(() => {
     if ((!workout || !profile) && !finishing.current) router.replace('/');
   }, [workout, profile, router]);
+
+  // Being on this screen IS resuming, whichever route got here.
+  //
+  // `resumeDraft()` used to be called from exactly one place -- Today's
+  // "Recovered session" card -- so any other way in (Exercises' "log this
+  // lift", the template modal reached from an empty Insights/History state)
+  // left `draftPendingReview` set. Today then went on offering Resume/Discard
+  // for a session the lifter was already logging in, which is the opposite of
+  // the honest continuity states D5 exists to guarantee.
+  //
+  // Clearing it here rather than in the store keeps the store ignorant of
+  // navigation. The call is idempotent, so Today's Resume button -- which
+  // already calls it before navigating -- is unaffected.
+  useEffect(() => {
+    if (workout && draftPendingReview) resumeDraft();
+  }, [workout, draftPendingReview, resumeDraft]);
 
   const priorBests = useMemo(() => bestsFromHistory(history), [history]);
 
