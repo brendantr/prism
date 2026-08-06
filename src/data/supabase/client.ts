@@ -9,10 +9,45 @@ import { secureSessionStorage } from './secureStorage';
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-export const DEMO_MODE = (process.env.EXPO_PUBLIC_DEMO_MODE ?? 'true') !== 'false';
+/**
+ * Demo mode is now **opt-in for release builds and on by default only in
+ * development**, rather than the previous "default true everywhere".
+ *
+ * The old default meant a production build with no environment configured
+ * shipped silently in demo mode: deterministic seed data, zero network, every
+ * session written to that one device. That is a fine way to explore the app
+ * and a bad way to discover what your release does. An explicit
+ * `EXPO_PUBLIC_DEMO_MODE` still wins in both directions, so `=true` gives a
+ * demo release build and `=false` gives a real-backend dev build.
+ *
+ * `__DEV__` is true under Metro and Jest, false in any EAS/release bundle.
+ */
+const explicitDemoFlag = process.env.EXPO_PUBLIC_DEMO_MODE;
+export const DEMO_MODE =
+  explicitDemoFlag != null && explicitDemoFlag.length > 0 ? explicitDemoFlag !== 'false' : __DEV__;
+
+/** Both credentials present. Says nothing about whether they are *correct*. */
+export const hasSupabaseCredentials = url.length > 0 && anonKey.length > 0;
 
 /** True when real credentials are present and demo mode is off. */
-export const isSupabaseConfigured = !DEMO_MODE && url.length > 0 && anonKey.length > 0;
+export const isSupabaseConfigured = !DEMO_MODE && hasSupabaseCredentials;
+
+/**
+ * Demo is off, but there is no backend to talk to.
+ *
+ * This is the state that must never resolve quietly. Falling back to the demo
+ * repository here would leave a build claiming to be live while writing every
+ * logged session to local storage only — the lifter's data would look saved
+ * and be device-bound, which is the same class of dishonesty
+ * `Docs/invariants.md` I-2 and I-15 exist to prevent. `getRepository()` refuses
+ * instead, and the store surfaces it as a normal, retryable error state.
+ */
+export const SUPABASE_MISCONFIGURED = !DEMO_MODE && !hasSupabaseCredentials;
+
+export const SUPABASE_MISCONFIGURED_MESSAGE =
+  'This build is configured for a real backend but has no Supabase credentials. ' +
+  'Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY, or set ' +
+  'EXPO_PUBLIC_DEMO_MODE=true to run on demo data.';
 
 let client: SupabaseClient | null = null;
 

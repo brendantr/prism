@@ -2,7 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EXERCISE_LIBRARY } from './exerciseLibrary';
 import { ROUTINE_TEMPLATES, SPECTRUM_FOUR } from './routineTemplates';
 import { generateDemoData, DEMO_PROFILE_ID } from './demoSeed';
-import { DEMO_MODE, getSupabase, isSupabaseConfigured } from './supabase/client';
+import {
+  DEMO_MODE,
+  SUPABASE_MISCONFIGURED,
+  SUPABASE_MISCONFIGURED_MESSAGE,
+  getSupabase,
+  isSupabaseConfigured,
+} from './supabase/client';
 import {
   fromProfile,
   fromSet,
@@ -491,14 +497,26 @@ function assertCompleteCheckIn(patch: CheckInPatch): asserts patch is CheckIn {
 let instance: Repository | null = null;
 
 export function getRepository(): Repository {
+  // Demo-off-but-unconfigured is a build mistake, not a mode. Returning a
+  // DemoRepository here is what made it invisible: the app would run, look
+  // live, and quietly keep every session on one device. `trainingStore.refresh`
+  // calls this inside its try block, so the throw lands as the ordinary
+  // retryable error state every screen already renders (`ScreenState`).
+  if (SUPABASE_MISCONFIGURED) throw new Error(SUPABASE_MISCONFIGURED_MESSAGE);
+
   if (!instance) {
     instance = isSupabaseConfigured ? new SupabaseRepository() : new DemoRepository();
   }
   return instance;
 }
 
+/**
+ * Read straight off the flag rather than constructing a repository: this is
+ * called during render (Today's "Demo data" chip), and a render path must not
+ * be able to throw on a misconfigured build.
+ */
 export function isDemoMode(): boolean {
-  return getRepository().kind === 'demo';
+  return DEMO_MODE;
 }
 
 export async function resetDemoData(): Promise<void> {
