@@ -113,4 +113,17 @@ export const ACCOUNT = {
    * their data is gone.
    */
   deleteFailedMessage: 'Your account and your data are unchanged. Try again in a moment.',
+
+  /**
+   * The account IS gone; only the device cleanup fell short.
+   *
+   * A separate message because `deleteFailedMessage` above asserts the account
+   * still exists, and saying that after a successful deletion is the worst
+   * outcome on this screen -- it sends someone away believing their data is
+   * safe when it has been erased. Both halves are stated: what happened on the
+   * server, and what did not happen here.
+   */
+  deletedCleanupFailedTitle: 'Account deleted',
+  deletedCleanupFailedMessage:
+    'Your account and your data have been permanently deleted. PRism could not clear everything from this device — reinstalling the app will remove what is left.',
 } as const;

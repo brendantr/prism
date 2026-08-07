@@ -4,7 +4,11 @@ import { AuthRequiredError } from '@/data/authRequired';
 import { canOfferSignOut, shouldConfirmSignOut } from '@/domain/account';
 import type { Workout } from '@/domain/types';
 import { DRAFT_STORAGE_KEY, useActiveWorkoutStore } from '../activeWorkoutStore';
-import { deleteAccountAndTearDown, signOutAndTearDown } from '../authActions';
+import {
+  AccountDeletedLocalCleanupError,
+  deleteAccountAndTearDown,
+  signOutAndTearDown,
+} from '../authActions';
 import { useSessionStore } from '../sessionStore';
 import { useTrainingStore } from '../trainingStore';
 
@@ -467,5 +471,84 @@ describe('deleteAccountAndTearDown()', () => {
     expect(useTrainingStore.getState().workouts).toEqual([]);
     expect(useTrainingStore.getState().checkIns).toEqual([]);
     expect(useTrainingStore.getState().personalRecords).toEqual([]);
+  });
+});
+
+/**
+ * THE TWO FAILURE REGIONS OF DELETION
+ * ===================================
+ * Caught by review: `deleteAccountAndTearDown` awaited the irreversible remote
+ * delete and then the local teardown, and the screen caught every rejection
+ * identically -- so a local `AsyncStorage` failure AFTER a successful deletion
+ * told the lifter "your account and your data are unchanged". That is false,
+ * and it is the worst sentence this screen can show.
+ */
+describe('deleteAccountAndTearDown: telling the two failures apart', () => {
+  beforeEach(() => {
+    mockGetRepository.mockClear();
+    useSessionStore.setState({ phase: 'authenticated', email: 'a@example.com' });
+  });
+
+  function repositoryWhoseDeleteWill(outcome: 'succeed' | 'fail') {
+    const actual = jest.requireActual('@/data/repository');
+    const real = actual.getRepository();
+    const deleteAccount = jest.fn(async () => {
+      if (outcome === 'fail') throw new Error('network');
+    });
+    mockGetRepository.mockImplementation(() => ({ ...real, deleteAccount }));
+    return deleteAccount;
+  }
+
+  it('reports a cleanup failure as a DELETION, not as "unchanged"', async () => {
+    repositoryWhoseDeleteWill('succeed');
+    const spy = jest
+      .spyOn(AsyncStorage, 'removeItem')
+      .mockRejectedValueOnce(new Error('storage gone'));
+
+    await expect(deleteAccountAndTearDown()).rejects.toBeInstanceOf(
+      AccountDeletedLocalCleanupError,
+    );
+
+    spy.mockRestore();
+  });
+
+  it('still finishes every other teardown step when one fails', async () => {
+    // The old code ran these unguarded in sequence, so one rejection skipped
+    // the read-model reset, the repository reset and markUnauthenticated --
+    // leaving a half-cleared device that still believed it was signed in.
+    repositoryWhoseDeleteWill('succeed');
+    seedLoadedTrainingData();
+    const spy = jest
+      .spyOn(AsyncStorage, 'removeItem')
+      .mockRejectedValueOnce(new Error('storage gone'));
+
+    await expect(deleteAccountAndTearDown()).rejects.toBeInstanceOf(
+      AccountDeletedLocalCleanupError,
+    );
+
+    expect(useTrainingStore.getState().workouts).toEqual([]);
+    expect(useSessionStore.getState().phase).toBe('unauthenticated');
+
+    spy.mockRestore();
+  });
+
+  it('a remote failure is NOT a cleanup failure and leaves the device intact', async () => {
+    repositoryWhoseDeleteWill('fail');
+    seedLoadedTrainingData();
+
+    const err = await deleteAccountAndTearDown().catch((e) => e);
+
+    expect(err).not.toBeInstanceOf(AccountDeletedLocalCleanupError);
+    expect(useSessionStore.getState().phase).toBe('authenticated');
+    expect(useTrainingStore.getState().workouts).not.toEqual([]);
+  });
+
+  it('does not call the remote sign-out for a user that no longer exists', async () => {
+    repositoryWhoseDeleteWill('succeed');
+    const { signOut } = jest.requireMock('@/data/supabase/auth');
+
+    await deleteAccountAndTearDown();
+
+    expect(signOut).not.toHaveBeenCalled();
   });
 });
