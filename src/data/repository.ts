@@ -413,18 +413,40 @@ class SupabaseRepository implements Repository {
     return (data ?? []).map(toCheckIn);
   }
 
+  /**
+   * A partial check-in, merged into today's record by the database.
+   *
+   * This used to call `assertCompleteCheckIn` and **throw** unless all four
+   * scales were answered, because `check_ins` declared them `not null`. So a
+   * feature I-7 defines as optional field by field worked in demo mode and
+   * failed against a real backend -- and `CheckInPrompt` enables submit as soon
+   * as *any* one scale is answered, so it was reachable on the first tap.
+   * `0004_partial_check_ins.sql` makes the columns nullable and adds
+   * `save_check_in`.
+   *
+   * The payload is built by key presence, not by value, and that is the whole
+   * subtlety. `CheckInPatch` distinguishes a property the caller omitted from
+   * one they sent as null: the first means "leave my earlier answer alone", the
+   * second means "erase it". A plain upsert flattens both into a column value
+   * and cannot say which was meant, which is why this sends jsonb to a function
+   * that tests `p_patch ? 'energy'` instead.
+   *
+   * Ownership is not sent at all -- the function reads `auth.uid()`.
+   */
   async saveCheckIn(checkIn: CheckInPatch): Promise<void> {
-    assertCompleteCheckIn(checkIn);
-    const profileId = await this.uid();
-    const { error } = await getSupabase().from('check_ins').upsert({
+    await this.uid();
+
+    const patch: Record<string, unknown> = {
       id: checkIn.id,
-      profile_id: profileId,
       checked_in_at: checkIn.checkedInAt,
-      sleep_quality: checkIn.sleepQuality,
-      energy: checkIn.energy,
-      soreness: checkIn.soreness,
-      stress: checkIn.stress,
-    });
+    };
+    for (const field of CHECK_IN_SCALES) {
+      // `in`, not a truthiness or null test: an explicitly-null answer has to
+      // reach the database as a present key so it clears the stored value.
+      if (field in checkIn) patch[CHECK_IN_COLUMN[field]] = checkIn[field] ?? null;
+    }
+
+    const { error } = await getSupabase().rpc('save_check_in', { p_patch: patch });
     if (error) throw error;
   }
 
@@ -511,6 +533,20 @@ function toRoutine(row: any): Routine {
 /** The four self-reported scales, all independently optional. */
 const CHECK_IN_SCALES = ['sleepQuality', 'energy', 'soreness', 'stress'] as const;
 
+/**
+ * Domain field -> column, for the one place a check-in crosses into SQL.
+ *
+ * Written as a map rather than inline string literals so that adding a fifth
+ * scale is a type error here instead of a silently-dropped field at the write
+ * boundary -- which is the failure `CheckInPatch`'s own comment warns about.
+ */
+const CHECK_IN_COLUMN: Record<(typeof CHECK_IN_SCALES)[number], string> = {
+  sleepQuality: 'sleep_quality',
+  energy: 'energy',
+  soreness: 'soreness',
+  stress: 'stress',
+};
+
 function sameCalendarDay(a: string, b: string): boolean {
   const x = new Date(a);
   const y = new Date(b);
@@ -557,22 +593,10 @@ function blankCheckIn(patch: CheckInPatch): CheckIn {
   };
 }
 
-/**
- * `check_ins` still declares all four scales `not null` (0001_init.sql), and
- * this sprint does not touch migrations. So a partial check-in cannot be stored
- * against Postgres yet -- fail before the write rather than letting the driver
- * surface a constraint violation from halfway through it.
- */
-function assertCompleteCheckIn(patch: CheckInPatch): asserts patch is CheckIn {
-  // `== null` covers both an omitted field and an explicitly cleared one --
-  // Postgres rejects either, so both are refused here before any write.
-  const missing = CHECK_IN_SCALES.filter((field) => patch[field] == null);
-  if (missing.length > 0) {
-    throw new Error(
-      `Partial check-ins are not yet supported by the Supabase schema (missing: ${missing.join(', ')}).`,
-    );
-  }
-}
+// `assertCompleteCheckIn` lived here. It refused any check-in missing a scale,
+// because `check_ins` declared all four `not null`. 0004 made the columns
+// nullable and moved the merge into `save_check_in`, so the guard is gone
+// rather than relaxed -- there is no longer a case it would have caught.
 
 // ---------------------------------------------------------------------------
 // Singleton
