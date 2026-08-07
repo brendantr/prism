@@ -41,10 +41,22 @@
   57-assertion RLS suite is unchanged. **I-2 and I-10 remain open**, and this sprint neither advanced
   nor was blocked by either. Full record: `Docs/sprints/2026-08-06-auth-and-session.md` and
   `Docs/decisions/ADR-0004-authentication-and-session.md`.
-- **Branch provenance note `[fact, 2026-08-06]`:** at the time of writing, `main` is at `ecfd1f1` and
-  contains **neither** the production-posture commit (`5c18d93`) **nor** the auth work (`0af00cd`).
-  Both sit on their own branches, unmerged. Claims in this document describing auth or the
-  demo-fallback throw are claims about those branches, not about `main`.
+- **Delta since 2026-08-08 (`feature/v1-signout-surface`, commit `0029a7f`, based on `d8c206d`):** the
+  sign-out teardown that shipped unreachable on 2026-08-06 now has a surface. Today's header carries an
+  Account control (`Screen`'s previously-unused `headerRight` slot), gated by the pure
+  `canOfferSignOut`; it opens `app/account.tsx`, a modal with identity, one explanatory sentence, and a
+  "Sign out" row. `SessionUser` gained `email` and it was propagated through `getCurrentUser`,
+  `signInWithPassword`, `signUpWithPassword` and `subscribeToAuthState` so identity does not depend on
+  how the session was obtained. `src/store/authActions.ts` was **not** modified — this sprint made the
+  teardown reachable, not different. Evidence: **312 tests, 22 suites**, `npx tsc --noEmit` clean,
+  integration lane still 5 skipped. No schema, migration, or Supabase project setting changed. **I-2 and
+  I-10 remain open**, and no password reset or deep-link capture was implemented. Full record:
+  `Docs/sprints/2026-08-08-signout-surface.md`.
+- **Branch provenance note `[fact, 2026-08-06, still true 2026-08-08]`:** at the time of writing, `main` is at `ecfd1f1` and
+  contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
+  guardrail docs (`d8c206d`) or the sign-out surface (`0029a7f`). All four sit on their own branches,
+  unmerged, each based on the one before it. Claims in this document describing auth, sign-out or the
+  demo-fallback throw are claims about that branch chain, not about `main`.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -191,7 +203,7 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
 ## Runtime Architecture
 
 **1. App startup and route entry** *(verified, `app/_layout.tsx`)*
-Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
+Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account` (modal, added 2026-08-08), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
 
 **Rewritten 2026-08-06 (`feature/v1-auth-and-session`).** The root layout previously ran two things on mount — an unconditional `trainingStore.load()` and a redirect effect that knew only about onboarding — and held the splash until the persisted onboarding flag resolved. It now holds **one combined gate**. `sessionStore.initialize()` and `onboardingStore.load()` both fire on mount and are allowed to race, because each only reads local storage and neither redirects; `Splash` renders until `sessionPhase !== 'unknown' && onboardingStatus === 'ready'`. Adding a second condition to the old shape would have meant two effects redirecting off the same `useSegments()` array, which is how a gate turns into a redirect loop.
 
@@ -276,7 +288,9 @@ A complete client-side authentication path now exists. `src/data/supabase/auth.t
 
 `SupabaseRepository.uid()` changed in two ways. It reads `auth.getSession()` rather than `auth.getUser()`: `getUser()` round-trips to `/auth/v1/user` on every call, and `uid()` is reached by six of the eight repository calls `trainingStore.refresh()` fires in parallel — six requests before a single row is fetched — while the access token is what Postgres evaluates RLS against anyway, so a second client-side validation proves nothing the query itself will not. And it throws `AuthRequiredError` rather than a bare `Error`, which is what allows the store layer to distinguish "no session" from every other failure. The error type lives in `src/data/authRequired.ts` rather than in a store, preserving the one-directional layering: `src/data` defines and throws it, stores catch and interpret it, and no repository reads session state back out of a store. No repository method accepts a caller-supplied id; `sessionStore.userId` exists for display and test assertions only.
 
-Category: **resolved in the client.** What is *not* resolved, and must not be read into the above: **no code path in this repository has been executed against a live Supabase project.** The integration suite (`src/data/supabase/__tests__/sessionFlow.integration.test.ts`) is gated on `PRISM_INTEGRATION_SUPABASE_*` and skipped; no credentials were created. Sign-in has never obtained a real token here. Separately, there is **no user-facing sign-out control**, because the app has no settings screen — `signOutAndTearDown` is implemented and tested but unreachable from the UI.
+**Sign-out is reachable as of 2026-08-08** (`feature/v1-signout-surface`). Today renders an Account control in `Screen`'s previously-unused `headerRight` slot, beside the lifter's own name; it routes to `app/account.tsx`, a modal carrying an identity line, one explanatory sentence, and a destructive-toned "Sign out" row that calls `signOutAndTearDown`. Visibility is decided by one pure predicate, `canOfferSignOut({ authEnabled, sessionPhase })` (`src/domain/account.ts`), which is true only when auth is enabled **and** the phase is `'authenticated'`. Demo and misconfigured builds therefore have no control at all — absent rather than disabled, since a greyed-out "Account" implies an account that could have existed, and in the misconfigured case it would also compete with the `SUPABASE_MISCONFIGURED_MESSAGE` that build actually owes its user. Confirmation follows UX decision D6: the sheet warns before tearing down only when logged work would be lost (`shouldConfirmSignOut`, which counts completed sets including warm-ups), and signs out immediately otherwise.
+
+Category: **resolved in the client.** What is *not* resolved, and must not be read into the above: **no code path in this repository has been executed against a live Supabase project.** The integration suite (`src/data/supabase/__tests__/sessionFlow.integration.test.ts`) is gated on `PRISM_INTEGRATION_SUPABASE_*` and skipped; no credentials were created. Sign-in has never obtained a real token here. Neither password reset nor deep-link session capture exists, and account deletion and export (I-10) remain absent — the Account surface deliberately claims none of them.
 
 **RLS status and evidence:** RLS is enabled on all 11 tables and policies exist for every table, scoped consistently to `auth.uid()` (verified, migration lines 275–387). Category: **confirmed** as *written*; **unknown requiring validation** as *enforced*, since no test applies the migration and asserts policy behavior (e.g. that user A cannot read user B's `workouts`).
 
@@ -301,6 +315,7 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 | Route | File | Type |
 |---|---|---|
 | `auth` | `app/auth/index.tsx` | Stack screen — sign-in / sign-up, gestures disabled (added 2026-08-06, `feature/v1-auth-and-session`). There is nothing behind sign-in to return to. `app/onboarding/auth.tsx` is no longer a screen: it is a `<Redirect>` that resolves to `/auth` where accounts exist and to `/onboarding/steps` where they do not. |
+| `account` | `app/account.tsx` | Modal — identity, sign out, one explanatory line (added 2026-08-08, `feature/v1-signout-surface`). Reached only from Today's `headerRight` Account control, which renders only when `canOfferSignOut` is true. Deliberately not a settings screen: a fourth item on it would make it one. |
 | `(tabs)/index` | `app/(tabs)/index.tsx` | Tab — Today |
 | `(tabs)/progress` | `app/(tabs)/progress.tsx` | Tab — Progress |
 | `(tabs)/body` | `app/(tabs)/body.tsx` | Tab — Body |
@@ -364,9 +379,25 @@ This supersedes the "177 tests, 14 suites" figure recorded in the 2026-08-04 del
 | `src/data/__tests__/authPosture.test.ts` | Demo, misconfigured and configured startup, each re-importing the module graph under a different environment; includes that the misconfigured build still throws `SUPABASE_MISCONFIGURED_MESSAGE` and is not intercepted by the auth gate |
 
 `src/data/__tests__/ownership.test.ts` was updated from `getUser` to `getSession` with no change to what
-it asserts. **Still uncovered, and unchanged by this sprint:** `app/` and `src/components` have no
-rendering coverage — the auth screen's loading and error states, and the gate as actually executed by
-Expo Router, are not tested. That is why the routing decision was extracted into a pure function.
+it asserts.
+
+**Current test suites (2026-08-08): 22 suites, 312 tests**, typecheck clean. Added by
+`feature/v1-signout-surface`:
+
+| Suite | Covers |
+|---|---|
+| `src/domain/__tests__/account.test.ts` | `canOfferSignOut` across the full phase × `authEnabled` matrix, including the impossible-but-guarded case; `shouldConfirmSignOut` for no session, an untouched session, one logged set, a completed warm-up, a second exercise, and an empty session; `countCompletedSets` agreeing with the predicate that the confirmation copy quotes |
+| `src/content/__tests__/accountCopy.test.ts` | No environment variable or internal identifier; no diagnostic/clinical language (I-8); **never promises deletion or export** (I-10 is open); the explanation covers both sides of the device boundary; the confirmation names the count and the session; pluralisation |
+
+`authActions.test.ts`, `sessionStore.test.ts` and `authPosture.test.ts` were each extended — teardown
+against a session with logged sets, identity (`userId` *and* `email`) cleared on sign-out, the control
+unable to survive its own action, and demo/misconfigured builds offering no control while the
+misconfiguration message stays primary.
+
+**Still uncovered, and unchanged by either sprint:** `app/` and `src/components` have no rendering
+coverage — the auth screen's states, Today's header control, the Account modal's presentation, and the
+`Alert` itself are not tested, nor is the gate as actually executed by Expo Router. That is why both the
+routing decision and the sign-out visibility rule were extracted into pure functions.
 
 **Commands run and exact outcomes (2026-07-25 original review, commit `2490c8d`):**
 
@@ -409,7 +440,7 @@ per `Docs/invariants.md` I-15, a document's history of what was found and fixed 
 
 | ID | Severity | Category | Evidence | User/business impact | Recommended next action | Requires product decision? |
 |---|---|---|---|---|---|---|
-| ~~G-1~~ | ~~High~~ | ~~Auth~~ | **Resolved in the client 2026-08-06** (`feature/v1-auth-and-session`). A full auth path exists: `src/store/sessionStore.ts` (four-phase machine, `onAuthStateChange` subscription), `src/store/authActions.ts` (ordered sign-out teardown), `src/data/authRequired.ts` (`AuthRequiredError`), `src/data/supabase/auth.ts` (the sole caller of Supabase's auth API), `src/domain/routing.ts` (the pure route gate), and `app/auth/index.tsx` (the real sign-in/sign-up surface). `uid()` now reads `getSession()` and throws `AuthRequiredError`, which `trainingStore.refresh()` routes to sign-in instead of to `ScreenState`. Evidence: six new Jest suites (see Quality above), 287/287 passing. **Two limits, stated rather than implied:** nothing here has run against a live Supabase project — the integration lane is credential-gated and skipped — and there is **no user-facing sign-out control**, because no settings screen exists. | Production mode is now reachable by a real user in code; whether it works end to end against a real project is unverified | Exercise the `preview` profile against a real project once the owner creates its EAS variables and applies the migrations; add a sign-out affordance when a settings surface exists | No |
+| ~~G-1~~ | ~~High~~ | ~~Auth~~ | **Resolved in the client 2026-08-06** (`feature/v1-auth-and-session`). A full auth path exists: `src/store/sessionStore.ts` (four-phase machine, `onAuthStateChange` subscription), `src/store/authActions.ts` (ordered sign-out teardown), `src/data/authRequired.ts` (`AuthRequiredError`), `src/data/supabase/auth.ts` (the sole caller of Supabase's auth API), `src/domain/routing.ts` (the pure route gate), and `app/auth/index.tsx` (the real sign-in/sign-up surface). `uid()` now reads `getSession()` and throws `AuthRequiredError`, which `trainingStore.refresh()` routes to sign-in instead of to `ScreenState`. **Sign-out made reachable 2026-08-08** (`feature/v1-signout-surface`): `src/domain/account.ts` (`canOfferSignOut`, `shouldConfirmSignOut`), `src/content/account.ts`, `app/account.tsx`, and Today's `headerRight` control. Evidence: eight Jest suites in total across both sprints (see Quality above), 312/312 passing. **One limit remains, stated rather than implied:** nothing here has run against a live Supabase project — the integration lane is credential-gated and skipped. | Production mode is now reachable by a real user in code, and a real user can both sign in and sign out; whether it works end to end against a real project is unverified | Exercise the `preview` profile against a real project once the owner creates its EAS variables and applies the migrations | No |
 | G-2 | High | Data integrity | `SupabaseRepository.saveWorkout` performs 3 sequential non-transactional upserts (`src/data/repository.ts`). **Unchanged 2026-08-06** — `feature/v1-auth-and-session` touched no migration and no write path, and deliberately did not "fix" this in passing. | A failure mid-save can leave a workout with missing exercises/sets. **The risk rose with the auth sprint rather than falling:** until now a partial write corrupted device-local demo data, and it now corrupts a real account's training history. Restated per I-2's own exception process — v1 ships against this path with the risk stated, not hidden. | Wrap in a Postgres function/RPC or add reconciliation logic; its own branch | No |
 | ~~G-3~~ | ~~High~~ | ~~Verification gap~~ | **Resolved 2026-08-01, CI-wiring closed 2026-08-04.** `supabase/tests/rls/` (57 assertions) runs against the actual, corrected `0001_init.sql`/`0002_security_hardening.sql` on a disposable local Postgres instance and passes; a prior blocking DDL defect (non-immutable index expression) was found and fixed first. **The "wire into CI" recommendation this row used to carry is now done** — PR #31 added an `rls` job to `.github/workflows/ci.yml` running the suite against a disposable `postgres:16` service container on every push/PR to `main`, observed green (`Docs/sprints/2026-08-04-supabase-rls-ci.md`). | RLS correctness is now demonstrated, not just written, and a regression in `supabase/migrations/*.sql` now fails CI | — | No |
 | G-4 | Medium | Observability | No crash reporting, analytics, or logging framework found in dependencies. **Unchanged 2026-08-06 and explicitly untouched by the auth sprint** — recorded so its silence in that sprint's records is not mistaken for closure. | Production issues would be invisible until user-reported — now including failed sign-ins, which the app cannot report on at all | Decide on and integrate an observability stack before wider release | Yes |

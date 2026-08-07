@@ -32,10 +32,14 @@ import {
   useActiveWorkoutStore,
 } from '@/store/activeWorkoutStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
+import { useSessionStore } from '@/store/sessionStore';
 import { DEEPER_SECTION, DEEPER_SURFACES } from '@/content/deeperSurfaces';
+import { ACCOUNT } from '@/content/account';
+import { canOfferSignOut } from '@/domain/account';
 import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
-import { color, space } from '@/theme';
+import { isAuthEnabled } from '@/data/supabase/auth';
+import { a11y, color, opacity, space } from '@/theme';
 
 /**
  * TODAY
@@ -76,6 +80,8 @@ export default function TodayScreen() {
   const discardDraft = useActiveWorkoutStore((s) => s.discard);
   const draftCompletedSets = useActiveWorkoutStore(selectCompletedSetCount);
   const draftTotalSets = useActiveWorkoutStore(selectTotalSetCount);
+
+  const sessionPhase = useSessionStore((s) => s.phase);
 
   const now = useMemo(() => new Date(), []);
 
@@ -171,7 +177,34 @@ export default function TodayScreen() {
   };
 
   return (
-    <Screen eyebrow={greeting(now)} title={profile.displayName.split(' ')[0]}>
+    <Screen
+      eyebrow={greeting(now)}
+      title={profile.displayName.split(' ')[0]}
+      headerRight={
+        /*
+          The only way to sign out. It sits beside the lifter's own name, which
+          is where an account control is looked for, and it uses `Screen`'s
+          existing `headerRight` slot -- no new layout, and no sixth tab, which
+          D1 freezes for all of v1.
+
+          Absent rather than disabled in demo and misconfigured builds: a greyed
+          "Account" implies an account you could have had, and neither build has
+          one. `canOfferSignOut` owns that rule so it can be tested without a
+          renderer.
+        */
+        canOfferSignOut({ authEnabled: isAuthEnabled(), sessionPhase }) ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={ACCOUNT.headerControlLabel}
+            onPress={() => router.push('/account')}
+            hitSlop={10}
+            style={({ pressed }) => [styles.accountButton, pressed && { opacity: opacity.pressed }]}
+          >
+            <Ionicons name="person-outline" size={19} color={color.textSecondary} />
+          </Pressable>
+        ) : null
+      }
+    >
       {isDemoMode() ? (
         <View style={styles.demoBanner}>
           <Chip label="Demo data" tone="cyan" icon="flask" />
@@ -436,6 +469,12 @@ const styles = StyleSheet.create({
   gutter: { marginHorizontal: space.lg },
   retry: { marginTop: space.base },
   deeperCard: { marginHorizontal: space.lg, marginBottom: space.md },
+  accountButton: {
+    width: a11y.minTouch,
+    height: a11y.minTouch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   demoBanner: {
     flexDirection: 'row',
     alignItems: 'center',

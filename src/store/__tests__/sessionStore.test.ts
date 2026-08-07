@@ -35,11 +35,16 @@ const mockSignIn = signInWithPassword as jest.MockedFunction<typeof signInWithPa
 const mockSignUp = signUpWithPassword as jest.MockedFunction<typeof signUpWithPassword>;
 const mockSubscribe = subscribeToAuthState as jest.MockedFunction<typeof subscribeToAuthState>;
 
+/** A signed-in user, in the shape `src/data/supabase/auth.ts` hands back. */
+function user(userId: string, email: string | null = `${userId}@example.com`) {
+  return { userId, email };
+}
+
 /** Drives whatever handler the store registered with `subscribeToAuthState`. */
 function emitAuthEvent(event: AuthStateEvent, userId: string | null) {
   const handler = mockSubscribe.mock.calls[0]?.[0];
   if (!handler) throw new Error('store never subscribed to auth state');
-  handler(event, userId);
+  handler(event, userId === null ? null : user(userId));
 }
 
 beforeEach(() => {
@@ -48,6 +53,7 @@ beforeEach(() => {
   useSessionStore.setState({
     phase: 'unknown',
     userId: null,
+    email: null,
     pending: null,
     lastFailure: null,
   });
@@ -58,12 +64,23 @@ beforeEach(() => {
 
 describe('initialize', () => {
   it('lands authenticated when a session is restored from storage', async () => {
-    mockGetCurrentUser.mockResolvedValue({ userId: 'user_a' });
+    mockGetCurrentUser.mockResolvedValue(user('user_a'));
 
     await useSessionStore.getState().initialize();
 
     expect(useSessionStore.getState().phase).toBe('authenticated');
     expect(useSessionStore.getState().userId).toBe('user_a');
+    expect(useSessionStore.getState().email).toBe('user_a@example.com');
+  });
+
+  it('carries a null email through rather than inventing one', async () => {
+    // Supabase can return a user with no email. The account sheet falls back to
+    // the display name; it must not render "Signed in as null".
+    mockGetCurrentUser.mockResolvedValue(user('user_a', null));
+
+    await useSessionStore.getState().initialize();
+
+    expect(useSessionStore.getState().email).toBeNull();
   });
 
   it('lands unauthenticated when there is no stored session', async () => {
@@ -89,7 +106,7 @@ describe('initialize', () => {
   });
 
   it('is idempotent and subscribes exactly once', async () => {
-    mockGetCurrentUser.mockResolvedValue({ userId: 'user_a' });
+    mockGetCurrentUser.mockResolvedValue(user('user_a'));
 
     await useSessionStore.getState().initialize();
     await useSessionStore.getState().initialize();
@@ -121,7 +138,7 @@ describe('initialize', () => {
 
 describe('auth state events', () => {
   beforeEach(async () => {
-    mockGetCurrentUser.mockResolvedValue({ userId: 'user_a' });
+    mockGetCurrentUser.mockResolvedValue(user('user_a'));
     await useSessionStore.getState().initialize();
   });
 
@@ -130,6 +147,9 @@ describe('auth state events', () => {
 
     expect(useSessionStore.getState().phase).toBe('unauthenticated');
     expect(useSessionStore.getState().userId).toBeNull();
+    // The identity goes with the session -- an account sheet reached on a stale
+    // render must never still name the person who just lost their token.
+    expect(useSessionStore.getState().email).toBeNull();
     expect(useSessionStore.getState().lastFailure).toBe('sessionExpired');
   });
 
@@ -149,7 +169,7 @@ describe('auth state events', () => {
 
 describe('signIn', () => {
   it('authenticates and clears the form state on success', async () => {
-    mockSignIn.mockResolvedValue({ userId: 'user_a' });
+    mockSignIn.mockResolvedValue(user('user_a'));
 
     const ok = await useSessionStore.getState().signIn('a@example.com', 'correct horse battery');
 
@@ -190,7 +210,7 @@ describe('signUp', () => {
       session until the address is verified; reporting success would send the
       gate to Today, where every query fails on a session that does not exist.
     */
-    mockSignUp.mockResolvedValue({ userId: null, sessionEstablished: false });
+    mockSignUp.mockResolvedValue({ user: null, sessionEstablished: false });
     useSessionStore.setState({ phase: 'unauthenticated' });
 
     const ok = await useSessionStore.getState().signUp('a@example.com', 'correct horse battery');
@@ -201,7 +221,7 @@ describe('signUp', () => {
   });
 
   it('signs straight in if the project ever stops requiring confirmation', async () => {
-    mockSignUp.mockResolvedValue({ userId: 'user_new', sessionEstablished: true });
+    mockSignUp.mockResolvedValue({ user: user('user_new'), sessionEstablished: true });
 
     const ok = await useSessionStore.getState().signUp('a@example.com', 'correct horse battery');
 

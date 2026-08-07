@@ -100,8 +100,9 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
 
 **Negative, or accepted**
 
-- **No sign-out control exists in the UI**, because the app has no settings screen. The teardown is
-  reachable only in code. A lifter can sign in and cannot sign out.
+- ~~**No sign-out control exists in the UI**, because the app has no settings screen. The teardown is
+  reachable only in code. A lifter can sign in and cannot sign out.~~ **Resolved 2026-08-08 — see the
+  follow-up below.**
 - **Confirmation requires a manual round trip** — open the link, return to the app, sign in.
 - **No password reset**, so a forgotten password is recoverable only by hand in the Supabase dashboard.
 - **Nothing has been exercised against a live Supabase project.** The integration lane is credential-gated
@@ -118,6 +119,30 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
 - **G-4**: no observability, so a failed sign-in in the field is invisible.
 - **`Docs/release-checklist.md`** still does not exist, and neither does an `npm run verify` script.
 
+## Follow-up
+
+**2026-08-08, `feature/v1-signout-surface` (commit `0029a7f`).** The sign-out teardown decided here
+(decision 7) is now reachable. An Account control in Today's `headerRight` — gated by the pure
+`canOfferSignOut({ authEnabled, sessionPhase })`, so it appears only for an authenticated session in a
+build with credentials — opens `app/account.tsx`, whose "Sign out" row calls `signOutAndTearDown`.
+Confirmation follows UX decision D6: the sheet warns first only when logged work would be lost, counting
+completed warm-ups as logged work.
+
+This changes **no decision in this ADR**. The teardown contract, its ordering, and the phase-flips-last
+guarantee are untouched; `src/store/authActions.ts` was not modified. What changed is reachability, plus
+one addition in service of it: `SessionUser` gained `email`, propagated through all four auth call sites
+so identity does not depend on how the session was obtained. It is display-only and falls under the same
+I-6 rule as `userId` — never passed into a repository method.
+
+Decision 5 (demo builds have no authentication) extends cleanly: those builds render no control at all,
+absent rather than disabled, for the same honesty reason that governs the auth screen itself.
+
+**Still unresolved by that sprint**, and unchanged above: no password reset, no deep-link capture, no
+deletion or export (I-10), and nothing exercised against a live Supabase project. The Account surface
+deliberately claims none of them, and a copy test enforces that it cannot start to.
+
+Record: `Docs/sprints/2026-08-08-signout-surface.md`.
+
 ## References
 
 **Implementation** — `src/store/sessionStore.ts`, `src/store/authActions.ts`, `src/data/authRequired.ts`,
@@ -133,6 +158,11 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
 `src/content/__tests__/authCopy.test.ts`, `src/data/__tests__/authPosture.test.ts`,
 `src/data/__tests__/ownership.test.ts` (updated).
 
-**Documents** — `Docs/sprints/2026-08-06-auth-and-session.md`, `Docs/production-posture-v1.md`,
-`Docs/architecture.md` (G-1), `Docs/invariants.md` (I-1, I-6, I-19),
-`Docs/ui-ux-foundation-v1.md` (D2 → D2a, §4.9, §8, §9).
+**Follow-up sprint (2026-08-08)** — `src/domain/account.ts`, `src/content/account.ts`, `app/account.tsx`,
+Today's `headerRight`; tests `src/domain/__tests__/account.test.ts`,
+`src/content/__tests__/accountCopy.test.ts`.
+
+**Documents** — `Docs/sprints/2026-08-06-auth-and-session.md`,
+`Docs/sprints/2026-08-08-signout-surface.md`, `Docs/production-posture-v1.md`,
+`Docs/architecture.md` (G-1), `Docs/invariants.md` (I-1, I-6, I-10, I-19),
+`Docs/ui-ux-foundation-v1.md` (D2 → D2a, §4.9, §4.10, §8, §9).

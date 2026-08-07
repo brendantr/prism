@@ -2,12 +2,15 @@
 
 ## Document status
 
-- **Status:** Decision recorded. **Auth blocker resolved 2026-08-06 (§2); still not executable**, now for
-  configuration and support reasons rather than a missing auth path — see §4, §4.1 and §7.
-- **Date:** 2026-08-06; revised 2026-08-06 (`feature/v1-auth-session-docs`)
+- **Status:** Decision recorded. **Auth blocker resolved 2026-08-06 (§2); sign-out surface added
+  2026-08-08; still not executable**, now for configuration and support reasons rather than a missing
+  auth path — see §4, §4.1 and §7.
+- **Date:** 2026-08-06; revised 2026-08-06 (`feature/v1-auth-session-docs`) and 2026-08-08
+  (`feature/v1-signout-surface`)
 - **Branch:** `feature/v1-production-posture`, revised on `feature/v1-auth-session-docs` after
-  `feature/v1-auth-and-session` (commit `0af00cd`). `[fact]` Neither branch is merged to `main` as of this
-  writing, so this document describes branch state, not `main`.
+  `feature/v1-auth-and-session` (commit `0af00cd`), and again on `feature/v1-signout-surface`
+  (commit `0029a7f`). `[fact]` **None** of these branches is merged to `main` as of this writing, so this
+  document describes branch state, not `main`.
 - **Decision owner:** Engineer/owner
 - **Labelling** per `Docs/invariants.md` I-15: `[fact]` / `[decision]` / `[assumption]` / `[open question]`.
 
@@ -63,9 +66,16 @@ Still open, and none of them advanced by this sprint `[fact]`:
   corrupts a real account's history.
 - **G-4** — no crash reporting or analytics. Explicitly untouched, so a failed sign-in in the field
   would be invisible.
-- **No sign-out control exists** `[fact]`. `signOutAndTearDown` is implemented, ordered and tested, but
-  nothing in the UI calls it, because the app has no settings screen and adding one was outside the
-  sprint's scope. A lifter can sign in and cannot sign out.
+- **No password reset and no deep-link session capture** `[fact]`. A lifter who forgets their password
+  is recoverable only by hand in the Supabase dashboard, and email confirmation still ends in a manual
+  sign-in. See §4.1 and §7.
+
+**Closed since this section was written** `[fact, 2026-08-08, `feature/v1-signout-surface`]`: sign-out is
+no longer unreachable. Today's header carries an Account control — gated by `canOfferSignOut`, so it
+appears only for an authenticated session in a build with credentials — which opens the `account` modal
+and calls `signOutAndTearDown`, confirming first when logged work would be lost. A lifter can now both
+sign in and sign out. This closes §7's third decision and removes the "a lifter can sign in and cannot
+sign out" gap this list previously carried.
 
 ---
 
@@ -97,7 +107,7 @@ Three states, decided at module load and resolved before the splash lifts `[fact
 |---|---|---|
 | **Demo** (`DEMO_MODE` truthy, or unset under `__DEV__`) | `'disabled'` | No auth gate. No Supabase client constructed, no Keychain read, no network call. `DemoRepository` and the `DEMO_PROFILE_ID` literal, unchanged. Today's "Demo data" chip, unchanged. The onboarding account step is skipped entirely (`Docs/ui-ux-foundation-v1.md` D2a). |
 | **Misconfigured** (demo off, credentials absent) | `'disabled'` | The auth gate **does not intercept**, deliberately. Startup proceeds to `getRepository()`, which still throws `SUPABASE_MISCONFIGURED_MESSAGE`, surfaced as the ordinary retryable `ScreenState` error naming the two variables to set. |
-| **Configured** (demo off, credentials present) | `'authenticated'` or `'unauthenticated'`, from the persisted Keychain session | The gate routes a signed-out lifter to `/auth` and a signed-in one to Today. `SupabaseRepository` is reached only when authenticated. |
+| **Configured** (demo off, credentials present) | `'authenticated'` or `'unauthenticated'`, from the persisted Keychain session | The gate routes a signed-out lifter to `/auth` and a signed-in one to Today. `SupabaseRepository` is reached only when authenticated. **Added 2026-08-08:** once authenticated, Today's header carries the Account control, which opens the `account` modal and is the only route to sign-out. It is absent while unauthenticated (the gate has already sent them to `/auth`) and in both rows above. |
 
 The middle row is the one worth stating explicitly. Routing a misconfigured build to a sign-in screen
 would ask someone to type a password into a form that cannot work, while hiding the message that names
@@ -216,14 +226,19 @@ did. They are listed in the order I would take them, with the reasoning, not as 
    their password is locked out permanently, recoverable only by hand in the Supabase dashboard — a
    support dead end for a release whose stated purpose is real user feedback. `resetPasswordForEmail` is
    small once email delivery is settled by decision 1. **Recommendation: v1.**
-3. **Where does sign-out live?** The teardown exists and is tested; nothing calls it, because there is no
-   settings screen. Either a minimal control on an existing surface or a settings sprint. Until one
-   lands, a lifter can sign in and cannot sign out.
+3. ~~**Where does sign-out live?**~~ **Done 2026-08-08** (`feature/v1-signout-surface`). An Account
+   control in Today's `headerRight` — the slot `Screen` already exposed and nothing used — opening the
+   `account` modal, which calls `signOutAndTearDown` and confirms first only when logged work would be
+   lost (D6). No settings screen was created and no tab was added; D1 is untouched. The decision that
+   made it minimal: three items on the sheet, and a fourth would have made it the settings surface this
+   was scoped to avoid.
 4. **I-10 (deletion and export), and the release checklist.** Both still absent, both blocking for
    submission, both their own branches. `Docs/release-checklist.md` and an `npm run verify` script were
    expected from `feature/release-and-summary-hardening` and were never delivered — that branch merged
    without them, and neither has any git history `[fact]`.
 
-**Until 1–3 are answered, the `production` profile still must not be built or submitted.** The reason has
-changed, though, and the change is worth naming: it is no longer that the app cannot function, but that
-it cannot yet be supported.
+**Until 1, 2 and 4 are answered, the `production` profile still must not be built or submitted.** The
+reason has changed twice now, and the direction is worth naming: it was that the app could not function
+(no auth), then that it could not be supported (no way out, no reset). Sign-out closed half of the
+second. **Password reset is now the single largest supportability gap**, and decision 1 is what unblocks
+it.

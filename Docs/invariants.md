@@ -113,6 +113,14 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   gap is a real path to one lifter seeing another's data, so it is now closed explicitly by the
   sign-out teardown contract and the draft-ownership check — see **I-19**, which exists to keep that
   from being re-derived every time a new store is added.
+
+  **Extended 2026-08-08** (sprint `v1-signout-surface`). `SessionUser` now carries `email` alongside
+  `userId`, and both are held on `sessionStore`. The rule they live under is unchanged and is stated in
+  the store itself: **neither is ever passed into a repository method.** They exist so the Account sheet
+  can answer "which account am I in?" — the question a sign-out control is usually opened to settle on a
+  shared device — and for test assertions. Identity still reaches Postgres only as the access token, and
+  is still checked by RLS. Sign-out clears both, so a stale `email` cannot name the previous lifter on
+  the next session's first frame (asserted in `src/store/__tests__/authActions.test.ts`).
 - **Exception process:** Any new shared/world-readable data pattern must be documented in the schema/migration and referenced from this invariant's evidence, not introduced silently.
 
 ---
@@ -159,6 +167,15 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   real user. The precondition named above — "once auth exists" — is now satisfied, so the cascade-based
   implementation is unblocked and this is squarely a scheduling decision rather than a dependency.
   Remains blocking for store submission; its own branch, per I-14.
+
+  **Guarded against confusion 2026-08-08** (sprint `v1-signout-surface`). An Account surface now exists,
+  and "sign out" is exactly the phrase a worried person reads as "erase my data" — so the copy is
+  constrained rather than trusted. `src/content/__tests__/accountCopy.test.ts` asserts the explanatory
+  line matches none of `delete`, `erase`, `export`, `wipe`, `permanently`, `remove your account` or
+  `close your account`, and that it states both halves of what actually happens: the device is cleared,
+  and the account and its logged sessions are not. If deletion or export ever ships, that test is the
+  thing that has to be deliberately changed — which is the point. **Neither capability exists**, and this
+  invariant is unchanged and still open.
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
@@ -285,9 +302,25 @@ Continued from I-11/I-12 above; grouped separately here only to keep invariant I
   `profileId` must not be read back as a permission or used to gate UI — is unchanged and still correct:
   the value can throw a draft away, and can never let one through.
 
-  **Not yet enforceable by the user.** There is no sign-out control anywhere in the app, because there
-  is no settings screen. The contract above is implemented and tested but reachable only in code. Until
-  an affordance exists, this invariant is met in the sense that sign-out is *correct*, not in the sense
-  that a lifter can perform one.
+  **Now enforceable by the user, as of 2026-08-08** (sprint `v1-signout-surface`), replacing this
+  entry's previous "implemented and tested but reachable only in code" caveat. Today's header carries an
+  Account control that opens `app/account.tsx`, whose "Sign out" row calls `signOutAndTearDown`. Three
+  properties matter to this invariant specifically:
+
+  - **It appears exactly where an account exists.** `canOfferSignOut({ authEnabled, sessionPhase })` is
+    true only for an authenticated session in a build with credentials, so demo and misconfigured builds
+    render nothing — the teardown contract cannot be invoked where there is no session to end.
+  - **It warns before destroying logged work.** `shouldConfirmSignOut` returns true when the in-progress
+    draft has any completed set, warm-ups included, and the sheet then names the count and the session
+    before proceeding. Teardown itself is deliberately indiscriminate — leaving one lifter's unfinished
+    session on a shared device is worse than losing it — so the warning belongs in front of it, not
+    inside it. This is UX decision D6's rule ("confirm only when logged work would be lost"), unchanged.
+  - **It cannot survive its own action.** After teardown the draft key is absent, `trainingStore` is
+    empty, `userId` and `email` are null, and `canOfferSignOut` returns false. Asserted directly in
+    `src/store/__tests__/authActions.test.ts`.
+
+  **Still unverified by rendering.** No component-test tooling exists, so the control, the modal and the
+  confirmation `Alert` are covered only through the pure predicates behind them, and no cold-start
+  on-device run has been performed.
 - **Exception process:** None. Any new store or persisted key holding user-scoped data must be added to
   the teardown sequence in the same change that introduces it — not in a follow-up.
