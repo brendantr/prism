@@ -233,6 +233,38 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   open and blocking for store submission**, and the client-side account lifecycle being complete —
   sign up, sign in, sign out, recover — must not be mistaken for it being closed. Deletion and export
   are a separate branch and a separate gate.
+
+  **Met in the client as of 2026-08-06** (sprint `v1-account-deletion-export`), closing the gap the
+  three notes above kept restating.
+
+  *Deletion.* `supabase/migrations/0005_account_deletion.sql` adds
+  `public.delete_my_account()`, and `app/account.tsx` reaches it through
+  `deleteAccountAndTearDown` behind two confirmations. Deleting the `auth.users` row cascades through
+  `profiles` to all six user tables (0001), so the function names no tables and cannot drift out of
+  step with the schema. **This is the only `security definer` function in PRism**, and deliberately so:
+  `auth.users` belongs to `supabase_auth_admin`, and the only alternative is the service-role key,
+  which I-4 forbids from reaching the client without exception. What contains it is structural — **it
+  takes no arguments**, so there is no id to forge and the only account it can ever delete is the one
+  the JWT names. `search_path` is pinned, and `PUBLIC`/`anon` cannot execute it.
+
+  *Export.* `src/domain/accountExport.ts` assembles a versioned, deterministically sorted document
+  covering every stored table plus the lifter's own custom exercises; `Repository.exportAccountData()`
+  gathers it so a table added later cannot fall out because a caller forgot it. Delivery is React
+  Native's own `Share` — deliberately no new dependency, since `expo-file-system`/`expo-sharing` are
+  behind `CLAUDE.md`'s approval gate.
+
+  Evidence: `supabase/tests/rls/05_run_account_deletion_tests.sql`, **21 assertions** against a clean
+  local Postgres 16.14 (132 across the four SQL suites), of which six assert the *shape* of the
+  function rather than its behaviour — no arguments, definer, pinned `search_path`, and who may
+  execute — because a behaviour-only suite would still pass if a later migration relaxed the
+  containment. Plus 13 unit tests on the export builder and four on the deletion teardown, including
+  the one that matters most: **a failed remote delete must not tear the device down**, or a lifter is
+  returned to a sign-in screen believing their data is gone while all of it remains.
+
+  **Not yet met as a release gate** `[fact]`. The invariant says deletion and export must "exist and
+  **work**". They exist and are tested against local Postgres; neither has been run against a live
+  Supabase project, and `0005` is not applied to one. Store submission still requires that, and it
+  requires a privacy policy, which does not exist in this repository (`Docs/architecture.md` §Risks).
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
