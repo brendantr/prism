@@ -60,7 +60,7 @@ RPE (`Docs/invariants.md` I-8, I-11, I-16) `[fact]`.
 | Surface | Route | Job in v1 | Status |
 |---|---|---|---|
 | Onboarding | `onboarding/{index,features,auth,steps,complete}` | Welcome → 3-slide carousel → account → 4 skippable questions → completion summary. **Updated 2026-08-06:** `auth` is now a `<Redirect>`, not a screen — it resolves to `/auth` where accounts exist and skips to `steps` where they do not (D2a) | Built `[fact]` |
-| Auth | `auth/index` | Sign-in / sign-up. The only route to any data surface in a build with credentials; absent entirely in one without (added 2026-08-06, D2a, §4.9) | Built `[fact]` |
+| Auth | `auth/index` | Sign-in / sign-up / **password reset**. The only route to any data surface in a build with credentials; absent entirely in one without. Reset is a **mode of this screen, not a route** — no route was added for it (added 2026-08-06, reset 2026-08-09; D2a, §4.9) | Built `[fact]` |
 | Account | `account` (modal) | Identity, sign out, one explanatory line. The only sign-out entry point; reached from Today's header, and only where accounts exist (added 2026-08-08, D2a, §4.10) | Built `[fact]` |
 | Today | `(tabs)/index` | The launch surface: where you stand, one action, then depth on scroll | Built, including D9 |
 | Template choice | `workout/templates` (modal) | "Choose a workout": every `RoutineDay`, grouped, plus "Start empty" | Built `[fact]` |
@@ -168,6 +168,15 @@ without them it does not appear at all.
   `<Redirect>`, so the onboarding route graph, its `_layout` registration and its back paths are unchanged.
 - **Demo builds skip it.** `resolveOnboardingAuthHref(isAuthEnabled())` routes them straight to
   `/onboarding/steps`. See §9 Q1, which this closes.
+
+**The way back in, added 2026-08-09** `[decision, `feature/v1-password-reset`]`. A "Forgot password?"
+control sits under the password field **in sign-in mode only** — on sign-up there is no password to have
+forgotten, and offering a reset there would be a second way to ask the server whether an address is
+registered. Reset is a **third mode of this same screen**, not a route: `app/auth/index.tsx` goes from
+two modes to three, the route map is unchanged, and §4.9's state list grows rather than a §4.11 being
+added. It is **code-based, not link-based** — the lifter reads six digits out of the email and types
+them in — because nothing in the app captures a deep link, so a "follow the link" instruction would send
+them somewhere the app cannot receive them. The copy says "code" and never "link"; a test pins that.
 
 **The way out, added 2026-08-08** `[decision, `feature/v1-signout-surface`]`. Signing in needed a
 counterpart, and it lives on the same condition as the screen above. Today renders an **Account control
@@ -593,10 +602,27 @@ Added 2026-08-06 by `feature/v1-auth-and-session`. Governed by D2a.
 - **Route** `auth/index`, root stack, `gestureEnabled: false` — there is nothing behind sign-in to return
   to `[fact]`. Reachable two ways: the onboarding redirect during first run, and the route gate whenever
   the session phase is `'unauthenticated'`.
-- **Modes** One screen, two modes (sign-up / sign-in), toggled in place. Validation rules differ between
-  them — sign-up enforces `PASSWORD_MIN_LENGTH`, sign-in accepts whatever an existing account has — so
-  switching clears field errors and the submitted flag rather than leaving misleading ones on screen
-  `[fact, `src/domain/authValidation.ts`]`.
+- **Modes** One screen, **three** modes (sign-up / sign-in / reset), toggled in place. Validation rules
+  differ between them — sign-up enforces `PASSWORD_MIN_LENGTH`, sign-in accepts whatever an existing
+  account has, reset enforces the sign-up floor on the *new* password — so switching clears field errors
+  and the submitted flag rather than leaving misleading ones on screen
+  `[fact, `src/domain/authValidation.ts`, `src/domain/authReset.ts`]`.
+- **Reset, added 2026-08-09** `[fact, `feature/v1-password-reset`]` Reached from "Forgot password?" in
+  sign-in mode only. Three stages inside the mode, driven by a pure machine (`nextResetStage`):
+  - **Request** — email field alone, CTA "Send code". A password field here would be the confusion the
+    mode exists to remove.
+  - **Sent** — "Check your email", then "I have the code". Worded so it says nothing about whether the
+    address has an account.
+  - **Code** — six-digit field (`autoComplete="one-time-code"`, so iOS offers it from the notification)
+    plus the new password, submitted together. A rejected code returns **here**, with the code still on
+    screen: a mistyped digit costs a correction, not a whole new email. "Send a new code" is the escape
+    hatch for a genuinely expired one.
+  - **Done** — back to sign-in with the address pre-filled and a one-visit notice, "Password updated.
+    Sign in with your new password." The lifter is deliberately **not** signed in: the reset hands its
+    session straight back, so the next thing they do is prove the new password works.
+- **Reset outcome tones** `resetSent` is a **notice** — it is a success, and the error tone would say
+  the send had failed. `invalidCode` is an **error**, and covers wrong *and* expired in one sentence,
+  because "expired" would confirm a code had been issued and therefore that the account exists.
 - **States**
   - **Loading:** `sessionStore.pending` disables both fields and the CTA and drives the button's spinner.
   - **Error:** a form-level card above the CTA, visually distinct from the per-field validation errors
@@ -768,8 +794,8 @@ readiness.
 
 | Gate | Status | Source |
 |---|---|---|
-| ~~**G-1 — no authentication path**~~ | **Closed in the client 2026-08-06** (`feature/v1-auth-and-session`). `sessionStore` (phase machine), `authActions` (ordered sign-out teardown), `app/auth/` (the real surface), `routing.ts` (the gate), `authRequired.ts` (`AuthRequiredError`). Six new Jest suites; 287/287 passing. **Sign-out made reachable 2026-08-08** (`feature/v1-signout-surface`): Account control on Today's header → `app/account` → `signOutAndTearDown`, gated by `canOfferSignOut` and confirmed per D6 (§4.10). Suite now 312/312 across 22. **One limit remains:** nothing has run against a live Supabase project — the integration lane is credential-gated and skipped. | `Docs/architecture.md` G-1; `Docs/sprints/2026-08-06-auth-and-session.md`; `Docs/sprints/2026-08-08-signout-surface.md` |
-| **I-10 — account deletion + data export** | Open, and **blocking for store submission**, not negotiable scope. **Unchanged by the 2026-08-08 sign-out sprint** — an Account surface now exists, and it deliberately claims neither capability; `accountCopy.test.ts` asserts its copy never promises deletion or export, so the surface cannot quietly imply a gate it does not close. | `Docs/invariants.md` I-10; §4.10 |
+| ~~**G-1 — no authentication path**~~ | **Closed in the client 2026-08-06** (`feature/v1-auth-and-session`). `sessionStore` (phase machine), `authActions` (ordered sign-out teardown), `app/auth/` (the real surface), `routing.ts` (the gate), `authRequired.ts` (`AuthRequiredError`). Six new Jest suites; 287/287 passing. **Sign-out made reachable 2026-08-08** (`feature/v1-signout-surface`): Account control on Today's header → `app/account` → `signOutAndTearDown`, gated by `canOfferSignOut` and confirmed per D6 (§4.10). **Password reset added 2026-08-09** (`feature/v1-password-reset`): a code-based reset mode inside the auth screen (§4.9), closing the supportability gap where a forgotten password was recoverable only by hand in the Supabase dashboard. The client-side account lifecycle — sign up, sign in, sign out, recover — is complete. Suite now 367/367 across 24. **Three limits remain, none of them UI:** nothing has run against a live Supabase project (integration lane credential-gated and skipped); reset depends on an owner-side recovery-template edit; and **deep-link capture still does not exist**, which is why reset is code-based rather than link-based. | `Docs/architecture.md` G-1; the three auth sprint records under `Docs/sprints/` |
+| **I-10 — account deletion + data export** | Open, and **blocking for store submission**, not negotiable scope. **Unchanged by the sign-out (2026-08-08) or reset (2026-08-09) sprints.** Both added surfaces whose names read like erasure to a worried person — "sign out", "reset" — and both deliberately claim neither capability; `accountCopy.test.ts` and `authCopy.test.ts` assert their copy never promises deletion or export, so neither surface can quietly imply a gate it does not close. A complete account *lifecycle* is not account *control*. | `Docs/invariants.md` I-10; §4.9, §4.10 |
 | **I-2 / G-2 — non-atomic `saveWorkout`** | Open. Three sequential non-transactional upserts. Restated here per I-2's own exception process: v1 ships against this path with the risk stated, not hidden. | I-2, G-2 |
 | **G-4 — no observability** | Open. No crash reporting, analytics, or logging pipeline — real user feedback would arrive with no telemetry behind it. | G-4 |
 | **G-7 — release tooling** | Open. ~~An `eas.json` exists uncommitted in a working tree on `feature/logger-summary-hardening` and is not merged.~~ **Corrected 2026-08-06:** that text is stale — `eas.json` is committed, with all three profiles setting `EXPO_PUBLIC_DEMO_MODE` explicitly. The gate stays open for different reasons: no build has been run, and the `preview` flip now depends on owner-only EAS variables for **both** `preview` and `production`, on the migrations actually being applied, and on the project's email-confirmation setting. Separately worth recording — `feature/release-and-summary-hardening` merged to `main` **without** delivering `Docs/release-checklist.md` or an `npm run verify` script; both are absent repo-wide and neither has any git history. | G-7; `Docs/production-posture-v1.md` §3–§4 |
@@ -805,3 +831,4 @@ readiness.
 | 2026-08-05 | `feature/today-v1-alignment` implements D9: Today's `QuickAccess` tile row replaced by the same `ListRow` card Insights renders, both still driven by `src/content/deeperSurfaces.ts`; `QuickAccess.tsx` retired (zero remaining consumers). Also fixes a duplicate-CTA bug found during D9's audit, not part of D9 itself: `SessionCard` previously rendered unconditionally, showing a filled "Start session" button alongside the "Resume workout" / "Session in progress" continuity affordances (D3, D5) whenever a session was already active or a draft pending review — now suppressed by an `!activeWorkout` guard. | Claude (agent) |
 | 2026-08-06 | `feature/v1-auth-and-session` (implementation, commit `0af00cd`) and `feature/v1-auth-session-docs` (this pass). **D2 superseded by D2a** — the account screen is real, appears only in builds with credentials, and lost its placeholder notice and "Later" skip while regaining AutoFill; it moved to `app/auth/index.tsx`, with `app/onboarding/auth.tsx` left as a `<Redirect>` so the onboarding route graph is untouched. **§4.1 updated** — `auth` is no longer one of onboarding's screens, so demo first-run is four screens and credentialed first-run is five. **§4.9 added** — the auth surface's four states, its distinct check-email state, and the copy rules pinned by `authCopy.test.ts`. **§8 G-1 closed** in the client, with its two limits (never run against a live project; no sign-out affordance, because no settings screen exists). **§8 G-7 text corrected** — the claim that `eas.json` was uncommitted and unmerged was stale. **§9 Q1 resolved.** No visual or layout change to any existing screen. | Claude (agent), for engineer/owner review |
 | 2026-08-08 | `feature/v1-signout-surface` (commit `0029a7f`). **D2a extended** — the auth screen gained its counterpart: an Account control in Today's `headerRight`, on the same `isAuthEnabled()` condition as the sign-in screen itself, absent rather than disabled where there are no accounts. **§4.10 added** — the Account modal: three items and deliberately no fourth, D6-conformant confirmation (warm-ups count as logged work), a silent redirect on success, and copy constrained by test against claiming deletion or export. **§4.2 Today** gains the header note; **§2 inventory** gains the route; **§8 G-1** drops its sign-out caveat and **§8 I-10** gains a sentence saying the new surface does not close it. No section moved, no card changed, no tab added — D1 is untouched. | Claude (agent), for engineer/owner review |
+| 2026-08-09 | `feature/v1-password-reset` (commit `954d075`). **D2a extended** — a "Forgot password?" control in sign-in mode only, and reset as a third mode of the same screen rather than a route. **§4.9 extended** — three modes instead of two, plus the reset stages (request → sent → code → done), the rejected-code behaviour that keeps the typed code on screen, and the two new outcome tones (`resetSent` notice, `invalidCode` error). **§2 inventory** updated to say reset is a mode, not a route. **§8 G-1** records the account lifecycle as complete in the client with its three remaining non-UI limits; **§8 I-10** restated as untouched by both recent sprints. No new route, no new surface, no change to any existing screen outside `auth/index`. | Claude (agent), for engineer/owner review |

@@ -120,6 +120,78 @@ export async function signOut(): Promise<void> {
   }
 }
 
+/**
+ * PASSWORD RESET, STEP 1 — ask for a code.
+ *
+ * Sends the project's recovery email. **No `redirectTo` is passed, deliberately:**
+ * this flow does not use the link. `detectSessionInUrl` is false and nothing in
+ * this repository handles an incoming deep link, so a returning link would land
+ * nowhere (`Docs/production-posture-v1.md` §4.1). The lifter instead types the
+ * code from the email into the app, which keeps the whole flow in-process and
+ * needs no redirect URL allow-listed on the project.
+ *
+ * Resolves on success and says nothing about whether the address has an account —
+ * the caller's copy must not either.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  if (!isAuthEnabled()) throw new Error('Auth is not enabled in this build.');
+  const { error } = await getSupabase().auth.resetPasswordForEmail(email);
+  if (error) throw error;
+}
+
+/**
+ * PASSWORD RESET, STEP 2 — verify the code and set the new password.
+ *
+ * Three server steps behind one call, because they are not independently useful
+ * and a caller left holding a half-finished reset would be holding a live
+ * recovery session it did not ask for:
+ *
+ *   1. `verifyOtp({ type: 'recovery' })` — exchanges the emailed code for a
+ *      session. This is what makes step 2 possible at all: `updateUser` requires
+ *      a signed-in user, which the lifter is not.
+ *   2. `updateUser({ password })` — the actual change.
+ *   3. `signOut()` — hands the session straight back.
+ *
+ * Step 3 is the deliberate part. `verifyOtp` leaves the app authenticated, and
+ * silently continuing into Today off the back of an emailed code is a surprising
+ * way to end a password reset — especially on a shared device. The lifter
+ * returns to sign-in and proves the new password works, which is the one moment
+ * they should. The `SIGNED_IN` this fires in between is suppressed by the caller;
+ * see `sessionStore.runPasswordReset`.
+ *
+ * The code is user-supplied, transient, and never stored (I-4/I-5).
+ */
+export async function confirmPasswordReset(
+  email: string,
+  token: string,
+  newPassword: string,
+): Promise<SessionUser> {
+  if (!isAuthEnabled()) throw new Error('Auth is not enabled in this build.');
+  const supabase = getSupabase();
+
+  const { data: verified, error: verifyError } = await supabase.auth.verifyOtp({
+    type: 'recovery',
+    email,
+    token,
+  });
+  if (verifyError) throw verifyError;
+  if (!verified.user) throw new Error('Recovery code did not produce a session.');
+
+  const { data: updated, error: updateError } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+  if (updateError) throw updateError;
+  if (!updated.user) throw new Error('Password update returned no user.');
+
+  const user: SessionUser = { userId: updated.user.id, email: updated.user.email ?? null };
+
+  // Always, including when the two calls above succeeded but something later
+  // fails: a recovery session must not outlive the reset that created it.
+  await signOut();
+
+  return user;
+}
+
 export type AuthStateEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'OTHER';
 
 /**

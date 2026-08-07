@@ -20,6 +20,19 @@ export type AuthFailure =
   | 'network'
   | 'sessionExpired'
   | 'checkEmail'
+  /**
+   * A reset email was accepted for sending. A *success*, riding this channel
+   * because it is the outcome of the same attempt — and worded so it says
+   * nothing about whether the address has an account.
+   */
+  | 'resetSent'
+  /**
+   * A recovery code was rejected. Covers wrong **and** expired, deliberately
+   * merged: telling someone their code is "expired" rather than "wrong"
+   * confirms the address has an account, which is the enumeration signal the
+   * rest of this taxonomy exists to avoid.
+   */
+  | 'invalidCode'
   | 'unknown';
 
 /**
@@ -58,13 +71,31 @@ function asStatus(value: unknown): number | null {
 }
 
 /**
+ * Which call produced the rejection.
+ *
+ * Needed because the server returns the same 400/403/422 family for "that
+ * password is wrong" and "that recovery code is wrong", and the two want
+ * different sentences. The caller knows which one it made; the error does not
+ * reliably say. Defaults to `'credentials'` so every existing call site keeps
+ * its current behaviour.
+ */
+export type AuthContext = 'credentials' | 'resetCode';
+
+const OTP_CODES = new Set([
+  'otp_expired',
+  'otp_disabled',
+  'invalid_otp',
+  'token_expired',
+]);
+
+/**
  * Map any auth rejection onto one code.
  *
  * Unrecognised shapes become `'unknown'`, never a passed-through message. That
  * is the point of the function: an error nobody anticipated is exactly the one
  * most likely to name something internal.
  */
-export function toAuthFailure(error: unknown): AuthFailure {
+export function toAuthFailure(error: unknown, context: AuthContext = 'credentials'): AuthFailure {
   if (error == null || typeof error !== 'object') return 'unknown';
 
   const { message, status, code, name } = error as AuthErrorLike;
@@ -90,6 +121,22 @@ export function toAuthFailure(error: unknown): AuthFailure {
 
   if (codeText === 'session_not_found' || codeText === 'refresh_token_not_found') {
     return 'sessionExpired';
+  }
+
+  // An expired or malformed one-time code is recognisable by its own code
+  // regardless of which call was made, so this runs before the context branch.
+  if (OTP_CODES.has(codeText) || text.includes('otp') || text.includes('token has expired')) {
+    return 'invalidCode';
+  }
+
+  if (context === 'resetCode') {
+    // On the recovery path the 4xx family means the code did not check out.
+    // 403 and 422 join 400/401 here: Supabase uses them for a rejected or
+    // already-consumed token.
+    if (httpStatus === 400 || httpStatus === 401 || httpStatus === 403 || httpStatus === 422) {
+      return 'invalidCode';
+    }
+    return 'unknown';
   }
 
   if (INVALID_CREDENTIAL_CODES.has(codeText)) return 'invalidCredentials';
