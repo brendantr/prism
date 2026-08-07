@@ -1,10 +1,25 @@
 name: CI
 
+# WHY `pull_request` HAS NO BRANCH FILTER
+# ---------------------------------------
+# It used to be `branches: [main]`, which meant a pull request targeting any
+# other branch never ran CI at all. That is not a hypothetical gap: a six-PR
+# stack (#47-#52) each reported "clean" on GitHub having never been tested,
+# `main` sat red for hours behind them, and the merges went ahead on evidence
+# that did not exist. A check that cannot run is worse than no check, because
+# it reads as a pass.
+#
+# Stacked pull requests are the normal shape of work here (one sprint, one
+# branch, per `Docs/invariants.md` I-14), so "targets main" was never a good
+# proxy for "worth testing".
+#
+# The cost is nil: this repository is public, so GitHub-hosted runners are
+# free, and a run takes about 45 seconds. The `concurrency` block below already
+# cancels superseded runs, so a branch pushed repeatedly does not queue up.
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 # A newer push to the same branch makes an in-flight run redundant.
 concurrency:
