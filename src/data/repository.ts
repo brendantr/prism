@@ -3,6 +3,7 @@ import { EXERCISE_LIBRARY } from './exerciseLibrary';
 import { ROUTINE_TEMPLATES, SPECTRUM_FOUR } from './routineTemplates';
 import { generateDemoData, DEMO_PROFILE_ID } from './demoSeed';
 import { AuthRequiredError } from './authRequired';
+import { buildAccountExport, type AccountExport } from '@/domain/accountExport';
 import {
   DEMO_MODE,
   SUPABASE_MISCONFIGURED,
@@ -11,10 +12,9 @@ import {
   isSupabaseConfigured,
 } from './supabase/client';
 import {
+  fromPersonalRecord,
   fromProfile,
-  fromSet,
-  fromWorkout,
-  fromWorkoutExercise,
+  fromWorkoutGraph,
   toCheckIn,
   toExercise,
   toMeasurement,
@@ -55,6 +55,21 @@ export interface Repository {
   getActiveRoutine(): Promise<Routine | null>;
   listWorkouts(): Promise<Workout[]>;
   saveWorkout(workout: Workout): Promise<void>;
+  /**
+   * Finish a session: the workout graph and the records it set, as ONE
+   * operation that either happens or does not.
+   *
+   * Separate from `saveWorkout` + `savePersonalRecords` because those are two
+   * round trips, and finishing was landing them one at a time -- the workout
+   * committing while the records failed, then a retry re-deriving the records
+   * with fresh ids and inserting them a second time. `Docs/invariants.md` I-2
+   * covers the workout graph; the records are part of the same user action and
+   * belong in the same transaction.
+   *
+   * Callers pass the records they detected; the implementation is responsible
+   * for making a repeat call a no-op rather than a duplicate.
+   */
+  completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void>;
   deleteWorkout(id: string): Promise<void>;
   listCheckIns(): Promise<CheckIn[]>;
   /** Accepts a partial submission; see `CheckInPatch` for omit/clear semantics. */
@@ -62,6 +77,26 @@ export interface Repository {
   listMeasurements(): Promise<BodyMeasurement[]>;
   listPersonalRecords(): Promise<PersonalRecord[]>;
   savePersonalRecords(records: PersonalRecord[]): Promise<void>;
+
+  /**
+   * Everything this account holds, as one document (`Docs/invariants.md` I-10).
+   *
+   * A method rather than "call the six list methods from the screen", because
+   * the guarantee I-10 asks for is *completeness*: a table added later must not
+   * be able to fall out of the export because a caller forgot it. One place to
+   * update, next to the interface that names the tables.
+   */
+  exportAccountData(): Promise<AccountExport>;
+
+  /**
+   * Permanently erase this account and everything it owns (I-10).
+   *
+   * Irreversible, and takes no arguments — the implementation derives the
+   * account from the session, never from a caller-supplied id. Idempotent:
+   * deleting an account that is already gone succeeds, so a retry after a lost
+   * response is safe.
+   */
+  deleteAccount(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +180,41 @@ class DemoRepository implements Repository {
     await AsyncStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(this.userWorkouts));
   }
 
+  /**
+   * Demo-mode equivalent of the Postgres `save_workout_graph` transaction.
+   *
+   * Two properties have to hold here for the same reasons they hold there, or
+   * demo mode stops being a faithful rehearsal of the real path:
+   *
+   *   ATOMIC -- both keys are written with one `multiSet`, and the in-memory
+   *   arrays are only replaced once that resolves. The old code mutated the
+   *   array first and awaited afterwards, so a storage rejection left the
+   *   process believing it had saved something that was not on disk.
+   *
+   *   IDEMPOTENT -- a record is keyed by (workout, exercise, kind), matching
+   *   the `personal_records_session_unique` index. A retry after a failure
+   *   re-derives the same records with fresh ids, and must not add a second
+   *   copy of each.
+   */
+  async completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void> {
+    await this.hydrate();
+
+    const nextWorkouts = [...this.userWorkouts.filter((w) => w.id !== workout.id), workout];
+
+    const key = (r: PersonalRecord) => `${r.workoutId}:${r.exerciseId}:${r.kind}`;
+    const seen = new Set(this.userRecords.map(key));
+    const added = records.filter((r) => !seen.has(key(r)));
+    const nextRecords = [...this.userRecords, ...added];
+
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.workouts, JSON.stringify(nextWorkouts)],
+      [STORAGE_KEYS.records, JSON.stringify(nextRecords)],
+    ]);
+
+    this.userWorkouts = nextWorkouts;
+    this.userRecords = nextRecords;
+  }
+
   async deleteWorkout(id: string): Promise<void> {
     await this.hydrate();
     this.userWorkouts = this.userWorkouts.filter((w) => w.id !== id);
@@ -191,6 +261,34 @@ class DemoRepository implements Repository {
     await this.hydrate();
     this.userRecords.push(...records);
     await AsyncStorage.setItem(STORAGE_KEYS.records, JSON.stringify(this.userRecords));
+  }
+
+  async exportAccountData(): Promise<AccountExport> {
+    await this.hydrate();
+    return buildAccountExport(
+      {
+        profile: await this.getProfile(),
+        exercises: await this.listExercises(),
+        workouts: await this.listWorkouts(),
+        checkIns: await this.listCheckIns(),
+        measurements: await this.listMeasurements(),
+        personalRecords: await this.listPersonalRecords(),
+      },
+      new Date().toISOString(),
+    );
+  }
+
+  /**
+   * Demo mode has no account, so this is the closest honest equivalent: erase
+   * everything stored on the device and return to the pristine seed.
+   *
+   * The screen that offers deletion is gated on an authenticated session and is
+   * therefore unreachable in a demo build (`canOfferSignOut`, and the account
+   * route behind it). This exists so the interface has one meaning in both
+   * implementations rather than a method that throws in one of them.
+   */
+  async deleteAccount(): Promise<void> {
+    await this.resetDemo();
   }
 
   /** Wipe locally logged demo data and return to the pristine seed. */
@@ -293,32 +391,51 @@ class SupabaseRepository implements Repository {
   }
 
   /**
-   * Persist a workout and its whole object graph. Upserts rather than diffing:
-   * a training session is small (tens of rows) and idempotency beats cleverness
-   * when the user is mid-set on flaky gym wifi.
+   * Persist a workout and its whole object graph, in one transaction.
+   *
+   * This used to be three sequential upserts -- `workouts`, then
+   * `workout_exercises`, then `sets` -- with nothing spanning them. Each was
+   * atomic alone, so a failure at the second or third left the lifter looking
+   * at "could not save" over a session that was half committed: a workout row
+   * with no exercises, or exercises with no sets. It was also additive only,
+   * so removing an exercise in the logger left the old row in Postgres and the
+   * next read brought it back. That is `Docs/architecture.md` G-2 and
+   * `Docs/invariants.md` I-2.
+   *
+   * `save_workout_graph` does all of it inside one transaction and treats the
+   * payload as authoritative, deleting the children it no longer contains. It
+   * is `security invoker`, so RLS applies exactly as it did to the individual
+   * statements and ownership still comes from the session -- see
+   * `supabase/migrations/0003_workout_write_integrity.sql`.
    */
   async saveWorkout(workout: Workout): Promise<void> {
-    const db = getSupabase();
-    const profileId = await this.uid();
-    // Ownership comes from the session, never from the passed-in object. RLS
-    // enforces this too; the client should not be in a position to assert it.
-    const { error: wErr } = await db
-      .from('workouts')
-      .upsert({ ...fromWorkout(workout), profile_id: profileId });
-    if (wErr) throw wErr;
+    await this.saveGraph(workout, []);
+  }
 
-    if (workout.exercises.length > 0) {
-      const { error: weErr } = await db
-        .from('workout_exercises')
-        .upsert(workout.exercises.map(fromWorkoutExercise));
-      if (weErr) throw weErr;
+  /**
+   * The same transaction, carrying the records the session set.
+   *
+   * Finishing used to be two round trips: save the workout, then insert the
+   * PRs. When the second failed the lifter was told the session had not saved,
+   * retried, and the PR ids were re-minted -- so if the original insert had in
+   * fact committed and only its response was lost, the retry wrote a second
+   * copy. The records now go in the same transaction, keyed by
+   * (workout, exercise, kind) so a repeat call is a no-op.
+   */
+  async completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void> {
+    await this.saveGraph(workout, records);
+  }
 
-      const sets = workout.exercises.flatMap((we) => we.sets.map(fromSet));
-      if (sets.length > 0) {
-        const { error: sErr } = await db.from('sets').upsert(sets);
-        if (sErr) throw sErr;
-      }
-    }
+  private async saveGraph(workout: Workout, records: PersonalRecord[]): Promise<void> {
+    // Fails closed with AuthRequiredError when there is no session, matching
+    // every other write here -- the function refuses an anonymous call too,
+    // but erroring before the round trip says why without one.
+    await this.uid();
+    const { error } = await getSupabase().rpc('save_workout_graph', {
+      p_workout: fromWorkoutGraph(workout),
+      p_records: records.map(fromPersonalRecord),
+    });
+    if (error) throw error;
   }
 
   async deleteWorkout(id: string): Promise<void> {
@@ -345,18 +462,40 @@ class SupabaseRepository implements Repository {
     return (data ?? []).map(toCheckIn);
   }
 
+  /**
+   * A partial check-in, merged into today's record by the database.
+   *
+   * This used to call `assertCompleteCheckIn` and **throw** unless all four
+   * scales were answered, because `check_ins` declared them `not null`. So a
+   * feature I-7 defines as optional field by field worked in demo mode and
+   * failed against a real backend -- and `CheckInPrompt` enables submit as soon
+   * as *any* one scale is answered, so it was reachable on the first tap.
+   * `0004_partial_check_ins.sql` makes the columns nullable and adds
+   * `save_check_in`.
+   *
+   * The payload is built by key presence, not by value, and that is the whole
+   * subtlety. `CheckInPatch` distinguishes a property the caller omitted from
+   * one they sent as null: the first means "leave my earlier answer alone", the
+   * second means "erase it". A plain upsert flattens both into a column value
+   * and cannot say which was meant, which is why this sends jsonb to a function
+   * that tests `p_patch ? 'energy'` instead.
+   *
+   * Ownership is not sent at all -- the function reads `auth.uid()`.
+   */
   async saveCheckIn(checkIn: CheckInPatch): Promise<void> {
-    assertCompleteCheckIn(checkIn);
-    const profileId = await this.uid();
-    const { error } = await getSupabase().from('check_ins').upsert({
+    await this.uid();
+
+    const patch: Record<string, unknown> = {
       id: checkIn.id,
-      profile_id: profileId,
       checked_in_at: checkIn.checkedInAt,
-      sleep_quality: checkIn.sleepQuality,
-      energy: checkIn.energy,
-      soreness: checkIn.soreness,
-      stress: checkIn.stress,
-    });
+    };
+    for (const field of CHECK_IN_SCALES) {
+      // `in`, not a truthiness or null test: an explicitly-null answer has to
+      // reach the database as a present key so it clears the stored value.
+      if (field in checkIn) patch[CHECK_IN_COLUMN[field]] = checkIn[field] ?? null;
+    }
+
+    const { error } = await getSupabase().rpc('save_check_in', { p_patch: patch });
     if (error) throw error;
   }
 
@@ -398,6 +537,48 @@ class SupabaseRepository implements Repository {
         workout_id: r.workoutId,
       })),
     );
+    if (error) throw error;
+  }
+
+  /**
+   * Every row RLS lets this session see, assembled into one document.
+   *
+   * The reads run in parallel and are individually already owner-scoped -- each
+   * list method filters on the session uid and Postgres enforces it again -- so
+   * this adds no new authorization surface. It is a fan-out, not a privilege.
+   */
+  async exportAccountData(): Promise<AccountExport> {
+    const [profile, exercises, workouts, checkIns, measurements, personalRecords] =
+      await Promise.all([
+        this.getProfile(),
+        this.listExercises(),
+        this.listWorkouts(),
+        this.listCheckIns(),
+        this.listMeasurements(),
+        this.listPersonalRecords(),
+      ]);
+
+    return buildAccountExport(
+      { profile, exercises, workouts, checkIns, measurements, personalRecords },
+      new Date().toISOString(),
+    );
+  }
+
+  /**
+   * Delete the account, via `delete_my_account`
+   * (`supabase/migrations/0005_account_deletion.sql`).
+   *
+   * No arguments are sent and none can be: the function takes none, and derives
+   * the account from `auth.uid()`. That is the containment on the one
+   * `security definer` function in this schema -- there is no id here to get
+   * wrong, and no id the server would accept if there were.
+   *
+   * `uid()` first so an unauthenticated call fails with `AuthRequiredError`
+   * rather than a database error, matching every other write here.
+   */
+  async deleteAccount(): Promise<void> {
+    await this.uid();
+    const { error } = await getSupabase().rpc('delete_my_account');
     if (error) throw error;
   }
 }
@@ -442,6 +623,20 @@ function toRoutine(row: any): Routine {
 
 /** The four self-reported scales, all independently optional. */
 const CHECK_IN_SCALES = ['sleepQuality', 'energy', 'soreness', 'stress'] as const;
+
+/**
+ * Domain field -> column, for the one place a check-in crosses into SQL.
+ *
+ * Written as a map rather than inline string literals so that adding a fifth
+ * scale is a type error here instead of a silently-dropped field at the write
+ * boundary -- which is the failure `CheckInPatch`'s own comment warns about.
+ */
+const CHECK_IN_COLUMN: Record<(typeof CHECK_IN_SCALES)[number], string> = {
+  sleepQuality: 'sleep_quality',
+  energy: 'energy',
+  soreness: 'soreness',
+  stress: 'stress',
+};
 
 function sameCalendarDay(a: string, b: string): boolean {
   const x = new Date(a);
@@ -489,22 +684,10 @@ function blankCheckIn(patch: CheckInPatch): CheckIn {
   };
 }
 
-/**
- * `check_ins` still declares all four scales `not null` (0001_init.sql), and
- * this sprint does not touch migrations. So a partial check-in cannot be stored
- * against Postgres yet -- fail before the write rather than letting the driver
- * surface a constraint violation from halfway through it.
- */
-function assertCompleteCheckIn(patch: CheckInPatch): asserts patch is CheckIn {
-  // `== null` covers both an omitted field and an explicitly cleared one --
-  // Postgres rejects either, so both are refused here before any write.
-  const missing = CHECK_IN_SCALES.filter((field) => patch[field] == null);
-  if (missing.length > 0) {
-    throw new Error(
-      `Partial check-ins are not yet supported by the Supabase schema (missing: ${missing.join(', ')}).`,
-    );
-  }
-}
+// `assertCompleteCheckIn` lived here. It refused any check-in missing a scale,
+// because `check_ins` declared all four `not null`. 0004 made the columns
+// nullable and moved the merge into `save_check_in`, so the guard is gone
+// rather than relaxed -- there is no longer a case it would have caught.
 
 // ---------------------------------------------------------------------------
 // Singleton

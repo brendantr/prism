@@ -70,6 +70,16 @@ jest.mock('../supabase/client', () => {
         }),
       },
       from: (table: string) => builder(table),
+      /*
+        `save_workout_graph` (0003_workout_write_integrity.sql). Captured under
+        the function name so the sweep at the bottom of this file covers RPC
+        arguments as well as table writes -- moving a write behind an RPC must
+        not move it out of this test's reach.
+      */
+      rpc: (fn: string, args: unknown) => {
+        captured.push({ table: fn, op: 'rpc', payload: args });
+        return Promise.resolve({ error: null });
+      },
     }),
   };
 });
@@ -117,14 +127,42 @@ const payloadFor = (table: string) =>
   captured.find((c) => c.table === table)?.payload as Record<string, unknown>;
 
 describe('the repository is the source of truth for ownership', () => {
-  it('uses the session uid when saving a workout, not the one on the object', async () => {
+  /*
+    Saving a workout no longer sends `profile_id` at all.
+
+    It used to stamp the session uid onto the payload client-side. Since
+    0003_workout_write_integrity.sql the write goes through `save_workout_graph`,
+    which reads `auth.uid()` itself and ignores anything the payload might say
+    about ownership -- so the correct assertion changed from "the client sends
+    the right owner" to "the client sends no owner." The second is stronger: it
+    cannot be got wrong by a caller.
+  */
+  it('sends no caller-chosen owner when saving a workout', async () => {
     await repo.saveWorkout(hostileWorkout());
 
-    expect(payloadFor('workouts').profile_id).toBe(SESSION_UID);
-    expect(payloadFor('workouts').profile_id).not.toBe(ATTACKER_SUPPLIED_UID);
+    const args = payloadFor('save_workout_graph');
+    const graph = args.p_workout as Record<string, unknown>;
+    expect(graph).toBeDefined();
+    expect(graph.profile_id).toBeUndefined();
+    expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
   });
 
-  it('uses the session uid when saving a check-in', async () => {
+  it('sends no caller-chosen owner when completing a workout with records', async () => {
+    await repo.completeWorkout(hostileWorkout(), [hostileRecord()]);
+
+    const args = payloadFor('save_workout_graph');
+    const records = args.p_records as Record<string, unknown>[];
+    expect(records).toHaveLength(1);
+    expect(records[0].profile_id).toBeUndefined();
+    expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
+  });
+
+  /*
+    As with the workout graph above: since 0004 this goes through
+    `save_check_in`, which reads `auth.uid()` itself, so the client sends no
+    owner at all rather than sending the right one.
+  */
+  it('sends no caller-chosen owner when saving a check-in', async () => {
     await repo.saveCheckIn({
       id: '55555555-5555-4555-8555-555555555555',
       profileId: ATTACKER_SUPPLIED_UID,
@@ -135,7 +173,34 @@ describe('the repository is the source of truth for ownership', () => {
       stress: 2,
     });
 
-    expect(payloadFor('check_ins').profile_id).toBe(SESSION_UID);
+    const args = payloadFor('save_check_in');
+    const patch = args.p_patch as Record<string, unknown>;
+    expect(patch.profile_id).toBeUndefined();
+    expect(patch.sleep_quality).toBe(4);
+    expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
+  });
+
+  /*
+    The distinction the whole jsonb payload exists for. An omitted property must
+    not reach the database as a key, or the function cannot tell "leave my
+    earlier answer alone" from "erase it".
+  */
+  it('sends only the scales the caller actually supplied', async () => {
+    await repo.saveCheckIn({
+      id: '55555555-5555-4555-8555-555555555555',
+      profileId: ATTACKER_SUPPLIED_UID,
+      checkedInAt: '2026-07-30T07:00:00.000Z',
+      sleepQuality: 4,
+      // energy and soreness omitted entirely; stress explicitly cleared.
+      stress: null,
+    });
+
+    const patch = payloadFor('save_check_in').p_patch as Record<string, unknown>;
+    expect(Object.keys(patch)).toContain('sleep_quality');
+    expect(Object.keys(patch)).toContain('stress');
+    expect(Object.keys(patch)).not.toContain('energy');
+    expect(Object.keys(patch)).not.toContain('soreness');
+    expect(patch.stress).toBeNull();
   });
 
   it('uses the session uid on every personal record in a batch', async () => {

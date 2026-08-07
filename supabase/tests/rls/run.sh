@@ -38,7 +38,15 @@ run_sql() {
 run_sql "$TEST_DIR/00_setup_auth_emulation.sql"
 run_sql "$MIGRATIONS_DIR/0001_init.sql"
 run_sql "$MIGRATIONS_DIR/0002_security_hardening.sql"
+run_sql "$MIGRATIONS_DIR/0003_workout_write_integrity.sql"
+run_sql "$MIGRATIONS_DIR/0004_partial_check_ins.sql"
+run_sql "$MIGRATIONS_DIR/0005_account_deletion.sql"
 run_sql "$TEST_DIR/01_seed_test_data.sql"
 run_sql "$TEST_DIR/02_run_isolation_tests.sql"
+run_sql "$TEST_DIR/03_run_write_integrity_tests.sql"
+run_sql "$TEST_DIR/04_run_check_in_tests.sql"
+# Last: it creates and destroys its own fixture user, and deletion is the one
+# operation that would invalidate the shared fixtures if it touched them.
+run_sql "$TEST_DIR/05_run_account_deletion_tests.sql"
 
-echo "=== RLS isolation suite passed ==="
+echo "=== RLS isolation + write-integrity + check-in + deletion suites passed ==="

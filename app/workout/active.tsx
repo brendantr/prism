@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, BackHandler, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -60,8 +60,7 @@ export default function ActiveWorkoutScreen() {
   const exerciseById = useTrainingStore((s) => s.exerciseById);
   const activeRoutine = useTrainingStore((s) => s.activeRoutine);
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
-  const upsertWorkout = useTrainingStore((s) => s.upsertWorkout);
-  const addPersonalRecords = useTrainingStore((s) => s.addPersonalRecords);
+  const completeWorkout = useTrainingStore((s) => s.completeWorkout);
 
   const [elapsed, setElapsed] = useState('0:00');
   const [saving, setSaving] = useState(false);
@@ -76,6 +75,39 @@ export default function ActiveWorkoutScreen() {
    * lifter to Today instead of letting them reach their summary.
    */
   const finishing = useRef(false);
+  /**
+   * Whether this screen is still on the stack.
+   *
+   * The finish handler awaits a network round trip and then sets state and
+   * redirects. Both are wrong once the screen is gone -- the redirect in
+   * particular would yank the lifter off whatever they navigated to while the
+   * save was in flight. The navigation guard below makes that hard to reach on
+   * purpose; this makes it harmless if it happens anyway.
+   */
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+
+  /**
+   * Android's hardware back is blocked for exactly as long as the save runs.
+   *
+   * `gestureEnabled: false` on this route (`app/_layout.tsx`) stops the iOS
+   * swipe, and the header control below disables itself, but neither touches
+   * the hardware button -- so on Android the one irreversible moment in the
+   * logger was also the one moment you could walk out of it mid-write.
+   *
+   * Returning `true` consumes the event. This only applies while `saving`, so
+   * the ordinary back behaviour is untouched.
+   */
+  useEffect(() => {
+    if (!saving) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [saving]);
 
   // Session clock.
   useEffect(() => {
@@ -190,9 +222,15 @@ export default function ActiveWorkoutScreen() {
             const finished = finish();
             if (!finished) return;
 
-            await upsertWorkout(finished);
-
-            // Detect and persist records against the state before this session.
+            // Detect records against the state before this session, then send
+            // them WITH the workout rather than after it.
+            //
+            // This was two awaited calls: save the workout, then insert the
+            // records. When the second failed the lifter was told the session
+            // had not saved -- over a session that had -- and retrying re-minted
+            // the record ids, so a lost response on the first attempt became a
+            // duplicate PR on the second. One call, one transaction, and a
+            // repeat is a no-op. See `Repository.completeWorkout`.
             const detected = detectWorkoutPrs(finished, priorBests);
             const records: PersonalRecord[] = detected.map((pr) => ({
               id: newId('pr'),
@@ -207,9 +245,19 @@ export default function ActiveWorkoutScreen() {
               achievedAt: finished.startedAt,
               workoutId: finished.id,
             }));
-            await addPersonalRecords(records);
+
+            await completeWorkout(finished, records);
 
             // Saved. Only now is it safe to let the session go.
+            //
+            // If the screen went away while the write was in flight, the save
+            // still counted -- it is committed and in the read model -- but
+            // redirecting now would pull the lifter off wherever they went.
+            // Clearing the session is still correct and still happens.
+            if (!mounted.current) {
+              discard();
+              return;
+            }
             finishing.current = true;
             router.replace({ pathname: '/workout/summary', params: { id: finished.id } });
             discard();
@@ -219,9 +267,9 @@ export default function ActiveWorkoutScreen() {
             // cause, the sets stay on screen and stay theirs to retry. Silently
             // dropping them here is how a session gets lost for good.
             console.warn('[workout] save failed', e);
-            setSaveFailed(true);
+            if (mounted.current) setSaveFailed(true);
           } finally {
-            setSaving(false);
+            if (mounted.current) setSaving(false);
           }
         },
       },
@@ -288,12 +336,26 @@ export default function ActiveWorkoutScreen() {
       {/* Fixed header */}
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
         <View style={styles.headerRow}>
+          {/*
+            Disabled while the session is being written. Leaving mid-save was
+            the one way to get the finish handler redirecting into a screen the
+            lifter had already navigated away from, and the state that says
+            "saving" was visible on the button below while this one happily
+            dismissed the screen out from under it.
+          */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Minimise session and go back"
+            accessibilityState={{ disabled: saving }}
+            accessibilityHint={saving ? 'Unavailable while the session is saving' : undefined}
+            disabled={saving}
             onPress={() => router.back()}
             hitSlop={10}
-            style={({ pressed }) => [styles.headerButton, pressed && { opacity: opacity.pressed }]}
+            style={({ pressed }) => [
+              styles.headerButton,
+              pressed && { opacity: opacity.pressed },
+              saving && { opacity: opacity.disabled },
+            ]}
           >
             <Ionicons name="chevron-down" size={20} color={color.text} />
           </Pressable>

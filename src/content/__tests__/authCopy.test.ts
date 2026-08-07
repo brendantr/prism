@@ -1,4 +1,10 @@
-import { AUTH, AUTH_OUTCOME_COPY, AUTH_OUTCOME_TONE } from '../onboarding';
+import {
+  AUTH,
+  AUTH_OUTCOME_COPY,
+  AUTH_OUTCOME_TONE,
+  AUTH_RESET,
+  AUTH_RESET_ERROR_COPY,
+} from '../onboarding';
 import type { AuthFailure } from '@/domain/authErrors';
 
 /**
@@ -17,6 +23,8 @@ const ALL_CODES: AuthFailure[] = [
   'network',
   'sessionExpired',
   'checkEmail',
+  'resetSent',
+  'invalidCode',
   'unknown',
 ];
 
@@ -45,7 +53,12 @@ describe('auth outcome copy', () => {
   it('never names an environment variable, credential, or internal identifier', () => {
     // `SUPABASE_MISCONFIGURED_MESSAGE` deliberately names variables, because it
     // is for whoever built the app. Nothing on the auth surface is.
-    const surface = [...Object.values(AUTH_OUTCOME_COPY), ...Object.values(AUTH)].join(' ');
+    const surface = [
+      ...Object.values(AUTH_OUTCOME_COPY),
+      ...Object.values(AUTH),
+      ...Object.values(AUTH_RESET),
+      ...Object.values(AUTH_RESET_ERROR_COPY),
+    ].join(' ');
 
     expect(surface).not.toMatch(/EXPO_PUBLIC_/);
     expect(surface).not.toMatch(/SUPABASE|supabase/);
@@ -57,7 +70,12 @@ describe('auth outcome copy', () => {
     // I-8. Trivially satisfied on this surface -- there is nothing here to
     // overclaim about -- which is why it is worth pinning before someone adds
     // a reassuring sentence about recovery to the sign-up screen.
-    const surface = [...Object.values(AUTH_OUTCOME_COPY), ...Object.values(AUTH)].join(' ');
+    const surface = [
+      ...Object.values(AUTH_OUTCOME_COPY),
+      ...Object.values(AUTH),
+      ...Object.values(AUTH_RESET),
+      ...Object.values(AUTH_RESET_ERROR_COPY),
+    ].join(' ');
 
     expect(surface).not.toMatch(/diagnos|clinical|medical|injur|overtrain|prevent/i);
   });
@@ -85,5 +103,92 @@ describe('auth outcome copy', () => {
     // Deep-link capture is not implemented (`detectSessionInUrl` is false and
     // nothing handles an incoming link). The copy must not imply otherwise.
     expect(AUTH.checkEmailBody.toLowerCase()).toContain('sign in');
+  });
+});
+
+/**
+ * PASSWORD RESET COPY
+ * ===================
+ * Reset adds a second place where the app could accidentally confirm that an
+ * address is registered — this time by reporting what happened to a send.
+ */
+describe('password reset copy', () => {
+  it('never confirms whether the address has an account', () => {
+    /*
+      "A code has been sent" would confirm registration. The hedge is the whole
+      sentence's job, and the server behaves the same way — it resolves either
+      way — so the copy is not being coy about something the API reveals.
+    */
+    const sent = AUTH_OUTCOME_COPY.resetSent.toLowerCase();
+    expect(sent).toMatch(/if that address has an account/);
+    expect(sent).not.toMatch(/we sent|has been sent to your|your account/);
+    expect(sent).not.toMatch(/no account|not found|does not exist|unrecognis/);
+
+    expect(AUTH_RESET.sentBody.toLowerCase()).toMatch(/if that address has an account/);
+  });
+
+  it('does not distinguish a wrong code from an expired one', () => {
+    // "Expired" would confirm a code had been issued, and therefore that the
+    // account exists. One sentence covers both.
+    const message = AUTH_OUTCOME_COPY.invalidCode.toLowerCase();
+    expect(message).toMatch(/not right/);
+    expect(message).toMatch(/expired/);
+    // Both possibilities in one sentence, never one of them alone.
+    expect(message).toMatch(/or/);
+  });
+
+  it('treats a sent code as a notice and a rejected code as an error', () => {
+    expect(AUTH_OUTCOME_TONE.resetSent).toBe('notice');
+    expect(AUTH_OUTCOME_TONE.invalidCode).toBe('error');
+  });
+
+  it('names no environment variable or internal identifier', () => {
+    const surface = [
+      ...Object.values(AUTH_RESET),
+      ...Object.values(AUTH_RESET_ERROR_COPY),
+    ].join(' ');
+
+    expect(surface).not.toMatch(/EXPO_PUBLIC_/);
+    expect(surface).not.toMatch(/SUPABASE|supabase/);
+    expect(surface).not.toMatch(/ANON_KEY|SERVICE_ROLE|API_KEY|SECRET|TOKEN/);
+    expect(surface).not.toMatch(/auth\/v1|\bRLS\b|profile_id|postgres|otp|verifyOtp/i);
+  });
+
+  it('makes no medical, diagnostic, or clinical claim', () => {
+    const surface = [
+      ...Object.values(AUTH_RESET),
+      ...Object.values(AUTH_RESET_ERROR_COPY),
+    ].join(' ');
+    expect(surface).not.toMatch(/diagnos|clinical|medical|injur|overtrain/i);
+  });
+
+  it('never promises deletion or export', () => {
+    // I-10 is open. A reset changes a credential; it removes nothing.
+    const surface = [
+      ...Object.values(AUTH_RESET),
+      ...Object.values(AUTH_RESET_ERROR_COPY),
+    ].join(' ');
+    expect(surface).not.toMatch(/delete|erase|export|wipe your/i);
+  });
+
+  it('describes a code, not a link, so the copy matches what the flow does', () => {
+    /*
+      There is no deep-link capture (`detectSessionInUrl` is false, no Linking
+      handler). Telling someone to "follow the link" would send them somewhere
+      the app cannot receive them.
+    */
+    const instructions = [AUTH_RESET.sentBody, AUTH_RESET.codeBody, AUTH_RESET.requestBody]
+      .join(' ')
+      .toLowerCase();
+    expect(instructions).toMatch(/code/);
+    expect(instructions).not.toMatch(/follow the link|click the link|tap the link/);
+  });
+
+  it('says the reset ends at sign-in rather than implying an automatic session', () => {
+    expect(AUTH_RESET.doneNotice.toLowerCase()).toMatch(/sign in/);
+  });
+
+  it('covers every reset field error exactly once', () => {
+    expect(Object.keys(AUTH_RESET_ERROR_COPY).sort()).toEqual(['code_invalid', 'code_required']);
   });
 });

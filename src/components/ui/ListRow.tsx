@@ -18,6 +18,21 @@ export interface ListRowProps {
   onPress?: () => void;
   /** Spoken instead of the assembled title/subtitle when the row needs context. */
   accessibilityLabel?: string;
+  /**
+   * Refuses presses and dims the row.
+   *
+   * Added for the account surface, where export and delete must not be
+   * startable while either is already running -- a second tap on "Delete my
+   * account" mid-request is the one double-press in the app with no undo.
+   * Carried into `accessibilityState` as well as visually, so a screen-reader
+   * user is told the row is unavailable rather than tapping a silent control.
+   */
+  disabled?: boolean;
+  /**
+   * Announced as in-progress. Separate from `disabled` because a row can be
+   * disabled *because something else* is running, which is not the same claim.
+   */
+  busy?: boolean;
   /** Hairline above the row, for rows stacked inside a single card. */
   divided?: boolean;
   /** Layout-only overrides. Never colour or height. */
@@ -50,6 +65,8 @@ export function ListRow({
   chevron = false,
   onPress,
   accessibilityLabel,
+  disabled = false,
+  busy = false,
   divided = false,
   style,
 }: ListRowProps) {
@@ -111,8 +128,13 @@ export function ListRow({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? [title, subtitle].filter(Boolean).join('. ')}
+      accessibilityState={{ disabled, busy }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [pressed && { opacity: opacity.pressed }]}
+      style={({ pressed }) => [
+        pressed && { opacity: opacity.pressed },
+        disabled && { opacity: opacity.disabled },
+      ]}
     >
       {body}
     </Pressable>

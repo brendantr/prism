@@ -11,6 +11,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  flushDraftWrites,
   selectCompletedSetCount,
   selectHasActiveWorkout,
   selectTotalSetCount,
@@ -921,5 +922,172 @@ describe('selectors', () => {
 
     store().discard();
     expect(selectHasActiveWorkout(store())).toBe(false);
+  });
+});
+
+/**
+ * DRAFT WRITE ORDERING
+ * ====================
+ * These are the tests the rest of this file deliberately avoided.
+ *
+ * Everything above flushes after each operation, and the `beforeEach` says why
+ * outright: the persistence subscriber never awaited its own writes, so a
+ * pending one could land in the middle of the next test. That workaround also
+ * meant no test ever held an older write open while a newer one completed --
+ * which is exactly the situation that lost data on a device.
+ *
+ * The writes are queued now (see `enqueueDraftWrite`), so the ordering is a
+ * property worth asserting rather than a hazard worth flushing away. Each test
+ * here holds a write pending on purpose.
+ */
+describe('draft persistence ordering', () => {
+  type Deferred = { resolve: () => void; promise: Promise<void> };
+  const makeDeferred = (): Deferred => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = () => r();
+    });
+    return { resolve, promise };
+  };
+
+  let calls: Array<{ op: 'set' | 'remove'; value?: string }>;
+  let pendingSets: Deferred[];
+
+  /**
+   * Advance microtasks without releasing any held write.
+   *
+   * The queue is a promise chain, so each hop costs a turn and a superseded
+   * write costs one more (it wakes, sees it is stale, and returns). Counting
+   * those by hand is how the first draft of these tests went wrong; draining a
+   * fixed generous number of turns is stable and says what it means. A write
+   * held pending blocks the chain, so this stops there on its own.
+   */
+  const ticks = async (n = 12) => {
+    for (let i = 0; i < n; i++) await Promise.resolve();
+  };
+
+  /** Let everything through, including held writes, until the queue is idle. */
+  const settle = async () => {
+    for (let i = 0; i < 12; i++) {
+      await ticks(4);
+      while (pendingSets.length) pendingSets.shift()!.resolve();
+    }
+    await flushDraftWrites();
+  };
+
+  /** Release the writes currently in flight, without draining what follows. */
+  const releaseHeld = () => {
+    while (pendingSets.length) pendingSets.shift()!.resolve();
+  };
+
+  /**
+   * Start a session and let its own write land, so each test below measures
+   * only the edits it makes.
+   */
+  const startClean = async () => {
+    store().start({ profileId: 'p1', title: 'Lower — Hinge', routineDay: day });
+    const setId = store().workout!.exercises[0].sets[0].id;
+    await settle();
+    calls.length = 0;
+    return setId;
+  };
+
+  beforeEach(() => {
+    calls = [];
+    pendingSets = [];
+    // `setItem` is held open so a write can be observed mid-flight; `removeItem`
+    // resolves immediately, since what matters for it is only when it runs
+    // relative to the writes around it.
+    jest.spyOn(AsyncStorage, 'setItem').mockImplementation(((_k: string, v: string) => {
+      calls.push({ op: 'set', value: v });
+      const d = makeDeferred();
+      pendingSets.push(d);
+      return d.promise;
+    }) as typeof AsyncStorage.setItem);
+    jest.spyOn(AsyncStorage, 'removeItem').mockImplementation((() => {
+      calls.push({ op: 'remove' });
+      return Promise.resolve();
+    }) as typeof AsyncStorage.removeItem);
+  });
+
+  afterEach(() => {
+    // Let anything still queued settle against the mocks before restoring them,
+    // or a leftover write runs against the real mock storage in a later test.
+    for (const d of pendingSets) d.resolve();
+    jest.restoreAllMocks();
+  });
+
+  it('does not start a write while an older one is still in flight', async () => {
+    const setId = await startClean();
+
+    store().updateSet(setId, { weightKg: 100 });
+    await ticks();
+    expect(calls).toHaveLength(1);
+
+    store().updateSet(setId, { weightKg: 105 });
+    await ticks();
+
+    // The second write must still be waiting on the first. Before the queue,
+    // both were in flight together and whichever the bridge happened to finish
+    // last became the state a kill would have restored.
+    expect(calls).toHaveLength(1);
+
+    releaseHeld();
+    await ticks();
+
+    expect(calls).toHaveLength(2);
+    expect(JSON.parse(calls[1].value!).exercises[0].sets[0].weightKg).toBe(105);
+  });
+
+  it('writes the newest state last, so a kill restores the newest state', async () => {
+    const setId = await startClean();
+
+    store().updateSet(setId, { weightKg: 100 });
+    await ticks();
+    store().updateSet(setId, { weightKg: 105 });
+    store().toggleSetComplete(setId, 120);
+
+    await settle();
+
+    const last = JSON.parse(calls.filter((c) => c.op === 'set').pop()!.value!);
+    expect(last.exercises[0].sets[0].weightKg).toBe(105);
+    expect(last.exercises[0].sets[0].completed).toBe(true);
+  });
+
+  it('coalesces a burst of edits in one tick into a single write', async () => {
+    const setId = await startClean();
+
+    // A lifter holding down the weight stepper. Every one of these used to be
+    // its own unordered bridge call.
+    store().updateSet(setId, { weightKg: 101 });
+    store().updateSet(setId, { weightKg: 102 });
+    store().updateSet(setId, { weightKg: 103 });
+    store().updateSet(setId, { weightKg: 104 });
+
+    await settle();
+
+    const written = calls.filter((c) => c.op === 'set');
+    expect(written).toHaveLength(1);
+    expect(JSON.parse(written[0].value!).exercises[0].sets[0].weightKg).toBe(104);
+  });
+
+  it('never resurrects a discarded session with a write that was still in flight', async () => {
+    const setId = await startClean();
+
+    store().updateSet(setId, { weightKg: 100 });
+    await ticks();
+    expect(calls).toHaveLength(1);
+
+    // Discarded while that write is still open. This is the failure the queue
+    // exists for: the `removeItem` used to be able to complete first, and the
+    // stale `setItem` then put the session back on disk for the next launch.
+    store().discard();
+    await ticks();
+    expect(calls.filter((c) => c.op === 'remove')).toHaveLength(0);
+
+    releaseHeld();
+    await ticks();
+
+    expect(calls[calls.length - 1].op).toBe('remove');
   });
 });

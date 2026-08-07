@@ -59,7 +59,9 @@ RPE (`Docs/invariants.md` I-8, I-11, I-16) `[fact]`.
 
 | Surface | Route | Job in v1 | Status |
 |---|---|---|---|
-| Onboarding | `onboarding/{index,features,auth,steps,complete}` | Welcome → 3-slide carousel → account (presentation-only) → 4 skippable questions → completion summary | Built `[fact]` |
+| Onboarding | `onboarding/{index,features,auth,steps,complete}` | Welcome → 3-slide carousel → account → 4 skippable questions → completion summary. **Updated 2026-08-06:** `auth` is now a `<Redirect>`, not a screen — it resolves to `/auth` where accounts exist and skips to `steps` where they do not (D2a) | Built `[fact]` |
+| Auth | `auth/index` | Sign-in / sign-up / **password reset**. The only route to any data surface in a build with credentials; absent entirely in one without. Reset is a **mode of this screen, not a route** — no route was added for it (added 2026-08-06, reset 2026-08-09; D2a, §4.9) | Built `[fact]` |
+| Account | `account` (modal) | Identity, sign out, one explanatory line. The only sign-out entry point; reached from Today's header, and only where accounts exist (added 2026-08-08, D2a, §4.10) | Built `[fact]` |
 | Today | `(tabs)/index` | The launch surface: where you stand, one action, then depth on scroll | Built, including D9 |
 | Template choice | `workout/templates` (modal) | "Choose a workout": every `RoutineDay`, grouped, plus "Start empty" | Built `[fact]` |
 | Logger | `workout/active` (slide-from-bottom, gestures disabled) | Set-by-set logging, the highest-frequency screen | Built `[fact]` |
@@ -83,9 +85,12 @@ RPE (`Docs/invariants.md` I-8, I-11, I-16) `[fact]`.
    unticked sets are shown and marked as not counting toward volume `[fact, `workout-history-v1`
    Decision 4]`.
 
-**What v1 is not.** v1 ships against demo mode, the only mode a real user can currently reach
-(`Docs/architecture.md` G-1) `[fact]`. This document defines a UI baseline; it does **not** claim
-launch readiness — see §9.
+**What v1 is not.** ~~v1 ships against demo mode, the only mode a real user can currently reach
+(`Docs/architecture.md` G-1).~~ **Updated 2026-08-06** `[fact]`: demo is no longer the only reachable
+mode. An authentication path exists, so a build with credentials can sign a real lifter in and read their
+own rows through RLS (D2a, §4.9). That is a change of what is *possible*, not a claim of readiness —
+nothing here has run against a live Supabase project, and §8's other gates (I-2, I-10, G-4) are untouched.
+This document defines a UI baseline; it does **not** claim launch readiness — see §8 and §9.
 
 ---
 
@@ -112,7 +117,12 @@ with on-device verification of every back path, not a one-line `href` change.
 
 ---
 
-### D2 — Onboarding keeps its five-screen path; the account screen stays presentation-only and says so
+### D2 — ~~Onboarding keeps its five-screen path; the account screen stays presentation-only and says so~~
+
+> **Superseded 2026-08-06 by `feature/v1-auth-and-session` (see D2a below).** Retained in full per I-15:
+> what was decided, and why it was reversed, is itself evidence. D2's own reversal clause named the
+> trigger — "an authentication sprint lands" — and required copy, skip semantics, the completion gate and
+> the autofill attributes to change **as one unit**. They did.
 
 **Statement** `[decision]` Route order `index → features → auth → steps → complete` is unchanged.
 `complete.tsx` remains the only screen that writes anything. The auth screen keeps hand-rolled
@@ -131,6 +141,63 @@ started" is a relabelled Continue with the same handler, not a new completion pa
 **Reversal** An authentication sprint lands. At that point the auth screen becomes real and D2 is
 superseded rather than amended — the copy, the skip semantics, and the completion gate all change
 together.
+
+---
+
+### D2a — The account screen is real, and appears only where accounts exist
+
+**Statement** `[decision, 2026-08-06, `feature/v1-auth-and-session`]` The account screen creates accounts
+and signs people in. In a build with credentials it is the only route to any data surface. In a build
+without them it does not appear at all.
+
+**What changed together**, as D2's reversal clause required:
+
+- **The placeholder notice is deleted.** It said accounts were not connected; they are. Leaving it would
+  have made a working form the one dishonest surface in the app — the exact failure D2 existed to prevent,
+  pointing the other way.
+- **The "Later" skip is deleted.** Its stated purpose was "the way past this screen without an account",
+  and there is no longer anywhere to go: every data screen requires a session.
+- **AutoFill is restored.** `autoComplete="email"` / `textContentType="emailAddress"`, and mode-specific
+  `new-password`/`newPassword` on sign-up and `current-password`/`password` on sign-in. The suppression
+  these replace existed solely because iOS was offering to save a credential for an account the screen
+  could not create; that objection is gone, and the file's own comment anticipated this ("restore these
+  the moment sign-up actually creates an account, and not before").
+- **The screen moved** to `app/auth/index.tsx` on the root stack, gestures disabled. A returning lifter on
+  a fresh install has already onboarded, and routing them through the first-run stack to sign in would
+  give them a back gesture into a form they finished months ago. `app/onboarding/auth.tsx` remains as a
+  `<Redirect>`, so the onboarding route graph, its `_layout` registration and its back paths are unchanged.
+- **Demo builds skip it.** `resolveOnboardingAuthHref(isAuthEnabled())` routes them straight to
+  `/onboarding/steps`. See §9 Q1, which this closes.
+
+**The way back in, added 2026-08-09** `[decision, `feature/v1-password-reset`]`. A "Forgot password?"
+control sits under the password field **in sign-in mode only** — on sign-up there is no password to have
+forgotten, and offering a reset there would be a second way to ask the server whether an address is
+registered. Reset is a **third mode of this same screen**, not a route: `app/auth/index.tsx` goes from
+two modes to three, the route map is unchanged, and §4.9's state list grows rather than a §4.11 being
+added. It is **code-based, not link-based** — the lifter reads six digits out of the email and types
+them in — because nothing in the app captures a deep link, so a "follow the link" instruction would send
+them somewhere the app cannot receive them. The copy says "code" and never "link"; a test pins that.
+
+**The way out, added 2026-08-08** `[decision, `feature/v1-signout-surface`]`. Signing in needed a
+counterpart, and it lives on the same condition as the screen above. Today renders an **Account control
+in `Screen`'s `headerRight` slot**, beside the lifter's own name, gated by
+`canOfferSignOut({ authEnabled: isAuthEnabled(), sessionPhase })` — so it appears only for an
+authenticated session in a build with credentials, and is **absent** (not disabled) in demo and
+misconfigured builds, for D2a's own reason: a greyed control implies an account that could have existed.
+It opens `app/account` (§4.10), which is **the only sign-out entry point in v1**. No tab was added —
+D1 freezes the bar — and no new layout primitive was needed, because `headerRight` already existed and
+had no consumers.
+
+**Rationale** The honesty argument is D2's, unchanged; only its direction reverses. A screen that says
+accounts do not work while collecting credentials, and a screen that collects credentials in a build with
+no accounts, are the same defect.
+
+**Evidence** `app/auth/index.tsx`; `app/onboarding/auth.tsx`; `src/domain/routing.ts`;
+`src/store/sessionStore.ts`; `src/content/onboarding.ts`. `src/content/__tests__/authCopy.test.ts`
+asserts `AUTH.placeholderNotice` and `AUTH.skipLabel` no longer exist — a **partial** reversal is the real
+risk, so their absence is pinned rather than trusted.
+
+**Reversal** Real-user evidence that a session-gated first run costs more than it protects.
 
 ---
 
@@ -383,10 +450,13 @@ interrupted**.
   the disclaimer states readiness is a planning estimate, never a diagnosis and never medical advice
   (I-8) `[fact]`.
 - **States** Loading: n/a, no data dependency. Error: n/a. Empty: n/a. Interrupted: the flow is
-  re-enterable from the start; nothing is written until `complete`.
-- `[open question]` Should the `auth` step be visible at all in a demo-only 1.0, or skipped until
-  authentication exists? Engineer/owner call. Hiding it shortens first-run; keeping it preserves the
-  route and the copy for the sprint that makes it real.
+  re-enterable from the start; nothing is written until `complete`. *(Still true of the four onboarding
+  screens; the `auth` step is no longer one of them — see §4.9.)*
+- **Updated 2026-08-06** `auth` is no longer a screen in this flow. It is a `<Redirect>` that resolves to
+  `/auth` in a build with credentials and to `/onboarding/steps` in one without, so the demo first-run is
+  four screens and the credentialed first-run is five `[fact, `src/domain/routing.ts`]`.
+- ~~`[open question]` Should the `auth` step be visible at all in a demo-only 1.0?~~ **Resolved
+  2026-08-06** — see §9 Q1.
 
 ### 4.2 Today
 
@@ -402,9 +472,17 @@ interrupted**.
   `[fact]`.
 - **Entry points** `SessionCard` primary = "Start session" (auto-resolved); secondary = "Choose a
   workout" → `/workout/templates`. The no-active-routine empty state routes to the same modal `[fact]`.
+- **Header, added 2026-08-08** `[fact, `feature/v1-signout-surface`]` The header block's `headerRight`
+  slot now carries the **Account** control — an icon-only 44pt target with
+  `accessibilityLabel="Account"`, routing to the `account` modal (§4.10). It renders only when
+  `canOfferSignOut({ authEnabled: isAuthEnabled(), sessionPhase })` is true, so demo and misconfigured
+  builds show a header identical to before. This is the only change to Today in that sprint: no section
+  moved, no card changed, and the "Demo data" chip is untouched.
 - **States** Loading/error: via the shared `ScreenState` primitive, branching on `trainingStore.status`
   `[fact, G-5 resolved]`. Empty: "No plan is active yet…" with a route into template choice.
-  Interrupted: see D5.
+  Interrupted: see D5. The Account control sits in the header block, which `ScreenState` does not
+  replace — but on a misconfigured build (the case where the error state is most likely) the control is
+  already absent for the reason above, so it cannot appear over an error `[fact]`.
 
 ### 4.3 Template choice (`workout/templates`)
 
@@ -535,6 +613,96 @@ interrupted**.
   `[open question]` Now that Today links to the same screens, this is worth revisiting; it was judged
   riskier than the value and left alone.
 
+### 4.9 Auth (`app/auth`)
+
+Added 2026-08-06 by `feature/v1-auth-and-session`. Governed by D2a.
+
+- **Route** `auth/index`, root stack, `gestureEnabled: false` — there is nothing behind sign-in to return
+  to `[fact]`. Reachable two ways: the onboarding redirect during first run, and the route gate whenever
+  the session phase is `'unauthenticated'`.
+- **Modes** One screen, **three** modes (sign-up / sign-in / reset), toggled in place. Validation rules
+  differ between them — sign-up enforces `PASSWORD_MIN_LENGTH`, sign-in accepts whatever an existing
+  account has, reset enforces the sign-up floor on the *new* password — so switching clears field errors
+  and the submitted flag rather than leaving misleading ones on screen
+  `[fact, `src/domain/authValidation.ts`, `src/domain/authReset.ts`]`.
+- **Reset, added 2026-08-09** `[fact, `feature/v1-password-reset`]` Reached from "Forgot password?" in
+  sign-in mode only. Three stages inside the mode, driven by a pure machine (`nextResetStage`):
+  - **Request** — email field alone, CTA "Send code". A password field here would be the confusion the
+    mode exists to remove.
+  - **Sent** — "Check your email", then "I have the code". Worded so it says nothing about whether the
+    address has an account.
+  - **Code** — six-digit field (`autoComplete="one-time-code"`, so iOS offers it from the notification)
+    plus the new password, submitted together. A rejected code returns **here**, with the code still on
+    screen: a mistyped digit costs a correction, not a whole new email. "Send a new code" is the escape
+    hatch for a genuinely expired one.
+  - **Done** — back to sign-in with the address pre-filled and a one-visit notice, "Password updated.
+    Sign in with your new password." The lifter is deliberately **not** signed in: the reset hands its
+    session straight back, so the next thing they do is prove the new password works.
+- **Reset outcome tones** `resetSent` is a **notice** — it is a success, and the error tone would say
+  the send had failed. `invalidCode` is an **error**, and covers wrong *and* expired in one sentence,
+  because "expired" would confirm a code had been issued and therefore that the account exists.
+- **States**
+  - **Loading:** `sessionStore.pending` disables both fields and the CTA and drives the button's spinner.
+  - **Error:** a form-level card above the CTA, visually distinct from the per-field validation errors
+    below the inputs, rendering exactly one of six reviewed sentences from `AUTH_OUTCOME_COPY`. Never a
+    raw error — `toAuthFailure` collapses every server shape into a closed set, mapping anything
+    unrecognised to `unknown` rather than passing a message through `[fact, `src/domain/authErrors.ts`]`.
+  - **Empty:** n/a.
+  - **Interrupted:** `pending` and the last outcome live in the **store**, not component state, so a
+    request that resolves while this screen is unmounted — a backgrounded app, a redirect landing first —
+    cannot strand a spinner on remount. This is the §4 "interrupted" question answered for a surface whose
+    interruption is a network round trip rather than a killed process.
+- **Check-email** Sign-up resolves to a **distinct full-screen state**, not a message under the CTA. It is
+  the end of the flow — there is nothing more to do here until the link is opened — and leaving the form
+  live underneath would invite a second submit that can only fail. It states outright that confirmation
+  ends in a **manual sign-in**, because no deep-link capture exists (`detectSessionInUrl` is false and
+  nothing in the repo handles an incoming link; see `Docs/production-posture-v1.md` §4.1).
+- **Copy rules, all pinned by `src/content/__tests__/authCopy.test.ts`:** one message for a wrong password
+  and for an address with no account, so the form is not an account-enumeration oracle for a product that
+  stores sleep, soreness and bodyweight; no environment variable or internal identifier anywhere on the
+  surface; nothing diagnostic or clinical (I-8). `checkEmail` and `sessionExpired` render in a *notice*
+  tone rather than an error tone — the first is a success, and the second is not the lifter's fault.
+- **Not covered by tests** This screen's rendering. No component-test tooling exists (D-note:
+  `onboarding-ui-redesign` Decision 6), so the states above are verified at the store and content layer
+  only, and have **not** been verified on device.
+
+### 4.10 Account (`app/account`)
+
+Added 2026-08-08 by `feature/v1-signout-surface`. Governed by D2a.
+
+- **Route** `account`, root stack, `presentation: 'modal'` `[fact]`. A detour, not a destination.
+  Reached only from Today's `headerRight` control (§4.2), which is itself gated — so there is no path to
+  this screen in a build without accounts.
+- **Contents — three things, deliberately** `[decision]`: an identity line ("Signed in as {email}",
+  falling back to the profile's display name when Supabase returns no email, and to a bare "Signed in"
+  when neither is known); a destructive-toned `ListRow` labelled "Sign out"; and one explanatory
+  sentence. **A fourth item would make this the settings surface the sprint was scoped not to build** —
+  no preferences, no units, no theme, no dev affordances.
+- **Confirmation** Per **D6**, and this is the whole reason the rule is restated here: sign-out discards
+  the in-progress draft, so it is destructive whenever there is work in it. `shouldConfirmSignOut`
+  returns true when any set is completed — **warm-ups included**, because "counts toward volume" and "is
+  logged work" are different questions and this is the second one. The `Alert` then names the count and
+  the session title, mirroring Today's existing "Discard this draft?" wording. An untouched session
+  signs out with no prompt: confirming the loss of a plan nobody touched is friction with nothing behind
+  it.
+- **States** **Loading:** none — everything rendered is already in the stores. **Error:** none; teardown
+  cannot fail in a way the lifter can act on, and it completes even when the server sign-out rejects.
+  **Empty:** n/a. **Interrupted:** if the phase stops being `'authenticated'` while the sheet is open —
+  a revoked token, or a sign-out completing — the screen pops rather than leaving a "Sign out" button
+  over a session that no longer exists.
+- **After sign-out** A silent redirect to `/auth`, with no confirmation message `[decision]`. The
+  teardown flips the phase last, the route gate redirects, and the modal unmounts with it. Someone who
+  just tapped Sign out does not need to be told they signed out; the *involuntary* case
+  (`sessionExpired`) is the one that gets a line on the auth screen. The asymmetry is deliberate.
+- **Copy constraints, all pinned by `src/content/__tests__/accountCopy.test.ts`:** no environment
+  variable or internal identifier (I-4/I-5); nothing diagnostic or clinical (I-8); and **no claim of
+  deletion or export**, because neither exists (I-10, open). The explanation must state both halves —
+  what leaves the device, and what does not leave the account — since "signing out" is precisely the
+  phrase a worried person misreads as erasure.
+- **Not covered by tests** This screen's rendering, the modal presentation, and the `Alert`. Verified
+  through the pure predicates (`src/domain/account.ts`) and the copy module only; **not** verified on
+  device.
+
 ---
 
 ## 5. Interaction and copy rules
@@ -644,19 +812,24 @@ readiness.
 
 | Gate | Status | Source |
 |---|---|---|
-| **G-1 — no authentication path** | Open. Supabase mode is unreachable by any UI; demo mode is the only mode a real user can run. | `Docs/architecture.md` G-1 |
-| **I-10 — account deletion + data export** | Open, and **blocking for store submission**, not negotiable scope. | `Docs/invariants.md` I-10 |
+| ~~**G-1 — no authentication path**~~ | **Closed in the client 2026-08-06** (`feature/v1-auth-and-session`). `sessionStore` (phase machine), `authActions` (ordered sign-out teardown), `app/auth/` (the real surface), `routing.ts` (the gate), `authRequired.ts` (`AuthRequiredError`). Six new Jest suites; 287/287 passing. **Sign-out made reachable 2026-08-08** (`feature/v1-signout-surface`): Account control on Today's header → `app/account` → `signOutAndTearDown`, gated by `canOfferSignOut` and confirmed per D6 (§4.10). **Password reset added 2026-08-09** (`feature/v1-password-reset`): a code-based reset mode inside the auth screen (§4.9), closing the supportability gap where a forgotten password was recoverable only by hand in the Supabase dashboard. The client-side account lifecycle — sign up, sign in, sign out, recover — is complete. Suite now 367/367 across 24. **Three limits remain, none of them UI:** nothing has run against a live Supabase project (integration lane credential-gated and skipped); reset depends on an owner-side recovery-template edit; and **deep-link capture still does not exist**, which is why reset is code-based rather than link-based. | `Docs/architecture.md` G-1; the three auth sprint records under `Docs/sprints/` |
+| **I-10 — account deletion + data export** | Open, and **blocking for store submission**, not negotiable scope. **Unchanged by the sign-out (2026-08-08) or reset (2026-08-09) sprints.** Both added surfaces whose names read like erasure to a worried person — "sign out", "reset" — and both deliberately claim neither capability; `accountCopy.test.ts` and `authCopy.test.ts` assert their copy never promises deletion or export, so neither surface can quietly imply a gate it does not close. A complete account *lifecycle* is not account *control*. | `Docs/invariants.md` I-10; §4.9, §4.10 |
 | **I-2 / G-2 — non-atomic `saveWorkout`** | Open. Three sequential non-transactional upserts. Restated here per I-2's own exception process: v1 ships against this path with the risk stated, not hidden. | I-2, G-2 |
 | **G-4 — no observability** | Open. No crash reporting, analytics, or logging pipeline — real user feedback would arrive with no telemetry behind it. | G-4 |
-| **G-7 — release tooling** | Open on `main`. An `eas.json` exists uncommitted in a working tree on `feature/logger-summary-hardening` and is not merged; do not treat this gate as closed until it is. | G-7 |
+| **G-7 — release tooling** | Open. ~~An `eas.json` exists uncommitted in a working tree on `feature/logger-summary-hardening` and is not merged.~~ **Corrected 2026-08-06:** that text is stale — `eas.json` is committed, with all three profiles setting `EXPO_PUBLIC_DEMO_MODE` explicitly. The gate stays open for different reasons: no build has been run, and the `preview` flip now depends on owner-only EAS variables for **both** `preview` and `production`, on the migrations actually being applied, and on the project's email-confirmation setting. Separately worth recording — `feature/release-and-summary-hardening` merged to `main` **without** delivering `Docs/release-checklist.md` or an `npm run verify` script; both are absent repo-wide and neither has any git history. | G-7; `Docs/production-posture-v1.md` §3–§4 |
 | **I-1 / I-6 — RLS** | **Met** for the policies as committed (57/57 assertions, wired into CI 2026-08-04). Not the same as production being reachable. | I-1, `2026-08-04-supabase-rls-ci.md` |
 
 ---
 
 ## 9. Open questions
 
-1. **Does the `auth` step ship visible in a demo-only 1.0?** (§4.1) Engineer/owner. Blocks nothing; changes
-   first-run length.
+1. ~~**Does the `auth` step ship visible in a demo-only 1.0?**~~ **Resolved 2026-08-06**
+   (`feature/v1-auth-and-session`). The step is visible exactly where accounts exist:
+   `resolveOnboardingAuthHref(isAuthEnabled())` sends demo builds straight to `/onboarding/steps` and
+   credentialed builds to `/auth`. The reasoning is D2's own, pointed the other way — a working sign-up
+   form in a build that cannot create an account is the same dishonesty the placeholder notice existed to
+   prevent. Recorded as a rule in `src/domain/routing.ts` rather than as a screen-level condition, so it
+   is testable. See D2a and §4.1.
 2. **Edit or delete first, in v2?** (D7) Engineer/owner, after I-2 is closed.
 3. **Do Progress and Body still return to Insights once Today also links to them?** (§4.8) Deliberately
    unchanged for now; revisit with evidence.
@@ -675,3 +848,6 @@ readiness.
 | 2026-08-06 | `feature/v1-release-readiness`. **Summary hardening:** the rating/reflection write gained a single-flight guard, loading/disabled states on both actions, and a failure banner with a "Try again" primary — it previously had no `catch` at all, so a rejected write silently did nothing (§4.6). Failure copy is scoped to the note, since the session is already saved by then. The not-found branch and the reflection field gained `accessibilityRole="alert"` and a 1.4× scaling cap respectively. Summary remains a capture screen, not an editor — D7 and D8 unchanged. **Release tooling:** added `npm run verify` (typecheck + test, mirroring CI) and `Docs/release-checklist.md`, which records the verification commands, the EAS profiles, and the finding that a production build currently inherits `EXPO_PUBLIC_DEMO_MODE=true` by default. `eas.json` and the EAS environment were **not** changed — production configuration is gated (`CLAUDE.md`). No v2 behaviour was added. | Claude (agent) |
 | 2026-08-05 | `feature/logger-v1-alignment`. **D4 corrected** from "exactly two entry points… no third path in v1" to three, documenting Exercises' "log this lift" — which has created open sessions since `ui-ux-foundation-expansion` and which D4 had wrongly named as hypothetical v2 work. This is a correction of the document to match shipped reality, **not** a change of product direction: no entry point was added, removed, or re-scoped. **L1 fixed:** the logger now clears `draftPendingReview` on entry, so Today's "Recovered session" card can no longer outlive the moment the lifter is already logging in that session (previously only Today's own Resume button cleared it, leaving the flag set for every other route in). **L2 fixed:** `workout/templates` and Exercises' "log this lift" no longer act silently when a session already exists or a recovered draft is unreviewed — both now surface an `Alert` and leave the existing session untouched on cancel. D5's "never two sessions" guard is unchanged; only its silence was. | Claude (agent) |
 | 2026-08-05 | `feature/today-v1-alignment` implements D9: Today's `QuickAccess` tile row replaced by the same `ListRow` card Insights renders, both still driven by `src/content/deeperSurfaces.ts`; `QuickAccess.tsx` retired (zero remaining consumers). Also fixes a duplicate-CTA bug found during D9's audit, not part of D9 itself: `SessionCard` previously rendered unconditionally, showing a filled "Start session" button alongside the "Resume workout" / "Session in progress" continuity affordances (D3, D5) whenever a session was already active or a draft pending review — now suppressed by an `!activeWorkout` guard. | Claude (agent) |
+| 2026-08-06 | `feature/v1-auth-and-session` (implementation, commit `0af00cd`) and `feature/v1-auth-session-docs` (this pass). **D2 superseded by D2a** — the account screen is real, appears only in builds with credentials, and lost its placeholder notice and "Later" skip while regaining AutoFill; it moved to `app/auth/index.tsx`, with `app/onboarding/auth.tsx` left as a `<Redirect>` so the onboarding route graph is untouched. **§4.1 updated** — `auth` is no longer one of onboarding's screens, so demo first-run is four screens and credentialed first-run is five. **§4.9 added** — the auth surface's four states, its distinct check-email state, and the copy rules pinned by `authCopy.test.ts`. **§8 G-1 closed** in the client, with its two limits (never run against a live project; no sign-out affordance, because no settings screen exists). **§8 G-7 text corrected** — the claim that `eas.json` was uncommitted and unmerged was stale. **§9 Q1 resolved.** No visual or layout change to any existing screen. | Claude (agent), for engineer/owner review |
+| 2026-08-08 | `feature/v1-signout-surface` (commit `0029a7f`). **D2a extended** — the auth screen gained its counterpart: an Account control in Today's `headerRight`, on the same `isAuthEnabled()` condition as the sign-in screen itself, absent rather than disabled where there are no accounts. **§4.10 added** — the Account modal: three items and deliberately no fourth, D6-conformant confirmation (warm-ups count as logged work), a silent redirect on success, and copy constrained by test against claiming deletion or export. **§4.2 Today** gains the header note; **§2 inventory** gains the route; **§8 G-1** drops its sign-out caveat and **§8 I-10** gains a sentence saying the new surface does not close it. No section moved, no card changed, no tab added — D1 is untouched. | Claude (agent), for engineer/owner review |
+| 2026-08-09 | `feature/v1-password-reset` (commit `954d075`). **D2a extended** — a "Forgot password?" control in sign-in mode only, and reset as a third mode of the same screen rather than a route. **§4.9 extended** — three modes instead of two, plus the reset stages (request → sent → code → done), the rejected-code behaviour that keeps the typed code on screen, and the two new outcome tones (`resetSent` notice, `invalidCode` error). **§2 inventory** updated to say reset is a mode, not a route. **§8 G-1** records the account lifecycle as complete in the client with its three remaining non-UI limits; **§8 I-10** restated as untouched by both recent sprints. No new route, no new surface, no change to any existing screen outside `auth/index`. | Claude (agent), for engineer/owner review |

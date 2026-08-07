@@ -443,12 +443,64 @@ export const useActiveWorkoutStore = create<ActiveWorkoutState>((set, get) => ({
 // action individually. A kill mid-session loses nothing older than the last
 // completed write; a kill mid-`finish()` loses nothing at all, since
 // `finish()` never calls `set()` -- see its own comment above.
+//
+// WHY THIS IS A QUEUE AND NOT A BARE `setItem`
+// --------------------------------------------
+// It used to start an independent, unawaited write per mutation. Nothing
+// ordered them. `AsyncStorage` is a bridge call, so two writes started in
+// order can land out of order, and the last one to land is the one that
+// survives a kill -- which is not necessarily the newest state.
+//
+// The concrete loss: a lifter corrects a weight, ticks the set, and the app is
+// killed. The correction's write is still in flight when the tick's write
+// starts; the correction lands second; the next launch restores the state from
+// before the tick. Worse with `discard()` -- an older `setItem` landing after
+// the `removeItem` resurrects a session the lifter deliberately threw away.
+//
+// A revision counter plus a single promise chain fixes both. Writes run one at
+// a time in the order they were queued, and any write already superseded by a
+// newer one is skipped rather than performed -- so the queue also coalesces a
+// burst of rapid edits into a single write of the final state.
+let draftRevision = 0;
+let draftQueue: Promise<void> = Promise.resolve();
+
+function enqueueDraftWrite(write: () => Promise<unknown>): void {
+  const revision = ++draftRevision;
+  draftQueue = draftQueue.then(async () => {
+    // Superseded before it ran. The newer write carries the state this one
+    // would have written, so performing it would be redundant at best and, if
+    // this is a stale `setItem` behind a `removeItem`, actively wrong.
+    if (revision !== draftRevision) return;
+    try {
+      await write();
+    } catch {
+      // Storage failures stay non-fatal here, as they always were: the session
+      // is still in memory and the next mutation queues another write. What
+      // must not happen is one rejection breaking the chain for every write
+      // after it, which is why this catch exists at all.
+    }
+  });
+}
+
+/**
+ * Resolves once every queued draft write has run.
+ *
+ * Exists so teardown and tests can be deterministic about a mechanism that is
+ * otherwise deliberately fire-and-forget. `src/store/authActions.ts` awaits it
+ * before removing the key, so a write still in flight cannot land afterwards
+ * and leave one lifter's session on disk for the next one.
+ */
+export function flushDraftWrites(): Promise<void> {
+  return draftQueue;
+}
+
 useActiveWorkoutStore.subscribe((state, prevState) => {
   if (state.workout === prevState.workout) return;
-  if (state.workout && state.workout.status === 'in_progress') {
-    AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(state.workout)).catch(() => {});
+  const workout = state.workout;
+  if (workout && workout.status === 'in_progress') {
+    enqueueDraftWrite(() => AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(workout)));
   } else {
-    AsyncStorage.removeItem(DRAFT_STORAGE_KEY).catch(() => {});
+    enqueueDraftWrite(() => AsyncStorage.removeItem(DRAFT_STORAGE_KEY));
   }
 });
 

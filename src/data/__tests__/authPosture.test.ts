@@ -17,6 +17,39 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+/**
+ * Keep the real client constructible on a runtime with no global `WebSocket`.
+ *
+ * `sessionStore.initialize()` reaches `subscribeToAuthState` -> `getSupabase()`
+ * -> `createClient()`, and `createClient` builds a `RealtimeClient` eagerly,
+ * which resolves a WebSocket implementation at construction time. Node 22+ has
+ * a global `WebSocket`; Node 20 does not. **This suite passed locally on Node 22
+ * and failed on CI's Node 20 for that reason alone** -- see the commit that
+ * added this block.
+ *
+ * `sessionFlow.test.ts` already solved this by passing `OFFLINE_REALTIME_OPTIONS`
+ * to a client it constructs itself. This suite cannot: the client is built
+ * inside `client.ts`, which is the module under test and must not grow a
+ * test-only parameter. So the options are merged at the `createClient` boundary
+ * instead -- the real client is still constructed, by the real code path, and
+ * only the transport it would never have used is replaced.
+ *
+ * `UnusedRealtimeTransport` throws rather than no-ops, so this stays a tripwire:
+ * if a future test genuinely exercises realtime it fails loudly here instead of
+ * passing against a stub that pretends to work.
+ */
+jest.mock('@supabase/supabase-js', () => {
+  const actual = jest.requireActual('@supabase/supabase-js');
+  const {
+    OFFLINE_REALTIME_OPTIONS,
+  } = require('../supabase/__tests__/support/realtimeTransport');
+  return {
+    ...actual,
+    createClient: (url: string, key: string, options?: Record<string, unknown>) =>
+      actual.createClient(url, key, { ...options, ...OFFLINE_REALTIME_OPTIONS }),
+  };
+});
+
 const ENV_KEYS = [
   'EXPO_PUBLIC_DEMO_MODE',
   'EXPO_PUBLIC_SUPABASE_URL',
@@ -67,6 +100,22 @@ describe('demo build', () => {
     const { getRepository } = require('../repository');
     expect(getRepository().kind).toBe('demo');
   });
+
+  it('offers no sign-out control', async () => {
+    // There is no account to leave, so the control is absent rather than
+    // disabled -- a greyed "Account" implies an account you could have had.
+    const { canOfferSignOut } = require('@/domain/account');
+    const { useSessionStore } = require('@/store/sessionStore');
+
+    await useSessionStore.getState().initialize();
+
+    expect(
+      canOfferSignOut({
+        authEnabled: require('../supabase/auth').isAuthEnabled(),
+        sessionPhase: useSessionStore.getState().phase,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('misconfigured build (demo off, no credentials)', () => {
@@ -96,6 +145,21 @@ describe('misconfigured build (demo off, no credentials)', () => {
 
     expect(() => getRepository()).toThrow(SUPABASE_MISCONFIGURED_MESSAGE);
     expect(SUPABASE_MISCONFIGURED_MESSAGE).toContain('EXPO_PUBLIC_SUPABASE_URL');
+  });
+
+  it('offers no sign-out control, and the misconfiguration is still what surfaces', () => {
+    /*
+      The pairing is the point. A sign-out control on this build would be a
+      second, competing explanation for why nothing works -- and the wrong one.
+      What this lifter is owed is the message naming the missing variables.
+    */
+    const { canOfferSignOut } = require('@/domain/account');
+    const { isAuthEnabled } = require('../supabase/auth');
+    const { getRepository } = require('../repository');
+    const { SUPABASE_MISCONFIGURED_MESSAGE } = require('../supabase/client');
+
+    expect(canOfferSignOut({ authEnabled: isAuthEnabled(), sessionPhase: 'disabled' })).toBe(false);
+    expect(() => getRepository()).toThrow(SUPABASE_MISCONFIGURED_MESSAGE);
   });
 });
 
