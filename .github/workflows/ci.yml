@@ -19,9 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Kept in step with `.nvmrc`, which is the version a developer's shell
+      # picks up. These drifting apart is not a theoretical problem: CI ran
+      # Node 20 while local development ran Node 22, `main` went red on a
+      # global that exists in one and not the other, and every local run said
+      # green. Change one of these two and change the other.
+      #
+      # Node 20 reached end-of-life in April 2026, so CI was also running an
+      # unsupported runtime that no longer receives security patches.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       # `npm ci` installs strictly from package-lock.json, so CI fails loudly
