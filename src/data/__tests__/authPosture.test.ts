@@ -100,6 +100,22 @@ describe('demo build', () => {
     const { getRepository } = require('../repository');
     expect(getRepository().kind).toBe('demo');
   });
+
+  it('offers no sign-out control', async () => {
+    // There is no account to leave, so the control is absent rather than
+    // disabled -- a greyed "Account" implies an account you could have had.
+    const { canOfferSignOut } = require('@/domain/account');
+    const { useSessionStore } = require('@/store/sessionStore');
+
+    await useSessionStore.getState().initialize();
+
+    expect(
+      canOfferSignOut({
+        authEnabled: require('../supabase/auth').isAuthEnabled(),
+        sessionPhase: useSessionStore.getState().phase,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('misconfigured build (demo off, no credentials)', () => {
@@ -129,6 +145,21 @@ describe('misconfigured build (demo off, no credentials)', () => {
 
     expect(() => getRepository()).toThrow(SUPABASE_MISCONFIGURED_MESSAGE);
     expect(SUPABASE_MISCONFIGURED_MESSAGE).toContain('EXPO_PUBLIC_SUPABASE_URL');
+  });
+
+  it('offers no sign-out control, and the misconfiguration is still what surfaces', () => {
+    /*
+      The pairing is the point. A sign-out control on this build would be a
+      second, competing explanation for why nothing works -- and the wrong one.
+      What this lifter is owed is the message naming the missing variables.
+    */
+    const { canOfferSignOut } = require('@/domain/account');
+    const { isAuthEnabled } = require('../supabase/auth');
+    const { getRepository } = require('../repository');
+    const { SUPABASE_MISCONFIGURED_MESSAGE } = require('../supabase/client');
+
+    expect(canOfferSignOut({ authEnabled: isAuthEnabled(), sessionPhase: 'disabled' })).toBe(false);
+    expect(() => getRepository()).toThrow(SUPABASE_MISCONFIGURED_MESSAGE);
   });
 });
 

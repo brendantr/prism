@@ -100,10 +100,12 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
 
 **Negative, or accepted**
 
-- **No sign-out control exists in the UI**, because the app has no settings screen. The teardown is
-  reachable only in code. A lifter can sign in and cannot sign out.
+- ~~**No sign-out control exists in the UI**, because the app has no settings screen. The teardown is
+  reachable only in code. A lifter can sign in and cannot sign out.~~ **Resolved 2026-08-08 — see the
+  follow-up below.**
 - **Confirmation requires a manual round trip** — open the link, return to the app, sign in.
-- **No password reset**, so a forgotten password is recoverable only by hand in the Supabase dashboard.
+- ~~**No password reset**, so a forgotten password is recoverable only by hand in the Supabase
+  dashboard.~~ **Resolved 2026-08-09 — see the follow-up below.**
 - **Nothing has been exercised against a live Supabase project.** The integration lane is credential-gated
   and skipped; the 287 passing tests are hermetic and prove the state machine, gate, teardown and copy
   rules, not a real project's behaviour.
@@ -117,6 +119,52 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
   than theoretical. Blocking for store submission.
 - **G-4**: no observability, so a failed sign-in in the field is invisible.
 - **`Docs/release-checklist.md`** still does not exist, and neither does an `npm run verify` script.
+
+## Follow-up
+
+**2026-08-08, `feature/v1-signout-surface` (commit `0029a7f`).** The sign-out teardown decided here
+(decision 7) is now reachable. An Account control in Today's `headerRight` — gated by the pure
+`canOfferSignOut({ authEnabled, sessionPhase })`, so it appears only for an authenticated session in a
+build with credentials — opens `app/account.tsx`, whose "Sign out" row calls `signOutAndTearDown`.
+Confirmation follows UX decision D6: the sheet warns first only when logged work would be lost, counting
+completed warm-ups as logged work.
+
+This changes **no decision in this ADR**. The teardown contract, its ordering, and the phase-flips-last
+guarantee are untouched; `src/store/authActions.ts` was not modified. What changed is reachability, plus
+one addition in service of it: `SessionUser` gained `email`, propagated through all four auth call sites
+so identity does not depend on how the session was obtained. It is display-only and falls under the same
+I-6 rule as `userId` — never passed into a repository method.
+
+Decision 5 (demo builds have no authentication) extends cleanly: those builds render no control at all,
+absent rather than disabled, for the same honesty reason that governs the auth screen itself.
+
+**Still unresolved by that sprint**, and unchanged above: no password reset, no deep-link capture, no
+deletion or export (I-10), and nothing exercised against a live Supabase project. The Account surface
+deliberately claims none of them, and a copy test enforces that it cannot start to.
+
+Record: `Docs/sprints/2026-08-08-signout-surface.md`.
+
+**2026-08-09, `feature/v1-password-reset` (commit `954d075`).** Password reset was added as a **code-based**
+flow inside `app/auth/index.tsx` — Supabase's recovery email, an OTP typed into the app, and a sign-out at
+the end. It extends decision 1 (email and password) without changing it, and it is a direct consequence of
+decision 6: because deep-link capture was deferred, the emailed link has no return leg, so the code is used
+instead and `resetPasswordForEmail` is called with no `redirectTo`.
+
+Two points that would otherwise read as arbitrary later. `confirmPasswordReset` ends with `signOut()`
+because `verifyOtp` leaves the app authenticated and continuing into Today off an emailed code is a
+surprising way to finish a reset on a shared device — the lifter proves the new password instead. And
+`sessionStore` suppresses auth events for the call's duration, because the `SIGNED_IN` in the middle would
+otherwise send the route gate to Today and the `SIGNED_OUT` after it would bounce back, flashing the home
+screen mid-reset.
+
+**Neither the deletion/export posture nor the deep-link posture changed.** I-10 is untouched and still
+open — reset modifies a credential and removes nothing, and the copy is constrained by test against
+implying otherwise. `detectSessionInUrl` is still false and no `Linking` handler exists; deep-link capture
+remains its own sprint and its own owner decisions. **One new owner dependency** was introduced and is not
+satisfied by this repository: the Supabase recovery email template must expose `{{ .Token }}`, or the flow
+reaches "Enter your code" with nothing to enter.
+
+Record: `Docs/sprints/2026-08-09-password-reset.md`.
 
 ## References
 
@@ -133,6 +181,17 @@ precede an empty store. Recorded as `Docs/invariants.md` **I-19**.
 `src/content/__tests__/authCopy.test.ts`, `src/data/__tests__/authPosture.test.ts`,
 `src/data/__tests__/ownership.test.ts` (updated).
 
-**Documents** — `Docs/sprints/2026-08-06-auth-and-session.md`, `Docs/production-posture-v1.md`,
-`Docs/architecture.md` (G-1), `Docs/invariants.md` (I-1, I-6, I-19),
-`Docs/ui-ux-foundation-v1.md` (D2 → D2a, §4.9, §8, §9).
+**Follow-up sprint (2026-08-08)** — `src/domain/account.ts`, `src/content/account.ts`, `app/account.tsx`,
+Today's `headerRight`; tests `src/domain/__tests__/account.test.ts`,
+`src/content/__tests__/accountCopy.test.ts`.
+
+**Follow-up sprint (2026-08-09)** — `src/domain/authReset.ts`, `requestPasswordReset` and
+`confirmPasswordReset` in `src/data/supabase/auth.ts`, `sessionStore.requestReset`/`confirmReset`, the
+reset mode in `app/auth/index.tsx`, `AUTH_RESET` in `src/content/onboarding.ts`; tests
+`src/domain/__tests__/authReset.test.ts`, `src/data/__tests__/authReset.test.ts`.
+
+**Documents** — `Docs/sprints/2026-08-06-auth-and-session.md`,
+`Docs/sprints/2026-08-08-signout-surface.md`, `Docs/sprints/2026-08-09-password-reset.md`,
+`Docs/production-posture-v1.md` (§2, §4.1, §7), `Docs/architecture.md` (G-1),
+`Docs/invariants.md` (I-1, I-4/I-5, I-6, I-8, I-10, I-19),
+`Docs/ui-ux-foundation-v1.md` (D2 → D2a, §4.9, §4.10, §8, §9).

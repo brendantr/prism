@@ -11,10 +11,9 @@ import {
   isSupabaseConfigured,
 } from './supabase/client';
 import {
+  fromPersonalRecord,
   fromProfile,
-  fromSet,
-  fromWorkout,
-  fromWorkoutExercise,
+  fromWorkoutGraph,
   toCheckIn,
   toExercise,
   toMeasurement,
@@ -55,6 +54,21 @@ export interface Repository {
   getActiveRoutine(): Promise<Routine | null>;
   listWorkouts(): Promise<Workout[]>;
   saveWorkout(workout: Workout): Promise<void>;
+  /**
+   * Finish a session: the workout graph and the records it set, as ONE
+   * operation that either happens or does not.
+   *
+   * Separate from `saveWorkout` + `savePersonalRecords` because those are two
+   * round trips, and finishing was landing them one at a time -- the workout
+   * committing while the records failed, then a retry re-deriving the records
+   * with fresh ids and inserting them a second time. `Docs/invariants.md` I-2
+   * covers the workout graph; the records are part of the same user action and
+   * belong in the same transaction.
+   *
+   * Callers pass the records they detected; the implementation is responsible
+   * for making a repeat call a no-op rather than a duplicate.
+   */
+  completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void>;
   deleteWorkout(id: string): Promise<void>;
   listCheckIns(): Promise<CheckIn[]>;
   /** Accepts a partial submission; see `CheckInPatch` for omit/clear semantics. */
@@ -143,6 +157,41 @@ class DemoRepository implements Repository {
     if (i >= 0) this.userWorkouts[i] = workout;
     else this.userWorkouts.push(workout);
     await AsyncStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(this.userWorkouts));
+  }
+
+  /**
+   * Demo-mode equivalent of the Postgres `save_workout_graph` transaction.
+   *
+   * Two properties have to hold here for the same reasons they hold there, or
+   * demo mode stops being a faithful rehearsal of the real path:
+   *
+   *   ATOMIC -- both keys are written with one `multiSet`, and the in-memory
+   *   arrays are only replaced once that resolves. The old code mutated the
+   *   array first and awaited afterwards, so a storage rejection left the
+   *   process believing it had saved something that was not on disk.
+   *
+   *   IDEMPOTENT -- a record is keyed by (workout, exercise, kind), matching
+   *   the `personal_records_session_unique` index. A retry after a failure
+   *   re-derives the same records with fresh ids, and must not add a second
+   *   copy of each.
+   */
+  async completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void> {
+    await this.hydrate();
+
+    const nextWorkouts = [...this.userWorkouts.filter((w) => w.id !== workout.id), workout];
+
+    const key = (r: PersonalRecord) => `${r.workoutId}:${r.exerciseId}:${r.kind}`;
+    const seen = new Set(this.userRecords.map(key));
+    const added = records.filter((r) => !seen.has(key(r)));
+    const nextRecords = [...this.userRecords, ...added];
+
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.workouts, JSON.stringify(nextWorkouts)],
+      [STORAGE_KEYS.records, JSON.stringify(nextRecords)],
+    ]);
+
+    this.userWorkouts = nextWorkouts;
+    this.userRecords = nextRecords;
   }
 
   async deleteWorkout(id: string): Promise<void> {
@@ -293,32 +342,51 @@ class SupabaseRepository implements Repository {
   }
 
   /**
-   * Persist a workout and its whole object graph. Upserts rather than diffing:
-   * a training session is small (tens of rows) and idempotency beats cleverness
-   * when the user is mid-set on flaky gym wifi.
+   * Persist a workout and its whole object graph, in one transaction.
+   *
+   * This used to be three sequential upserts -- `workouts`, then
+   * `workout_exercises`, then `sets` -- with nothing spanning them. Each was
+   * atomic alone, so a failure at the second or third left the lifter looking
+   * at "could not save" over a session that was half committed: a workout row
+   * with no exercises, or exercises with no sets. It was also additive only,
+   * so removing an exercise in the logger left the old row in Postgres and the
+   * next read brought it back. That is `Docs/architecture.md` G-2 and
+   * `Docs/invariants.md` I-2.
+   *
+   * `save_workout_graph` does all of it inside one transaction and treats the
+   * payload as authoritative, deleting the children it no longer contains. It
+   * is `security invoker`, so RLS applies exactly as it did to the individual
+   * statements and ownership still comes from the session -- see
+   * `supabase/migrations/0003_workout_write_integrity.sql`.
    */
   async saveWorkout(workout: Workout): Promise<void> {
-    const db = getSupabase();
-    const profileId = await this.uid();
-    // Ownership comes from the session, never from the passed-in object. RLS
-    // enforces this too; the client should not be in a position to assert it.
-    const { error: wErr } = await db
-      .from('workouts')
-      .upsert({ ...fromWorkout(workout), profile_id: profileId });
-    if (wErr) throw wErr;
+    await this.saveGraph(workout, []);
+  }
 
-    if (workout.exercises.length > 0) {
-      const { error: weErr } = await db
-        .from('workout_exercises')
-        .upsert(workout.exercises.map(fromWorkoutExercise));
-      if (weErr) throw weErr;
+  /**
+   * The same transaction, carrying the records the session set.
+   *
+   * Finishing used to be two round trips: save the workout, then insert the
+   * PRs. When the second failed the lifter was told the session had not saved,
+   * retried, and the PR ids were re-minted -- so if the original insert had in
+   * fact committed and only its response was lost, the retry wrote a second
+   * copy. The records now go in the same transaction, keyed by
+   * (workout, exercise, kind) so a repeat call is a no-op.
+   */
+  async completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void> {
+    await this.saveGraph(workout, records);
+  }
 
-      const sets = workout.exercises.flatMap((we) => we.sets.map(fromSet));
-      if (sets.length > 0) {
-        const { error: sErr } = await db.from('sets').upsert(sets);
-        if (sErr) throw sErr;
-      }
-    }
+  private async saveGraph(workout: Workout, records: PersonalRecord[]): Promise<void> {
+    // Fails closed with AuthRequiredError when there is no session, matching
+    // every other write here -- the function refuses an anonymous call too,
+    // but erroring before the round trip says why without one.
+    await this.uid();
+    const { error } = await getSupabase().rpc('save_workout_graph', {
+      p_workout: fromWorkoutGraph(workout),
+      p_records: records.map(fromPersonalRecord),
+    });
+    if (error) throw error;
   }
 
   async deleteWorkout(id: string): Promise<void> {

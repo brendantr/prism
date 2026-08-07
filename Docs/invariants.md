@@ -48,14 +48,44 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 ### I-2. Workout saves involving multiple records must be atomic, idempotent, or safely recoverable
 - **Rule:** A workout write that touches more than one table (workout, workout_exercises, sets) must not be able to leave the database in a partially-written state that is silently lost or silently duplicated.
 - **Why:** A logged workout is the user's primary data; a failed partial write (or a naive retry that duplicates it) destroys trust in the core product loop.
-- **Enforcement evidence or expected validation:** `Docs/architecture.md` documents this as a **confirmed gap, not yet met**: `SupabaseRepository.saveWorkout` performs three sequential, non-transactional upserts (architecture.md G-2). Expected validation: wrap the multi-record write in a Postgres function/RPC (single transaction) or add reconciliation/detection logic, with a test that simulates a mid-sequence failure.
+- **Enforcement evidence or expected validation:** **Met as of 2026-08-06** (sprint
+  `v1-workout-write-integrity`), replacing the "confirmed gap, not yet met" status this entry carried
+  from the baseline and the "reaffirmed as open" note the auth sprint added the same day.
+  `supabase/migrations/0003_workout_write_integrity.sql` introduces
+  `public.save_workout_graph(jsonb, jsonb)`: one plpgsql function, therefore one transaction, writing
+  the workout, its exercise blocks, its sets, and the personal records the session set.
+  `SupabaseRepository.saveWorkout` and the new `completeWorkout` both call it; the three sequential
+  upserts and the separate personal-record insert are gone.
 
-  **Reaffirmed as open 2026-08-06** (sprint `v1-auth-and-session`). That sprint touched no migration and
-  no write path, and deliberately did not fix this in passing — it is a separate branch under I-14. It
-  does, however, change the **severity**: until now a partial write corrupted device-local demo data
-  that a lifter could reset, and it now corrupts a real account's training history. The auth sprint is
-  therefore the moment this invariant starts costing something real, and its interim status is restated
-  here per this invariant's own exception process rather than being allowed to go quiet.
+  The audit that produced the fix found the gap was **wider than G-2 recorded** — three defects, not
+  one. (1) Non-atomicity, as described. (2) The write was *additive only*: it upserted what it was
+  given and deleted nothing, so an exercise removed in the logger stayed in Postgres and reappeared on
+  the next read. The function now treats the payload as authoritative for that workout and deletes the
+  children it omits. (3) Personal records were inserted separately, with freshly minted ids on every
+  retry, into a table with no uniqueness beyond its primary key — so a retry after a lost response
+  wrote a duplicate. A `(profile_id, workout_id, exercise_id, kind)` unique index plus `on conflict do
+  nothing` makes a repeat call a no-op.
+
+  Deterministic evidence: `supabase/tests/rls/03_run_write_integrity_tests.sql`, **31 assertions**, run
+  as the non-owning `authenticated` role against a disposable local Postgres 16.14 with all three
+  migrations applied exactly as committed — **31/31 passing from a clean database**, alongside the
+  unchanged **57/57** RLS isolation suite. The mid-sequence failure this invariant names as its
+  expected validation is assertion set 4: a set violating `reps <= 500` aborts the call, and the
+  workout row, the exercise block and the personal record that had already been written are all
+  confirmed absent afterwards. Also covered: exact-retry idempotency, child reconciliation, an
+  order-index swap inside one statement, cross-tenant rejection, and refusal of an unauthenticated
+  call. Demo mode holds the same two properties (`DemoRepository.completeWorkout`, tested in
+  `src/data/__tests__/repository.test.ts`) so demo and real modes do not diverge on the behaviour this
+  invariant governs.
+
+  **Two limits on this claim, stated rather than buried.** First, the function is `security invoker` by
+  deliberate choice — RLS still applies to every statement inside it and ownership still comes from
+  `auth.uid()`, so I-1 and I-6 are not weakened. A `security definer` version would have been shorter
+  and would have become the one hole in the authorization boundary those two invariants describe.
+  Second, **this is verified against local Postgres only.** The migration has not been applied to the
+  real Supabase project, and until it is, `save_workout_graph` does not exist there and every workout
+  save against it fails outright. That is a loud failure rather than a silent partial write, but it is
+  a release gate — see `Docs/release-checklist.md` §3.
 - **Exception process:** Any interim non-atomic write path must be explicitly called out in the relevant sprint document until fixed; it may not be silently treated as production-ready.
 
 ### I-3. Raw set-level data must remain available even when derived metrics are cached
@@ -78,12 +108,23 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   and adds nothing. Nothing was created on EAS. The session it now obtains is a user access/refresh
   token pair, which is not a build-time secret and is held only in the Keychain/Keystore by the existing
   chunked adapter, never in source, `eas.json`, or a doc.
+
+  **Still holds 2026-08-09** (sprint `v1-password-reset`). The recovery OTP is **user-supplied and
+  transient**: the lifter reads six digits out of an email, types them in, and they are sent once and
+  discarded with the component. It is never written to the Keychain, to `AsyncStorage`, to a log, or to
+  a doc, and it is not a build-time secret in any sense. No `redirectTo` URL is passed either, so
+  nothing about the project's configuration is embedded in the call.
 - **Exception process:** None for privileged credentials reaching the mobile client. Any feature that appears to need one (e.g., RevenueCat webhook verification, store API calls) requires a server-side component, decided via ADR — not a client-side workaround.
 
 ### I-5. No secret values in code, commits, documentation, prompts, logs, or generated artifacts
 - **Rule:** Secret-like values (API keys, tokens, passwords, private keys) are never written into source, Git history, `Docs/`, AI prompts/output, or logs — including partial or "example-looking" values that are actually real.
 - **Why:** Git history and documentation are effectively permanent and widely readable; a leaked secret cannot be un-leaked by deleting the file in a later commit.
 - **Enforcement evidence or expected validation:** This sprint's validation step searches all newly created documentation for secret-like patterns (`SUPABASE`, `REVENUECAT`, `API_KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE KEY`) without printing values. `.env` is confirmed git-ignored (`.gitignore`).
+
+  **Extended again 2026-08-09** (sprint `v1-password-reset`): the same assertions now run over the
+  reset strings, and the pattern list there additionally rejects `otp` and `verifyOtp` — the mechanism
+  has a name the lifter has no reason to learn, and "enter the code from your email" is the honest
+  description of what they are doing.
 
   **Extended to user-facing copy 2026-08-06** (sprint `v1-auth-and-session`). The rule now has an
   automated check on the one surface most likely to leak configuration detail into a lifter's hands:
@@ -113,6 +154,14 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   gap is a real path to one lifter seeing another's data, so it is now closed explicitly by the
   sign-out teardown contract and the draft-ownership check — see **I-19**, which exists to keep that
   from being re-derived every time a new store is added.
+
+  **Extended 2026-08-08** (sprint `v1-signout-surface`). `SessionUser` now carries `email` alongside
+  `userId`, and both are held on `sessionStore`. The rule they live under is unchanged and is stated in
+  the store itself: **neither is ever passed into a repository method.** They exist so the Account sheet
+  can answer "which account am I in?" — the question a sign-out control is usually opened to settle on a
+  shared device — and for test assertions. Identity still reaches Postgres only as the access token, and
+  is still checked by RLS. Sign-out clears both, so a stale `email` cannot name the previous lifter on
+  the next session's first frame (asserted in `src/store/__tests__/authActions.test.ts`).
 - **Exception process:** Any new shared/world-readable data pattern must be documented in the schema/migration and referenced from this invariant's evidence, not introduced silently.
 
 ---
@@ -136,6 +185,13 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   exactly why it was worth pinning before someone adds a reassuring sentence about recovery to a
   sign-up screen. It is a pattern for the copy review this invariant still expects, not a substitute
   for it: a regex cannot review a claim, and the readiness surfaces remain unchecked.
+
+  **Extended 2026-08-09** (sprint `v1-password-reset`) over the reset strings. Worth noting the word
+  that makes this less trivial than it looks: PRism uses **"recovery"** for both a training concept
+  (`estimateRecovery`, the Body screen) and an account one (Supabase's recovery email). The reset copy
+  deliberately never says "recovery" to the lifter — it says "reset your password" and "code" — so the
+  two senses cannot collide on screen and imply that resetting a password has anything to do with how
+  recovered they are.
 - **Exception process:** Requires specific, documented legal/product approval and supporting evidence — not currently granted for any claim beyond the existing "estimate, not a verdict" framing.
 
 ---
@@ -159,6 +215,24 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   real user. The precondition named above — "once auth exists" — is now satisfied, so the cascade-based
   implementation is unblocked and this is squarely a scheduling decision rather than a dependency.
   Remains blocking for store submission; its own branch, per I-14.
+
+  **Guarded against confusion 2026-08-08** (sprint `v1-signout-surface`). An Account surface now exists,
+  and "sign out" is exactly the phrase a worried person reads as "erase my data" — so the copy is
+  constrained rather than trusted. `src/content/__tests__/accountCopy.test.ts` asserts the explanatory
+  line matches none of `delete`, `erase`, `export`, `wipe`, `permanently`, `remove your account` or
+  `close your account`, and that it states both halves of what actually happens: the device is cleared,
+  and the account and its logged sessions are not. If deletion or export ever ships, that test is the
+  thing that has to be deliberately changed — which is the point. **Neither capability exists**, and this
+  invariant is unchanged and still open.
+
+  **Guarded again 2026-08-09** (sprint `v1-password-reset`). Password reset is the second surface whose
+  name a worried person can read as erasure — "reset my account" and "reset my password" are one word
+  apart. It **changes a credential and removes nothing**: no row is deleted, no data is exported, and
+  the account is the same account afterwards. `authCopy.test.ts` extends the same constraint over
+  `AUTH_RESET` and `AUTH_RESET_ERROR_COPY` (`delete`, `erase`, `export`, `wipe your`). **I-10 remains
+  open and blocking for store submission**, and the client-side account lifecycle being complete —
+  sign up, sign in, sign out, recover — must not be mistaken for it being closed. Deletion and export
+  are a separate branch and a separate gate.
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
@@ -285,9 +359,25 @@ Continued from I-11/I-12 above; grouped separately here only to keep invariant I
   `profileId` must not be read back as a permission or used to gate UI — is unchanged and still correct:
   the value can throw a draft away, and can never let one through.
 
-  **Not yet enforceable by the user.** There is no sign-out control anywhere in the app, because there
-  is no settings screen. The contract above is implemented and tested but reachable only in code. Until
-  an affordance exists, this invariant is met in the sense that sign-out is *correct*, not in the sense
-  that a lifter can perform one.
+  **Now enforceable by the user, as of 2026-08-08** (sprint `v1-signout-surface`), replacing this
+  entry's previous "implemented and tested but reachable only in code" caveat. Today's header carries an
+  Account control that opens `app/account.tsx`, whose "Sign out" row calls `signOutAndTearDown`. Three
+  properties matter to this invariant specifically:
+
+  - **It appears exactly where an account exists.** `canOfferSignOut({ authEnabled, sessionPhase })` is
+    true only for an authenticated session in a build with credentials, so demo and misconfigured builds
+    render nothing — the teardown contract cannot be invoked where there is no session to end.
+  - **It warns before destroying logged work.** `shouldConfirmSignOut` returns true when the in-progress
+    draft has any completed set, warm-ups included, and the sheet then names the count and the session
+    before proceeding. Teardown itself is deliberately indiscriminate — leaving one lifter's unfinished
+    session on a shared device is worse than losing it — so the warning belongs in front of it, not
+    inside it. This is UX decision D6's rule ("confirm only when logged work would be lost"), unchanged.
+  - **It cannot survive its own action.** After teardown the draft key is absent, `trainingStore` is
+    empty, `userId` and `email` are null, and `canOfferSignOut` returns false. Asserted directly in
+    `src/store/__tests__/authActions.test.ts`.
+
+  **Still unverified by rendering.** No component-test tooling exists, so the control, the modal and the
+  confirmation `Alert` are covered only through the pure predicates behind them, and no cold-start
+  on-device run has been performed.
 - **Exception process:** None. Any new store or persisted key holding user-scoped data must be added to
   the teardown sequence in the same change that introduces it — not in a follow-up.

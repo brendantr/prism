@@ -145,6 +145,41 @@ export function fromWorkout(w: Workout): Record<string, unknown> {
   };
 }
 
+/**
+ * The whole object graph as one nested payload, for `save_workout_graph`
+ * (`supabase/migrations/0003_workout_write_integrity.sql`).
+ *
+ * Same row shapes as the individual mappers above, nested rather than flattened
+ * into three separate statements -- the function needs the entire graph in one
+ * argument to be able to reconcile it, because what the payload omits is what
+ * it deletes. A flattened list of only the rows to upsert cannot express "this
+ * exercise is no longer part of the session."
+ *
+ * `profile_id` is absent here for exactly the reason it is absent from
+ * `fromWorkout`: the database takes ownership from `auth.uid()`.
+ */
+export function fromWorkoutGraph(w: Workout): Record<string, unknown> {
+  return {
+    ...fromWorkout(w),
+    exercises: w.exercises.map((we) => ({
+      ...fromWorkoutExercise(we),
+      sets: we.sets.map(fromSet),
+    })),
+  };
+}
+
+export function fromPersonalRecord(r: PersonalRecord): Record<string, unknown> {
+  return {
+    id: r.id,
+    exercise_id: r.exerciseId,
+    kind: r.kind,
+    value: r.value,
+    reps: r.reps,
+    weight_kg: r.weightKg,
+    achieved_at: r.achievedAt,
+  };
+}
+
 export function toCheckIn(row: any): CheckIn {
   return {
     id: row.id,
