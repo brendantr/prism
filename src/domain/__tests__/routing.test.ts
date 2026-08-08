@@ -2,6 +2,7 @@ import {
   AUTH_ROUTE,
   HOME_ROUTE,
   ONBOARDING_ROUTE,
+  ONBOARDING_STEPS_ROUTE,
   resolveInitialRoute,
   resolveOnboardingAuthHref,
   type SessionPhase,
@@ -32,8 +33,8 @@ describe('resolveInitialRoute', () => {
   });
 
   describe('first run', () => {
-    it('sends an un-onboarded user to onboarding regardless of session phase', () => {
-      for (const sessionPhase of PHASES.filter((p) => p !== 'unknown')) {
+    it('sends an un-onboarded user with no session to onboarding', () => {
+      for (const sessionPhase of ['unauthenticated', 'disabled'] as const) {
         expect(
           resolveInitialRoute({
             onboardingCompleted: false,
@@ -66,6 +67,69 @@ describe('resolveInitialRoute', () => {
         }),
       ).toBeNull();
     });
+
+    /**
+     * THE REGRESSION THIS BLOCK EXISTS FOR
+     * ====================================
+     * On a real-backend build a new install could neither sign up nor sign in.
+     * Onboarding pushes `/onboarding/auth`, which is a `<Redirect>` to `/auth`;
+     * this gate saw a segment that was not `onboarding` and sent the lifter
+     * straight back to the welcome screen. Both entry points bounced, silently.
+     *
+     * The rule was written when the form lived at `app/onboarding/auth.tsx`. The
+     * auth sprint moved it to `app/auth/`, and the rule protecting the first run
+     * started evicting the one step that has to happen during it. Every test
+     * here passed throughout, because the function did exactly what it was
+     * specified to do — the specification had gone stale. Found by a cold-start
+     * run against a live project on 2026-08-08.
+     */
+    it('lets an un-onboarded lifter reach the sign-in form', () => {
+      expect(
+        resolveInitialRoute({
+          onboardingCompleted: false,
+          sessionPhase: 'unauthenticated',
+          currentSegment: 'auth',
+        }),
+      ).toBeNull();
+    });
+
+    it('still returns a build with no accounts to onboarding, even at /auth', () => {
+      // Demo and misconfigured builds have nothing to sign into, so `auth` is
+      // not a legal destination for them — `resolveOnboardingAuthHref` sends
+      // them to the questions instead.
+      expect(
+        resolveInitialRoute({
+          onboardingCompleted: false,
+          sessionPhase: 'disabled',
+          currentSegment: 'auth',
+        }),
+      ).toBe(ONBOARDING_ROUTE);
+    });
+
+    it('resumes at the setup questions after signing up mid-flow', () => {
+      // Engineer/owner decision, 2026-08-08. Returning them to the welcome
+      // screen reads as the sign-up having failed.
+      expect(
+        resolveInitialRoute({
+          onboardingCompleted: false,
+          sessionPhase: 'authenticated',
+          currentSegment: 'auth',
+        }),
+      ).toBe(ONBOARDING_STEPS_ROUTE);
+    });
+
+    it('does not strand an authenticated first-runner anywhere else either', () => {
+      for (const currentSegment of ['(tabs)', 'history', undefined]) {
+        expect(
+          resolveInitialRoute({
+            onboardingCompleted: false,
+            sessionPhase: 'authenticated',
+            currentSegment,
+          }),
+        ).toBe(ONBOARDING_STEPS_ROUTE);
+      }
+    });
+
   });
 
   describe('onboarded but signed out', () => {
@@ -135,7 +199,13 @@ describe('resolveInitialRoute', () => {
         for (const currentSegment of ['(tabs)', 'onboarding', 'auth', 'workout', undefined]) {
           const first = resolveInitialRoute({ onboardingCompleted, sessionPhase, currentSegment });
           if (first === null) continue;
-          const landed = first === HOME_ROUTE ? '(tabs)' : first.replace('/', '');
+          // `segments[0]`, not the whole path. Every destination was a single
+          // segment until `/onboarding/steps` was added, so `replace('/', '')`
+          // happened to work and stopped working silently -- it produced
+          // 'onboarding/steps', which matches no segment and made this property
+          // look violated when it was not.
+          const landed =
+            first === HOME_ROUTE ? '(tabs)' : first.replace(/^\//, '').split('/')[0];
           expect(
             resolveInitialRoute({ onboardingCompleted, sessionPhase, currentSegment: landed }),
           ).toBeNull();
