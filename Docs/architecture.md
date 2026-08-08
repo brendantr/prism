@@ -117,6 +117,26 @@
   **F-2** — an access token survives both sign-out and account deletion, because it is a stateless JWT,
   so the security property is "discarded and unrenewable", not "revoked". Full record:
   `Docs/sprints/2026-08-07-staging-supabase-verification.md`.
+- **Delta since 2026-08-07 (`feature/v1-library-seed`, cut from the integration branch above):**
+  **F-1 is closed.** `supabase/migrations/0006_seed_library.sql` seeds the 43-movement catalogue and
+  both template plans (2 routines, 7 days, 38 slots) as system rows (`profile_id = null`), so a real
+  account finally has something to log against. It seeds **no training history of any kind** — that
+  property is asserted in both SQL and TypeScript, because it is the product decision itself
+  `[decision, engineer/owner, 2026-08-07]`: fabricated history is user data that is not the user's,
+  the catalogue is app content. Ids are not pinned (nothing in application code references one) and
+  idempotency is asserted as "no duplicate rows" rather than as a total, which survives
+  `01_seed_test_data.sql`'s own system fixture. Evidence: `supabase/tests/rls/run.sh` against a clean
+  local Postgres **16.14** — **146/146 assertions** (57 + 31 + 23 + 21 + **14 new**), reproduced twice
+  from a freshly created database, with `0006` deliberately applied twice by the runner; plus 47
+  drift-guard tests (`src/data/__tests__/librarySeed.test.ts`) pinning the migration to
+  `EXERCISE_LIBRARY`/`ROUTINE_TEMPLATES` in both directions. `eas.json`'s `preview` profile is flipped
+  to `EXPO_PUBLIC_DEMO_MODE: "false"`. **Two things this does not mean:** `0006` has run against a
+  disposable local database only and no hosted project has it; and a preview build cut today shows
+  `SUPABASE_MISCONFIGURED_MESSAGE` rather than the app, because the EAS `preview` environment still
+  has no Supabase variables. A second, separate gap remains open and is now the binding one for
+  testers — **there is still no way to create an exercise anywhere in the app** (`Repository` has no
+  exercise write methods; `activeWorkoutStore.addExercise` only attaches an existing one), so a lifter
+  is limited to the seeded 43. Full record: `Docs/sprints/2026-08-07-library-seed.md`.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five

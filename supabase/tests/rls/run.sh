@@ -41,6 +41,7 @@ run_sql "$MIGRATIONS_DIR/0002_security_hardening.sql"
 run_sql "$MIGRATIONS_DIR/0003_workout_write_integrity.sql"
 run_sql "$MIGRATIONS_DIR/0004_partial_check_ins.sql"
 run_sql "$MIGRATIONS_DIR/0005_account_deletion.sql"
+run_sql "$MIGRATIONS_DIR/0006_seed_library.sql"
 run_sql "$TEST_DIR/01_seed_test_data.sql"
 run_sql "$TEST_DIR/02_run_isolation_tests.sql"
 run_sql "$TEST_DIR/03_run_write_integrity_tests.sql"
@@ -49,4 +50,11 @@ run_sql "$TEST_DIR/04_run_check_in_tests.sql"
 # operation that would invalidate the shared fixtures if it touched them.
 run_sql "$TEST_DIR/05_run_account_deletion_tests.sql"
 
-echo "=== RLS isolation + write-integrity + check-in + deletion suites passed ==="
+# 0006 applied a second time, then asserted. Idempotency is a property the
+# library seed has to have -- applying migrations to a hosted project is manual,
+# so "did I already run that one?" must be answerable by running it again -- and
+# a property asserted without actually re-applying the file is an assumption.
+run_sql "$MIGRATIONS_DIR/0006_seed_library.sql"
+run_sql "$TEST_DIR/06_run_library_seed_tests.sql"
+
+echo "=== RLS isolation + write-integrity + check-in + deletion + library seed suites passed ==="

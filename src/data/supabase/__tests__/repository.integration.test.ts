@@ -186,15 +186,23 @@ integrationSuite('SupabaseRepository against a real project', () => {
     expect(profile.unit).toBe('kg');
   });
 
-  it('starts with an empty shared library, because nothing seeds one', async () => {
-    // Documents finding F-1 as a test rather than as prose. If a seed migration
-    // ever lands, this assertion is the thing that has to change deliberately.
+  it('has a catalogue to log against, and no history logged in it', async () => {
+    // This assertion was the inverse one sprint ago, pinning finding F-1: a
+    // fresh project had no exercises and no routines, so a real lifter could
+    // not log anything. `0006_seed_library.sql` closed that, and the two halves
+    // below are the product decision it implements — a dictionary is seeded,
+    // training data never is.
     const exercises = await repo().listExercises();
     const system = exercises.filter((e) => e.isSystem);
 
-    expect(system).toEqual([]);
-    expect(await repo().listRoutines()).toEqual([]);
-    expect(await repo().getActiveRoutine()).toBeNull();
+    expect(system.length).toBeGreaterThanOrEqual(43);
+    expect((await repo().listRoutines()).filter((r) => r.isTemplate)).toHaveLength(2);
+    expect(await repo().getActiveRoutine()).not.toBeNull();
+
+    // The account itself is empty, and stays empty until its owner logs.
+    expect(await repo().listWorkouts()).toEqual([]);
+    expect(await repo().listCheckIns()).toEqual([]);
+    expect(await repo().listPersonalRecords()).toEqual([]);
   });
 
   describe('completeWorkout through save_workout_graph', () => {
