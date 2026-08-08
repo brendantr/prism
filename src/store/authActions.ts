@@ -31,43 +31,69 @@ import { useTrainingStore } from './trainingStore';
  * `src/store/__tests__/authActions.test.ts` as its enforcement evidence.
  */
 export async function signOutAndTearDown(): Promise<void> {
-  // 1. End the session and clear it from the Keychain.
-  //
-  //    `auth.signOut` already swallows its own errors, and this catches anyway:
-  //    every step below is a local guarantee, and none of them should depend on
-  //    a transport call in another module continuing to never reject. A lifter
-  //    left signed in on a shared phone because the network was down is the
-  //    worst outcome available here, and it must not be one bad promise away.
-  try {
-    await signOutRemote();
-  } catch {
-    // Deliberately ignored -- local teardown is not optional.
+  await tearDownLocalState({ endRemoteSession: true });
+}
+
+/**
+ * Raised when the account WAS deleted and the device was not fully cleaned up.
+ *
+ * The distinction is the whole reason this type exists. `deleteAccountAndTearDown`
+ * has two failure regions with opposite meanings, and collapsing them into one
+ * `catch` is how a lifter gets told "your account and your data are unchanged"
+ * over an account that no longer exists -- which is exactly what shipped, and
+ * what a review caught.
+ */
+export class AccountDeletedLocalCleanupError extends Error {
+  constructor(cause: unknown) {
+    super('Account deleted, but local teardown did not complete');
+    this.name = 'AccountDeletedLocalCleanupError';
+    this.cause = cause;
+  }
+}
+
+/**
+ * Every local step, each attempted regardless of the ones before it.
+ *
+ * Previously these ran unguarded in sequence, so a rejected
+ * `AsyncStorage.removeItem` skipped the read-model reset, the repository reset
+ * AND `markUnauthenticated` -- leaving a half-cleared device still believing it
+ * was signed in. That is tolerable for sign-out (the user can try again) and
+ * unacceptable after deletion (there is nothing left to sign back into).
+ *
+ * Returns the first failure rather than throwing, so the caller decides what a
+ * partial teardown means. Ordering is unchanged and still load-bearing: the
+ * phase flips LAST, so the route gate cannot navigate against half-cleared data.
+ */
+async function tearDownLocalState(opts: { endRemoteSession: boolean }): Promise<unknown | null> {
+  let firstFailure: unknown = null;
+  const attempt = async (step: () => Promise<void> | void) => {
+    try {
+      await step();
+    } catch (e) {
+      if (firstFailure === null) firstFailure = e;
+    }
+  };
+
+  if (opts.endRemoteSession) {
+    // Already best-effort: a lifter left signed in on a shared phone because the
+    // network was down is the worst outcome available here.
+    await attempt(() => signOutRemote());
   }
 
-  // 2. Drop the in-progress draft. `discard()` sets `workout` to null, which
-  //    the store's own subscriber turns into a queued `removeItem`.
-  //
-  //    `flushDraftWrites()` then waits for the queue to drain. Removing the key
-  //    without that wait was not enough on its own: a `setItem` from the last
-  //    logged set could still be in flight, and landing after this line would
-  //    put the draft back on disk for whoever signs in next. Draining first and
-  //    removing after makes the order total.
-  useActiveWorkoutStore.getState().discard();
-  await flushDraftWrites();
-  await AsyncStorage.removeItem(DRAFT_STORAGE_KEY);
-
-  // 3. Empty the read model. This is the actual leak fix: the arrays here are
-  //    what would otherwise still be in memory when the next lifter signs in.
-  useTrainingStore.getState().reset();
-
-  // 4. Defence in depth. `SupabaseRepository` is stateless today, so this
-  //    changes nothing observable -- it is here so that a future cached field
-  //    on the instance is covered by a teardown path that already exists.
-  resetRepository();
-
-  // 5. Last. This is what the route gate watches.
+  await attempt(async () => {
+    useActiveWorkoutStore.getState().discard();
+    await flushDraftWrites();
+    await AsyncStorage.removeItem(DRAFT_STORAGE_KEY);
+  });
+  await attempt(() => useTrainingStore.getState().reset());
+  await attempt(() => resetRepository());
+  // Not inside `attempt`: if this throws the app is unrecoverable anyway, and
+  // swallowing it would leave the route gate pointing at a dead session.
   useSessionStore.getState().markUnauthenticated();
+
+  return firstFailure;
 }
+
 
 /**
  * DELETE THE ACCOUNT, then tear down exactly as sign-out does.
@@ -90,13 +116,23 @@ export async function signOutAndTearDown(): Promise<void> {
  * exists and be ignored, which is correct.
  */
 export async function deleteAccountAndTearDown(): Promise<void> {
-  // 1. The irreversible part. Throws on failure; nothing local has happened yet,
-  //    so a failure here leaves the lifter exactly where they were.
+  // REGION 1 -- nothing irreversible has happened yet.
+  //
+  // A throw here means the account still exists, the device is untouched, and
+  // the lifter is exactly where they were. The screen may say so.
   await getRepository().deleteAccount();
 
-  // 2. Everything else is the sign-out path, unchanged. Reusing it rather than
-  //    repeating it is deliberate: a store added to the teardown later must not
-  //    be cleared on sign-out and forgotten on deletion, which is precisely the
-  //    kind of divergence that leaves a deleted account's data on a device.
-  await signOutAndTearDown();
+  // REGION 2 -- the account is gone. Nothing below can undo that.
+  //
+  // The remote session is deliberately NOT ended first: there is no user left
+  // to sign out, and the call would fail against a deleted account and waste a
+  // round trip on the one path where the lifter is waiting.
+  //
+  // Every local step is attempted even if an earlier one fails, and the phase
+  // still flips last. A failure here is real and worth telling the truth
+  // about, but it is a *cleanup* failure -- reporting it as "your account is
+  // unchanged" is a lie, and reporting nothing leaves stale data on the device
+  // with no explanation.
+  const failure = await tearDownLocalState({ endRemoteSession: false });
+  if (failure !== null) throw new AccountDeletedLocalCleanupError(failure);
 }

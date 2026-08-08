@@ -10,7 +10,11 @@ import {
   summariseAccountExport,
 } from '@/domain/accountExport';
 import { getRepository } from '@/data/repository';
-import { deleteAccountAndTearDown, signOutAndTearDown } from '@/store/authActions';
+import {
+  AccountDeletedLocalCleanupError,
+  deleteAccountAndTearDown,
+  signOutAndTearDown,
+} from '@/store/authActions';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
@@ -190,8 +194,18 @@ export default function AccountScreen() {
       // Someone who just confirmed twice does not need a third screen.
     } catch (e) {
       console.warn('[account] delete failed', e);
-      // Says what did NOT happen. A failed deletion that reads like a completed
-      // one would send someone away believing their data is gone.
+      // TWO different failures, and telling them apart is the point.
+      //
+      // `AccountDeletedLocalCleanupError` means the account is gone and only
+      // the device cleanup fell short. Showing the "your data is unchanged"
+      // copy here would be a lie -- which is what this screen did before a
+      // review caught it, because it caught every rejection identically.
+      if (e instanceof AccountDeletedLocalCleanupError) {
+        Alert.alert(ACCOUNT.deletedCleanupFailedTitle, ACCOUNT.deletedCleanupFailedMessage);
+        // No `setBusy(null)`: the session is already unauthenticated, so the
+        // route gate is unmounting this modal regardless.
+        return;
+      }
       Alert.alert(ACCOUNT.deleteFailedTitle, ACCOUNT.deleteFailedMessage);
       setBusy(null);
     }

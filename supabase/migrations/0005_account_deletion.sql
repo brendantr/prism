@@ -8,7 +8,13 @@
 -- 0001-0004 are deliberately not edited.
 --
 -- ===========================================================================
--- WHY THIS FUNCTION IS `SECURITY DEFINER` AND THE OTHERS ARE NOT
+-- WHY THIS FUNCTION IS `SECURITY DEFINER` AND 0003/0004 ARE NOT
+-- ===========================================================================
+-- Correction, added after review: this is NOT the only `security definer`
+-- function in the schema, as an earlier version of this header implied.
+-- `handle_new_user` (0001, re-created with a pinned search_path in 0002) is one
+-- too. This is the only one that DESTROYS data, which is what the containment
+-- below is sized for.
 -- ===========================================================================
 -- `save_workout_graph` (0003) and `save_check_in` (0004) are both
 -- `security invoker`, and their headers argue at length that a definer function
