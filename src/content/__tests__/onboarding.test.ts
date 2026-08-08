@@ -1,4 +1,6 @@
 import {
+  COMPLETE,
+  completionBody,
   FEATURE_SLIDES,
   FEATURES,
   ONBOARDING_LOG_DEMO,
@@ -97,6 +99,44 @@ describe('onboarding redesign content', () => {
       const { disclaimer } = ONBOARDING_READINESS_DEMO;
       expect(disclaimer).toContain('never a diagnosis');
       expect(disclaimer).toContain('never medical advice');
+    });
+  });
+  /**
+   * THE COMPLETION SENTENCE
+   * =======================
+   * One string used to promise eight weeks of sample training and storage "on
+   * this device". Both halves are true in demo and both are false on a real
+   * account, and it is the last screen before Today -- every tester would have
+   * read it. Found by a cold-start run against a live project, 2026-08-08.
+   *
+   * These assertions hold each variant to what its own mode can deliver, so the
+   * two cannot be collapsed back into one by someone tidying up.
+   */
+  describe('COMPLETE, per mode', () => {
+    it('gives an account build the account sentence, and demo the demo one', () => {
+      expect(completionBody(true)).toBe(COMPLETE.bodyAccount);
+      expect(completionBody(false)).toBe(COMPLETE.bodyDemo);
+    });
+
+    it('never tells a real account its data is device-bound or pre-populated', () => {
+      const body = COMPLETE.bodyAccount.toLowerCase();
+      for (const claim of ['this device', 'sample training', 'eight weeks']) {
+        expect(body).not.toContain(claim);
+      }
+    });
+
+    it('tells a real account both true things: it starts empty, and it persists', () => {
+      const body = COMPLETE.bodyAccount.toLowerCase();
+      expect(body).toContain('empty');
+      expect(body).toContain('saves');
+    });
+
+    it('never promises a demo build an account', () => {
+      // The inverse error: demo data is device-only, and saying otherwise would
+      // send someone looking for sessions that were never uploaded anywhere.
+      const body = COMPLETE.bodyDemo.toLowerCase();
+      expect(body).toContain('this device');
+      expect(body).not.toContain('sign in');
     });
   });
 });
