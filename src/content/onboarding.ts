@@ -345,8 +345,27 @@ export const STEPS = {
 export const COMPLETE = {
   eyebrow: 'You are set up',
   title: 'Ready when you are.',
-  body:
+  /**
+   * TWO BODIES, BECAUSE THE ONE SENTENCE WAS FALSE FOR HALF THE BUILDS
+   * ------------------------------------------------------------------
+   * This used to be a single string promising eight weeks of sample training
+   * and storage "on this device". Both halves are true in demo and both are
+   * wrong on a real account: there is no sample training, and nothing is
+   * device-bound -- it goes to Postgres under the lifter's account.
+   *
+   * It was found on a cold-start run against a live project, on the last screen
+   * before Today, which is to say every tester would have read it. Same class of
+   * problem as the deletion copy that once said "your data is unchanged" over a
+   * deleted account: a sentence that was true when written and became a lie when
+   * the mode around it changed.
+   *
+   * `completionBody()` picks; `onboarding.test.ts` holds each to what its own
+   * mode can actually deliver.
+   */
+  bodyDemo:
     'PRism opens on eight weeks of sample training so nothing looks empty. Log a real session whenever you want and it saves on this device.',
+  bodyAccount:
+    'Nothing is logged yet — this account is yours and it starts empty. Everything you record saves to it, so it is there whenever you sign in.',
   primaryCta: 'Start training',
   summaryEyebrow: 'What you told us',
   /** Shown for any question that was skipped. Never a stand-in value. */
@@ -364,3 +383,14 @@ export const COMPLETE = {
     equipment: 'Equipment',
   },
 } as const;
+
+/**
+ * Which completion sentence this build is entitled to say.
+ *
+ * A function rather than a ternary in the screen because there is no rendering
+ * coverage in this repository -- a rule left in a component is a rule with no
+ * test, which is exactly how the single-string version survived.
+ */
+export function completionBody(authEnabled: boolean): string {
+  return authEnabled ? COMPLETE.bodyAccount : COMPLETE.bodyDemo;
+}
