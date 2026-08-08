@@ -99,6 +99,24 @@
     unchanged (still gated, still skipped) — **nothing here was exercised against a live Supabase
     project**, only against local Postgres. **I-10 remains open.** Full record:
     `Docs/sprints/2026-08-06-v1-workout-write-integrity.md`.
+- **Delta since 2026-08-07 (`feature/v1-staging-supabase-verification`, based on `main` at `a72a2e5`):**
+  the integration lane is real code rather than four `it.todo`s, and **nothing in this document's
+  "verified" claims about the database changes as a result** — because the lane has not been run.
+  What exists now: a harness that boots PRism's own module graph against a staging project
+  (`src/data/supabase/__tests__/support/`), 19 tests across auth lifecycle, repository/RPC behaviour,
+  RLS between two real accounts, and account deletion, and a separate nightly/dispatch workflow
+  (`.github/workflows/integration.yml`) that warns rather than passes when no project is configured.
+  Evidence: `npx tsc --noEmit` clean; `npm test -- --ci` **401/25, unchanged**, confirming the
+  hermetic lane is untouched; `npm run test:integration` **19 skipped, 0 failures**. **No Supabase
+  project was created and no migration was applied anywhere** — creating one is owner-only
+  (`Docs/invariants.md` I-4), and the runbook is §4 of the sprint record.
+  Two findings that did not need a project to establish, both recorded there in full: **F-1** — no
+  migration seeds `exercises` or `routines`, and `EXERCISE_LIBRARY`/`ROUTINE_TEMPLATES` are consumed
+  only by `DemoRepository`, so a correctly migrated production project gives a real lifter an empty
+  exercise picker and no plans (a v1 blocker, invisible to every existing suite, now pinned by a test);
+  **F-2** — an access token survives both sign-out and account deletion, because it is a stateless JWT,
+  so the security property is "discarded and unrenewable", not "revoked". Full record:
+  `Docs/sprints/2026-08-07-staging-supabase-verification.md`.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five

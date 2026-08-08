@@ -1,0 +1,80 @@
+name: Integration (staging Supabase)
+
+# WHY THIS IS A SEPARATE WORKFLOW FROM ci.yml
+# -------------------------------------------
+# `ci.yml` is hermetic. Every job in it runs against the repository and a
+# disposable container, needs no secret, and therefore runs on every pull
+# request including one from a fork. That property is worth protecting.
+#
+# This lane is the opposite of hermetic: it talks to a real, hosted Supabase
+# project, and it CREATES AND DELETES ACCOUNTS on it. Mixing the two would mean
+# either weakening `ci.yml` (secrets on fork PRs — a credential-exfiltration
+# path) or making a fork PR look broken because it could not reach a project it
+# was never going to be given.
+#
+# WHY IT IS NOT ON EVERY PUSH
+# ---------------------------
+# The question this lane answers is "does the app still work against the real
+# project", and the two things that change that answer are a change to the data
+# layer and a change to the project itself. A nightly run catches the second
+# (a migration applied by hand and then forgotten, a project setting flipped in
+# the dashboard), which no push-triggered job can see. Everything else is a
+# deliberate `workflow_dispatch` before a release.
+#
+# The project on the other end must be STAGING. This deletes accounts.
+on:
+  workflow_dispatch:
+  schedule:
+    # 06:00 UTC daily. Nothing depends on the hour; it is off-peak for the owner.
+    - cron: '0 6 * * *'
+
+concurrency:
+  # One at a time. Two runs against one project would create accounts
+  # concurrently, which is fine, and delete them concurrently, which is fine —
+  # but a failure would be much harder to read.
+  group: integration-staging
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    name: App code against a real Supabase project
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A missing secret is a configuration state, not a failure. Reporting it
+      # as a pass would be worse: this lane's whole purpose is to say whether
+      # the app was exercised against the project, so it has to be able to say
+      # "it was not".
+      - name: Check that a staging project is configured
+        id: guard
+        env:
+          URL: ${{ secrets.PRISM_INTEGRATION_SUPABASE_URL }}
+          ANON_KEY: ${{ secrets.PRISM_INTEGRATION_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$ANON_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No staging Supabase project configured. Set the repository secrets PRISM_INTEGRATION_SUPABASE_URL and PRISM_INTEGRATION_SUPABASE_ANON_KEY. Nothing was exercised against a real project."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Anon key only. A service-role key must never be added to these secrets:
+      # `Docs/invariants.md` I-4 forbids a privileged credential anywhere the
+      # client can reach, and nothing in this lane needs one — each account is
+      # deleted with its own session through `delete_my_account`.
+      - name: Run the integration lane
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          PRISM_INTEGRATION_SUPABASE_URL: ${{ secrets.PRISM_INTEGRATION_SUPABASE_URL }}
+          PRISM_INTEGRATION_SUPABASE_ANON_KEY: ${{ secrets.PRISM_INTEGRATION_SUPABASE_ANON_KEY }}
+        run: npm run test:integration
