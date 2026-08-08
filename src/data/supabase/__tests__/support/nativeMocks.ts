@@ -23,18 +23,3 @@ export function keychainStore(): Map<string, string> {
   return g[STORE_KEY];
 }
 
-/** The `expo-secure-store` surface `secureStorage.ts` actually uses. */
-export function secureStoreMock() {
-  return {
-    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 'after-first-unlock-this-device-only',
-    getItemAsync: async (key: string) => keychainStore().get(key) ?? null,
-    setItemAsync: async (key: string, value: string) => {
-      const bytes = Buffer.byteLength(value, 'utf8');
-      if (bytes > 2048) throw new Error(`SecureStore value too large: ${bytes} bytes`);
-      keychainStore().set(key, value);
-    },
-    deleteItemAsync: async (key: string) => {
-      keychainStore().delete(key);
-    },
-  };
-}

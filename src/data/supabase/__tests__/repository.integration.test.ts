@@ -31,12 +31,6 @@
  * So: SQL suite proves the schema is right, this proves the app can use it.
  */
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
-jest.mock('expo-secure-store', () => require('./support/nativeMocks').secureStoreMock());
-
 import type { CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
 import {
   INTEGRATION_TIMEOUT_MS,
@@ -277,6 +271,20 @@ integrationSuite('SupabaseRepository against a real project', () => {
     // One calendar day, far enough back that the suite cannot collide with a
     // same-day record it wrote in an earlier describe.
     const checkedInAt = new Date(Date.UTC(2026, 0, 15, 9, 0, 0)).toISOString();
+    const DAY = '2026-01-15';
+
+    /**
+     * Found by this suite: **the timestamp you send is not the string you get
+     * back.** The client sends ISO-8601 (`2026-01-15T09:00:00.000Z`); Postgres
+     * stores `timestamptz` and PostgREST returns its own rendering. Matching on
+     * the exact string therefore finds nothing.
+     *
+     * `DemoRepository` stores what it was handed verbatim, so any code comparing
+     * `checkedInAt` by string equality would behave differently in demo than
+     * against a real backend. Nothing does today — the readiness code parses to
+     * `Date` — but it is a real divergence and it is recorded in the sprint.
+     */
+    const onDay = (c: { checkedInAt: string }) => c.checkedInAt.slice(0, 10) === DAY;
 
     it('stores only the answers given, leaving the rest null', async () => {
       const patch: CheckInPatch = {
@@ -288,7 +296,7 @@ integrationSuite('SupabaseRepository against a real project', () => {
 
       await repo().saveCheckIn(patch);
 
-      const stored = (await repo().listCheckIns()).find((c) => c.checkedInAt === checkedInAt);
+      const stored = (await repo().listCheckIns()).find(onDay);
       expect(stored?.profileId).toBe(account.userId);
       expect(stored?.sleepQuality).toBe(4);
       expect(stored?.energy).toBeNull();
@@ -307,7 +315,7 @@ integrationSuite('SupabaseRepository against a real project', () => {
         energy: 2,
       });
 
-      const sameDay = (await repo().listCheckIns()).filter((c) => c.checkedInAt === checkedInAt);
+      const sameDay = (await repo().listCheckIns()).filter(onDay);
       expect(sameDay).toHaveLength(1);
       expect(sameDay[0].energy).toBe(2);
       expect(sameDay[0].sleepQuality).toBe(4); // untouched, because it was omitted
@@ -321,7 +329,7 @@ integrationSuite('SupabaseRepository against a real project', () => {
         sleepQuality: null,
       });
 
-      const stored = (await repo().listCheckIns()).find((c) => c.checkedInAt === checkedInAt);
+      const stored = (await repo().listCheckIns()).find(onDay);
       // Omit vs. explicit null surviving the jsonb round trip is the property
       // `0004` exists for, and this is the first time it has been checked
       // against a real PostgREST rather than a stubbed `rpc()`.
