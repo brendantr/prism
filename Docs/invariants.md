@@ -39,10 +39,14 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   `getActiveRoutine` — world-readable system rows and RLS-only scoping, the documented I-6 exception,
   unchanged. `getSession()` replaced `getUser()` for cost, not for trust: the access token is what
   Postgres evaluates policies against either way, and `getUser()` was issuing a network round-trip on
-  each of the six `uid()` calls inside a single parallel `refresh()`. **The other condition is still
-  open** — no migration has been applied to a real production project, and no code path in this
-  repository has been executed against one (the integration lane is credential-gated and skipped). RLS
-  remains verified against a disposable local Postgres, not against production.
+  each of the six `uid()` calls inside a single parallel `refresh()`.
+
+  **Staging follow-up 2026-08-08** `[fact, engineer/owner handoff]`: migrations `0001`–`0007` are
+  applied to the owned staging Supabase project. The app's credential-gated integration lane passes
+  **19/19** there, including two-account RLS through PostgREST, and the separate local SQL runner passes
+  **154/154** against clean Postgres 16.14. A cold-started device also completed first run and account
+  deletion against staging. This closes the prior "no live execution" qualification for **staging**;
+  it does not claim that any migration or code path has run against a **production** project.
 - **Exception process:** None. This is a hard gate before enabling non-demo mode for real users; no engineer/owner override applies to skipping RLS verification itself.
 
 ### I-2. Workout saves involving multiple records must be atomic, idempotent, or safely recoverable
@@ -82,10 +86,10 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   deliberate choice — RLS still applies to every statement inside it and ownership still comes from
   `auth.uid()`, so I-1 and I-6 are not weakened. A `security definer` version would have been shorter
   and would have become the one hole in the authorization boundary those two invariants describe.
-  Second, **this is verified against local Postgres only.** The migration has not been applied to the
-  real Supabase project, and until it is, `save_workout_graph` does not exist there and every workout
-  save against it fails outright. That is a loud failure rather than a silent partial write, but it is
-  a release gate — see `Docs/release-checklist.md` §3.
+  Second, ~~**this was verified against local Postgres only**~~ **staging now exercises the same path.**
+  Migration `0003` is applied there, and the **19/19** integration lane covers whole-graph save, exact
+  retry, reconciliation and cross-tenant rejection through the app's repository. Production remains
+  unverified; staging evidence must not be relabelled as production evidence.
 - **Exception process:** Any interim non-atomic write path must be explicitly called out in the relevant sprint document until fixed; it may not be silently treated as production-ready.
 
 ### I-3. Raw set-level data must remain available even when derived metrics are cached
@@ -172,6 +176,11 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 - **Rule:** Sleep, energy, soreness, RPE, and any other readiness input are optional for the user to provide, entered by the user (not inferred or pulled from a health platform in v1), private to that user by default, and never framed as medical or diagnostic information. **RPE is the sole perceived-effort field for v1; RIR is out of scope until a separate, explicitly approved future sprint authorizes its data capture, storage, UI, and use as a rule input.**
 - **Why:** This is a mandatory boundary of the approved product direction ([ADR-0002](decisions/ADR-0002-readiness-suggestion-safety.md)) and a real legal/trust risk if violated. RIR was deliberately deferred (engineer/owner decision, 2026-07-27) to keep v1 input scope bounded rather than expanded ad hoc.
 - **Enforcement evidence or expected validation:** **Partially met as of 2026-07-29** (sprint `readiness-inputs-and-confidence-foundation`). What is now verified in code: a real user-entered check-in path exists — `src/components/today/CheckInPrompt.tsx` renders on the Today screen and calls `trainingStore.saveCheckIn`, closing the "no call site for `saveCheckIn` in `app/`" gap the 2026-07-27 reconciliation review found. Optionality is enforced by the type system rather than by convention: `CheckIn.sleepQuality`, `.energy`, `.soreness` and `.stress` are `number | null` in `src/domain/types.ts`, each answerable on its own, and a field left alone is stored as null rather than defaulted (asserted by `src/domain/calc/__tests__/calc.test.ts` and `src/data/__tests__/repository.test.ts`). Inputs remain user-entered — no health-platform or wearable source was added. ~~**Known limitation:** partial check-ins work against `DemoRepository` only…~~ **Closed 2026-08-06** (sprint `v1-checkin-partial-schema`). `supabase/migrations/0004_partial_check_ins.sql` drops `not null` from all four scales and adds `public.save_check_in(jsonb)`, a `security invoker` function that merges a submission into that day's record. Nullability alone was not sufficient: `DemoRepository` distinguishes an **omitted** property (leave the stored answer alone) from one sent as **explicit null** (erase it), which a PostgREST upsert cannot express because it sends every column. The payload is therefore jsonb, and the function tests key presence (`p_patch ? 'energy'`); `SupabaseRepository.saveCheckIn` builds it with `field in checkIn` rather than by value. `assertCompleteCheckIn` is deleted rather than relaxed. A second defect was found and closed with it: the old code upserted on the primary key, so a same-day submission carrying a new id would have inserted a second row and violated `check_ins_one_per_day` — it worked only because the UI happened to reuse a cached id. Evidence: `supabase/tests/rls/04_run_check_in_tests.sql`, **23/23 assertions** against a clean local Postgres 16.14 (111 total across the three SQL suites), each mapped to its counterpart in `src/data/__tests__/repository.test.ts` because parity with demo mode is the property under test. **Deliberately not added:** an at-least-one-answered constraint — demo mode permits clearing every field, and Postgres rejecting a state demo accepts would be exactly the kind of divergence that only surfaces in production. **Still open** `[open question]`: demo resolves "same day" in the device's **local** timezone and Postgres in **UTC**, so a late-evening check-in can land on different days in the two modes. Settling that is a product decision about what a training day is, and it should be settled before real users span time zones. **Also still true:** `0004` has not been applied to any live Supabase project, and until it is, check-ins fail entirely there rather than only partially. **Still open:** the "never medical" copy bar has not been formally reviewed — the strings shipped are product-owner-approved for this feature, but no standing copy/claims review process exists (see I-8). Any check-in data written for real users must still satisfy I-1 (RLS verified) and I-6 (own-data-only access) before production; neither is met, and check-in data is not exempt.
+  **Correction 2026-08-08** `[fact]`, superseding the final live-project sentences above: migration
+  `0004` is applied to staging, and the 19-test integration lane exercises `save_check_in` through the
+  app's repository, including omit/value/null merge semantics. Production remains unverified. I-1 and
+  I-6 are now evidenced for the committed schema and staging path; that is not authorization to treat
+  production configuration as complete.
 - **Exception process:** None without a new ADR reviewed by the engineer/owner and supported by evidence (e.g., specific legal/clinical review), per the mandatory boundaries in the approved product direction. Adding RIR requires the same: a new ADR or explicit sprint approval, not an incidental addition during other readiness work.
 
 ### I-8. PRism must not claim to diagnose injury, detect overtraining, measure recovery clinically, prevent injury, or provide medical advice
@@ -192,6 +201,11 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   deliberately never says "recovery" to the lifter — it says "reset your password" and "code" — so the
   two senses cannot collide on screen and imply that resetting a password has anything to do with how
   recovered they are.
+
+  **Auth-copy boundary** `[fact, reconciled 2026-08-08]`: every Supabase auth error is mapped to one
+  closed `AuthFailure` code, and every code maps to one reviewed sentence. Unknown errors never expose
+  raw server text; credential outcomes do not reveal whether an address is registered. This is useful
+  copy hygiene and an enforcement pattern for I-8, not a substitute for reviewing readiness claims.
 - **Exception process:** Requires specific, documented legal/product approval and supporting evidence — not currently granted for any claim beyond the existing "estimate, not a verdict" framing.
 
 ---
@@ -241,8 +255,9 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   `public.delete_my_account()`, and `app/account.tsx` reaches it through
   `deleteAccountAndTearDown` behind two confirmations. Deleting the `auth.users` row cascades through
   `profiles` to all six user tables (0001), so the function names no tables and cannot drift out of
-  step with the schema. **This is the only `security definer` function in PRism**, and deliberately so:
-  `auth.users` belongs to `supabase_auth_admin`, and the only alternative is the service-role key,
+  step with the schema. **This is the only destructive `security definer` function in PRism**;
+  `handle_new_user` is also a definer. `auth.users` belongs to `supabase_auth_admin`, and the only
+  alternative is the service-role key,
   which I-4 forbids from reaching the client without exception. What contains it is structural — **it
   takes no arguments**, so there is no id to forge and the only account it can ever delete is the one
   the JWT names. `search_path` is pinned, and `PUBLIC`/`anon` cannot execute it.
@@ -254,17 +269,29 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   behind `CLAUDE.md`'s approval gate.
 
   Evidence: `supabase/tests/rls/05_run_account_deletion_tests.sql`, **21 assertions** against a clean
-  local Postgres 16.14 (132 across the four SQL suites), of which six assert the *shape* of the
+  local Postgres 16.14 (part of **154/154** across all six SQL suites), of which six assert the *shape* of the
   function rather than its behaviour — no arguments, definer, pinned `search_path`, and who may
   execute — because a behaviour-only suite would still pass if a later migration relaxed the
   containment. Plus 13 unit tests on the export builder and four on the deletion teardown, including
   the one that matters most: **a failed remote delete must not tear the device down**, or a lifter is
   returned to a sign-in screen believing their data is gone while all of it remains.
 
-  **Not yet met as a release gate** `[fact]`. The invariant says deletion and export must "exist and
-  **work**". They exist and are tested against local Postgres; neither has been run against a live
-  Supabase project, and `0005` is not applied to one. Store submission still requires that, and it
+  **Live staging verification 2026-08-08** `[fact, engineer/owner handoff]`. Deletion and export both
+  ran against staging through the app's integration lane, with `0005` applied; the cold-started device
+  path also completed account deletion. The capability requirement in this invariant is therefore met
+  for the client and staging. No production project is claimed, and store submission separately still
   requires a privacy policy, which does not exist in this repository (`Docs/architecture.md` §Risks).
+
+  **The `0007` chapter — why local green was not enough.** A real integration account exposed that
+  deletion was outright broken when the lifter owned a custom exercise referenced by their own workout.
+  Two cascade branches — `profiles → exercises` and `profiles → workouts → workout_exercises` — could
+  be checked in the wrong order against an immediate `on delete restrict` foreign key. Migration
+  `0007_deletable_account_with_custom_exercises.sql` changes the workout/routine exercise references to
+  `on delete no action deferrable initially deferred`: deleting a referenced exercise alone is still
+  refused, while the account-wide cascade can finish both branches before validation. The existing
+  `05_run_account_deletion_tests.sql` suite could not see this because its fixture workout has **no
+  exercise blocks**. `07_run_exercise_reference_tests.sql` adds the missing shape and eight assertions;
+  local SQL is **154/154**, and staging integration returned to **19/19** after `0007` was applied.
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
@@ -408,8 +435,10 @@ Continued from I-11/I-12 above; grouped separately here only to keep invariant I
     empty, `userId` and `email` are null, and `canOfferSignOut` returns false. Asserted directly in
     `src/store/__tests__/authActions.test.ts`.
 
-  **Still unverified by rendering.** No component-test tooling exists, so the control, the modal and the
-  confirmation `Alert` are covered only through the pure predicates behind them, and no cold-start
-  on-device run has been performed.
+  ~~**Still unverified by rendering.**~~ **Partially closed 2026-08-08** `[fact]`: sign-out and account
+  deletion were both driven from cold-started device runs against staging, so the reachable controls,
+  teardown and route transition are no longer predicate-only claims. There is still no automated
+  component/rendering coverage for `app/` or `src/components`, and the deletion run exposed a dev-only
+  React navigation-during-render warning that remains open.
 - **Exception process:** None. Any new store or persisted key holding user-scoped data must be added to
   the teardown sequence in the same change that introduces it — not in a follow-up.

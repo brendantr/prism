@@ -2,7 +2,9 @@
 
 ## Document status
 
-- **Status:** Implementation complete in the repository; **not yet executed against a real project**.
+- **Status:** Implementation complete; **executed 19/19 against staging on 2026-08-08**, locally and in
+  the separate GitHub Actions workflow. Sections below preserve the pre-run state at sprint handoff;
+  §9 records the owner follow-up.
 - **Date opened:** 2026-08-07
 - **Branch:** `feature/v1-staging-supabase-verification`
 - **Base:** `main` at `a72a2e5`
@@ -221,3 +223,13 @@ where PRism's catalogue lives, and would need its own ADR.
 
 Separately, and not blocking: **§4 is yours to run.** Until it is run, this sprint has changed what
 can be verified, not what has been.
+
+---
+
+## 9. Owner follow-up — runbook completed 2026-08-08
+
+`[fact, engineer/owner handoff]` The staging project now exists with migrations `0001`–`0007`
+applied. `npm run test:integration` passes **19/19** locally and in `Integration (staging Supabase)`.
+The first live run found the custom-exercise deletion FK defect; `0007` fixed it and returned the lane
+to green. No production project is claimed, and the recovery-email `{{ .Token }}` template remains
+owner-side and unverified.

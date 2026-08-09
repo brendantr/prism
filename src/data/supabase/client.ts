@@ -85,9 +85,6 @@ export function getSupabase(): SupabaseClient {
           a link handler, a redirect URL allow-listed in the Supabase project
           (owner-only, `CLAUDE.md`), and a test path.
 
-          TODO(docs): record this in ADR-0004 and in
-          `Docs/production-posture-v1.md` §4 alongside the preview-flip
-          dependencies.
         */
         detectSessionInUrl: false,
       },

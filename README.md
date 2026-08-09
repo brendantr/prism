@@ -165,14 +165,19 @@ identically against either backend.
 ## Connecting Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Run the migration — SQL Editor, paste `supabase/migrations/0001_init.sql`,
-   execute. This creates all 11 tables, the enums, the indexes, the
-   `handle_new_user` trigger and every row-level-security policy.
-3. Seed the shared exercise library. Insert `src/data/exerciseLibrary.ts` rows
-   into `exercises` with `profile_id = null`; that makes them world-readable and
-   immutable, which is what the RLS policy expects.
-4. Set `EXPO_PUBLIC_DEMO_MODE=false` and fill in the two Supabase variables.
-5. Restart the dev server (env changes need a fresh bundle).
+2. Apply **every** file in `supabase/migrations/` in numeric order, currently
+   `0001_init.sql` through `0007_deletable_account_with_custom_exercises.sql`.
+   Use the SQL Editor one file at a time and stop at the first error. `0003`,
+   `0004` and `0005` add RPCs the app calls unconditionally; stopping at `0001`
+   produces a project where workout saves, check-ins and account deletion fail.
+3. Do not seed the shared catalogue by hand. `0006_seed_library.sql` adds the 43
+   system exercises and two template plans idempotently, with no workout,
+   check-in, measurement, record or other fabricated training history.
+4. Follow §4 of the
+   [staging Supabase verification runbook](Docs/sprints/2026-08-07-staging-supabase-verification.md)
+   for the auth setting and integration-lane verification.
+5. Set `EXPO_PUBLIC_DEMO_MODE=false` and fill in the two Supabase variables.
+6. Restart the dev server (env changes need a fresh bundle).
 
 ### The security model in one paragraph
 

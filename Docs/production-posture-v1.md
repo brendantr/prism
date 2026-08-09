@@ -2,16 +2,15 @@
 
 ## Document status
 
-- **Status:** Decision recorded. **Auth blocker resolved 2026-08-06 (§2); sign-out added 2026-08-08;
-  password reset added 2026-08-09. The client-side account lifecycle is complete and entirely
-  unverified against a real project** — the remaining gate is operational rather than a missing
-  capability. See §4, §4.1 and §7.
+- **Status:** Decision recorded. **The client-side account lifecycle and repository path are verified
+  against staging** — 19/19 integration tests and a cold-started first-run/device deletion path on
+  2026-08-08. Production remains unverified; the next release-tooling dependency is the two EAS
+  `preview` variables. See §4, §4.1 and §7.
 - **Date:** 2026-08-06; revised 2026-08-06 (`feature/v1-auth-session-docs`), 2026-08-08
   (`feature/v1-signout-surface`) and 2026-08-09 (`feature/v1-password-reset`)
-- **Branch:** `feature/v1-production-posture`, revised in turn on `feature/v1-auth-session-docs` after
-  `feature/v1-auth-and-session` (`0af00cd`), on `feature/v1-signout-surface` (`0029a7f`), and on
-  `feature/v1-password-reset` (`954d075`). `[fact]` **None** of these branches is merged to `main` as of
-  this writing, so this document describes branch state, not `main`.
+- **Branch:** opened on `feature/v1-production-posture`; reconciled on
+  `docs/live-backend-reconciliation` after the auth, write-integrity, deletion/export, staging and
+  library work landed on `main`, and based on open PR #58's first-run fix.
 - **Decision owner:** Engineer/owner
 - **Labelling** per `Docs/invariants.md` I-15: `[fact]` / `[decision]` / `[assumption]` / `[open question]`.
 
@@ -51,20 +50,19 @@ that cannot work. Detail: `Docs/architecture.md` §Runtime Architecture 1/3/4 an
 
 ### 2.2 What this does not mean
 
-**Nothing in this repository has been executed against a live Supabase project** `[fact]`. The
-integration lane (`npm run test:integration`) is gated on `PRISM_INTEGRATION_SUPABASE_*`, no credentials
-were created, and it reports 5 tests skipped. Sign-in has never obtained a real token here. The 287
-passing tests are hermetic: they prove the state machine, the gate, the teardown and the copy rules, and
-they prove nothing about a real project's behaviour.
+~~**Nothing in this repository had been executed against a live Supabase project.**~~ **Superseded for
+staging 2026-08-08** `[fact, engineer/owner handoff]`. A staging project exists with migrations
+`0001`–`0007` applied. `npm run test:integration` passes **19/19** locally and in the separate staging
+workflow; a wiped, cold-started simulator completed sign-up → setup → Today → account deletion. This
+does not prove production, and it does not verify the recovery-email template described in §4.1.
 
-Still open, and none of them advanced by this sprint `[fact]`:
+Current posture after the staging follow-up `[fact]`:
 
-- **I-10** — account deletion and data export. Blocking for store submission, and now *more* exposed
-  rather than less: accounts can be created and signed into, and still not deleted or exported. Its own
-  branch.
-- **I-2 / G-2** — `saveWorkout` is still three sequential non-transactional upserts. The severity rose
-  with this sprint: a partial write used to corrupt device-local demo data a lifter could reset, and now
-  corrupts a real account's history.
+- ~~**I-10 — account deletion and data export were absent.**~~ **Closed in the client and verified on
+  staging.** Both ran in the integration lane; deletion also ran on device. Migration `0007` fixed the
+  custom-exercise FK case the first live run exposed.
+- ~~**I-2 / G-2 — `saveWorkout` was non-atomic.**~~ **Closed.** `save_workout_graph` is one transaction
+  with reconciliation and retry idempotency, covered locally and through staging.
 - **G-4** — no crash reporting or analytics. Explicitly untouched, so a failed sign-in in the field
   would be invisible.
 - **No deep-link session capture** `[fact]`. `detectSessionInUrl` is false and no `Linking` handler
@@ -103,17 +101,13 @@ bite.
 | Local dev (Metro) | unset → `__DEV__` → **demo** | Demo seed, no network | Default, or `.env` |
 | Jest | unset → `__DEV__` → **demo** | Demo seed | Default |
 | EAS `development` | `"true"` | Demo seed | `eas.json` `[fact]` |
-| EAS `preview` | `"true"` | Demo seed | `eas.json` `[fact]` |
+| EAS `preview` | `"false"` | **Real-backend path**; staging target, variables pending | `eas.json` `[fact, PR #57]` |
 | EAS `production` | `"false"` | **Real Supabase** | `eas.json` `[fact]` |
 
-**Why `preview` is still demo** `[decision]`: it is the internal-tester profile, and until auth lands a
-real-backend build cannot get past the launch screen (§2). It flips to `"false"` alongside production in
-the same one-line change, and should — testing the real path before submission is exactly its job.
-
-**Updated 2026-08-06** `[fact]`: the auth precondition above is met, so the flip is unblocked *in code*.
-It is **not** a one-line change in practice, and §4 now lists what it actually depends on — EAS variables
-for the `preview` environment as well as `production`, migrations applied to the real project, and the
-project's email-confirmation setting.
+~~**`preview` was still demo while authentication was absent.**~~ **Flipped in PR #57** `[fact]`:
+internal testers now select the real-backend path by profile. Staging exists, `0001`–`0007` are applied, and the
+real path is green outside EAS. The only remaining prerequisite to cutting the preview artifact is its
+two public Supabase environment values (§4).
 
 ### 3.1 Startup behaviour, by build
 
@@ -138,44 +132,38 @@ real-backend dev build both remain one variable away.
 
 ---
 
-## 4. Required environment variables for a production build
+## 4. Required environment variables for real-backend EAS builds
 
-`eas.json` sets the mode flag. It does **not** carry the Supabase credentials, and must not: those are
-project-specific values this repository has no business hardcoding, and the person with the real
-project is the one who should enter them.
+`preview` and `production` both run the real backend. Each EAS environment therefore needs the same
+two **names**, populated with values for the project that profile is meant to use:
 
-**The owner runs these once**, with real values, before the first production build `[open question —
-not run by this branch]`:
+| EAS environment | Required names | Current role |
+|---|---|---|
+| `preview` | `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Staging/internal testers |
+| `production` | `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Store release |
 
-```
-eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_URL      --value "https://<project-ref>.supabase.co" --visibility plaintext
-eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "<anon key>"                        --visibility plaintext
-```
+`EXPO_PUBLIC_DEMO_MODE` is **not** an EAS-environment variable in this design. It is set per profile in
+`eas.json` (`true` for `development`, `false` for `preview` and `production`) so backend selection stays
+reviewable in Git and cannot drift independently in the dashboard.
 
-`plaintext` is correct and deliberate `[fact]`: both are `EXPO_PUBLIC_*`, so they are inlined into the
-client bundle by design and are readable in any install. RLS is the authorization boundary, not their
-secrecy (`Docs/invariants.md` I-4, I-6). **A service-role key must never be created as an EAS variable,
-placed in `eas.json`, or committed anywhere** (I-4, I-5).
+Plaintext visibility is correct and deliberate `[fact]`: both required values are `EXPO_PUBLIC_*`, so
+they are inlined into the client bundle and readable in any install. RLS is the authorization boundary,
+not their secrecy (`Docs/invariants.md` I-4, I-6). **A service-role key must never be created as an EAS
+variable, placed in `eas.json`, or committed anywhere** (I-4, I-5).
 
-**Current state, verified** `[fact, `npx eas config --platform ios --profile production`, 2026-08-06]`:
-`No environment variables with visibility "Plain text" and "Sensitive" found for the "production"
-environment on EAS.` Neither variable exists yet.
+**Current state 2026-08-08** `[fact, engineer/owner handoff]`: staging exists, migrations `0001`–`0007`
+are applied, and the non-EAS integration/device paths are green. The engineer is adding the two
+`preview` values; until both resolve in that environment, the profile reaches the deliberate
+misconfiguration error. This branch did not inspect, create, or print either value.
 
-**Consequence, by design:** a production build made right now has demo off and no credentials, which is
-the misconfigured state — and it now **refuses to start the data layer** with a message naming the
-missing variables, instead of silently downgrading to demo. See §5.
-
-**Added 2026-08-06** `[open question — owner action]`: the two commands above target
-`--environment production` only. **`preview` needs its own pair.** A preview build carries
-`EXPO_PUBLIC_DEMO_MODE=false` once flipped, so without credentials in *its* environment it lands in the
-misconfigured state — loud, correct, and useless for testing. Whichever profile flips first needs its
-variables created first.
+**Consequence, by design:** a real-backend profile missing either value refuses to start the data layer
+instead of silently downgrading to demo. See §5.
 
 ### 4.1 Email confirmation and deep links
 
-**Assumption this sprint was built on** `[assumption, not verified against the project]`: Supabase email
-confirmation is **ON**, which is the default. Sign-up therefore creates the user and returns **no
-session** until the address is verified.
+**Original assumption** `[assumption]`: production email confirmation is **ON**. Staging has now issued
+real sessions and supported the cold-started first-run path, but that test-project setting is not a
+decision about production. Whether production confirmation stays on remains owner-controlled.
 
 The implementation handles that honestly rather than papering over it. `sessionStore.signUp` does not
 treat sign-up as sign-in: it reports a `checkEmail` outcome and the lifter stays on the auth screen,
@@ -247,41 +235,21 @@ path behind Today's "Demo data" chip cannot throw on a misconfigured build `[fac
 
 ## 7. The exact next decisions needed
 
-~~**Scope the authentication sprint (G-1).**~~ **Done 2026-08-06.** Four decisions now sit where that one
-did. They are listed in the order I would take them, with the reasoning, not as a menu:
+~~Authentication, sign-out, password reset, I-2, I-10, migration application, and first live-project
+execution were the prior construction gates.~~ **They are closed for the client and staging** `[fact,
+2026-08-08]`: migrations `0001`–`0007`, 19/19 integration tests, and a cold-started first run through
+account deletion.
 
-1. **Does email confirmation stay ON?** Owner; Supabase project setting, so it is behind `CLAUDE.md`'s
-   approval gate. It decides whether the current manual-sign-in flow is the shipping flow, and it gates
-   decision 2. This is the cheapest decision here and it blocks the most.
-2. ~~**Is password reset in v1 or v1.x?**~~ **Done 2026-08-09** (`feature/v1-password-reset`), answered
-   **v1**. Built code-based rather than link-based, because the canonical link flow needs the deep-link
-   capture decision 5 defers — see §4.1. It is complete in the client and **unverified in the world**:
-   it needs the recovery email template to expose `{{ .Token }}` (owner), and it has never run against a
-   live project.
-3. ~~**Where does sign-out live?**~~ **Done 2026-08-08** (`feature/v1-signout-surface`). An Account
-   control in Today's `headerRight` — the slot `Screen` already exposed and nothing used — opening the
-   `account` modal, which calls `signOutAndTearDown` and confirms first only when logged work would be
-   lost (D6). No settings screen was created and no tab was added; D1 is untouched. The decision that
-   made it minimal: three items on the sheet, and a fourth would have made it the settings surface this
-   was scoped to avoid.
-4. **I-10 (deletion and export), and the release checklist.** Both still absent, both blocking for
-   submission, both their own branches. `Docs/release-checklist.md` and an `npm run verify` script were
-   expected from `feature/release-and-summary-hardening` and were never delivered — that branch merged
-   without them, and neither has any git history `[fact]`.
-5. **Deep-link session capture.** Deferred throughout, and now the thing that shapes two flows rather
-   than one: confirmation ends in a manual sign-in *and* reset is code-based because of it. Its own
-   sprint — a link handler, an allow-listed redirect URL (owner), and `detectSessionInUrl` flipped
-   together. Not blocking; both flows complete without it.
+The next gate is operational: finish the two `preview` environment values in §4, then build and
+cold-start the EAS artifact against staging. Separately, the owner must decide or verify before
+production:
 
-**The next gate is operational, not a decision** `[fact, 2026-08-09]`. Every client-side account flow now
-exists, and **not one of them has been run against a real Supabase project.** The 367 passing tests are
-hermetic: they prove the state machines, the call ordering, the routing and the copy rules, and they
-prove nothing about whether an email arrives. The next step is therefore a **`preview` build against a
-real project**, exercising sign-up → confirm → sign-in → reset → sign-out end to end. It needs three
-owner actions first: EAS variables for the `preview` environment (§4), the migrations applied, and
-`{{ .Token }}` in the recovery template (§4.1).
+1. **Recovery-email template:** does it expose `{{ .Token }}` so the code-based reset can complete?
+   This is still unverified.
+2. **Production email confirmation:** does it stay on? Staging's test setting does not decide this.
+3. **Deep-link capture:** still deferred and non-blocking; confirmation is manual and reset is
+   code-based until a handler, allow-listed redirect and client setting land together.
+4. **Privacy policy and observability:** both remain release concerns outside this document's auth and
+   environment posture.
 
-**Until that build has been run, and 1, 4 are answered, the `production` profile must not be built or
-submitted.** The reason has now changed three times, and the direction is the point: the app could not
-function (no auth), then could not be supported (no way out, no reset), and now — as far as this
-repository can tell — does both, unverified. What is left is no longer construction. It is proof.
+No production build or submission is authorized by staging verification alone.

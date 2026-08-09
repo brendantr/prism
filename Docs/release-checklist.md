@@ -22,7 +22,7 @@
 | `npm run verify` | `typecheck` then `test -- --ci`, in that order — the same two steps CI runs, in one command `[fact]` | Every branch, before opening a PR |
 | `npm run typecheck` | `tsc --noEmit`, `strict: true` across `app/` and `src/` `[fact]` | CI `verify` job |
 | `npm test -- --ci` | Hermetic Jest: the calc engine, `src/domain/history.ts`, both stores, the repository contract, the content modules `[fact]` | CI `verify` job |
-| `supabase/tests/rls/run.sh` | 57 cross-tenant isolation assertions against both migrations on a disposable Postgres 16 `[fact, `2026-08-04-supabase-rls-ci.md`]` | CI `rls` job |
+| `supabase/tests/rls/run.sh` | **154 SQL assertions** across migrations `0001`–`0007` on disposable Postgres 16.14: RLS, write integrity, partial check-ins, deletion, library seed and exercise-reference constraints `[fact]` | CI `rls` job |
 | `npx expo-doctor` | Expo SDK/dependency drift `[fact]` | Before a release build; not in CI |
 | `npx eas config --platform <ios\|android> --profile <profile>` | Resolves and prints the effective build config without building `[fact]` | Before a release build |
 
@@ -52,7 +52,7 @@ what PRism calls its first public version is a product decision and is not made 
 
 ---
 
-## 3. The environment a production build currently inherits
+## 3. The environments real-backend builds currently inherit
 
 > **Corrected 2026-08-06** `[fact]`. This section previously stated the opposite of what the code
 > does — that an unset flag defaults to demo and that "a production EAS build today ships in demo
@@ -64,34 +64,32 @@ what PRism calls its first public version is a product decision and is not made 
 > The correction matters more than the wording: an operator following the old §3 would have expected
 > a safe, self-contained demo build and produced one that opens into a permanent data-load failure.
 
-**What a production build does today** `[fact, traced through `eas.json` and
+**What `preview` and `production` do today** `[fact, traced through `eas.json` and
 `src/data/supabase/client.ts`]`:
 
-- `eas.json`'s `build.production.env` sets `EXPO_PUBLIC_DEMO_MODE` to **`"false"`** explicitly. It is
-  not unset, and it is not inherited from the EAS environment.
+- `eas.json` sets `EXPO_PUBLIC_DEMO_MODE` to **`"false"`** explicitly in both profiles. `preview` is no
+  longer a demo build; PR #57 flipped it to the staging/real-backend path.
 - Even without that, an unset flag would still resolve to non-demo: `DEMO_MODE` falls back to
   `__DEV__`, which is false in any EAS/release bundle (`client.ts`).
-- So a production build runs **against the real backend**, and needs `EXPO_PUBLIC_SUPABASE_URL` and
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY` to be present to function at all.
+- So both builds run **against a real backend**, and each EAS environment needs
+  `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` to function at all.
 - If those are absent, `isSupabaseConfigured` is false with demo off. That state **fails loudly by
   design** — it does not fall back to demo. A silent fallback would ship a build that claims to be
   live while writing every logged session to local storage only.
 
-**Therefore the pre-submission check is a positive one, not an absence check** `[decision]`:
+**Therefore the pre-build check is a positive one, not an absence check** `[decision]`:
 
-1. Confirm the `production` profile actually resolves both Supabase variables
-   (`npx eas config --platform ios --profile production`). Absent variables are now a release
-   blocker, not a fallback into demo.
-2. Confirm the Supabase project those variables point at has had every migration in
-   `supabase/migrations/` applied — including `0003_workout_write_integrity.sql`, without which
-   `save_workout_graph` does not exist and **every workout save fails**.
-3. Confirm sign-in works against that project on a real build. Authentication exists now
-   (`Docs/decisions/ADR-0004-authentication-and-session.md`); the older G-1 framing of this document,
-   which assumed no auth path existed, no longer applies.
+1. Confirm the target profile resolves both Supabase variables. Absent variables are a blocker, not a
+   fallback into demo. **Current preview blocker:** the engineer is adding this pair; do not cut the
+   artifact until both are present.
+2. Confirm the target project has every migration in `supabase/migrations/` applied in order. Staging
+   currently has `0001`–`0007`; production application remains unverified.
+3. Confirm the real build can sign in and save a workout. The repository-level staging lane is 19/19
+   and the simulator first-run is green, but neither is the EAS artifact.
 
-**Not changed by this branch** `[fact]`: no EAS environment variable was created and `eas.json` was
-not edited. Both are production configuration, gated behind explicit engineer/owner approval
-(`CLAUDE.md` § Scope discipline).
+**Not changed by this branch** `[fact]`: no EAS environment variable was created or inspected and
+`eas.json` was not edited. `EXPO_PUBLIC_DEMO_MODE` remains per-profile in that file and is not one of
+the two EAS environment values.
 
 **Secrets posture** `[fact]`: only `EXPO_PUBLIC_*` variables are ever referenced, and those are inlined
 into the client bundle by design — RLS is the authorization boundary, not variable secrecy
@@ -107,12 +105,12 @@ pre-flight. **None is closed by this branch** `[fact]`.
 
 | Gate | Status |
 |---|---|
-| **G-1 — no authentication path** | Open. Supabase mode is unreachable by any UI. |
-| **I-10 — account deletion + data export** | Open, and **blocking for store submission**, not negotiable. |
-| **I-2 / G-2 — non-atomic `saveWorkout`** | Open. Three sequential non-transactional upserts. |
+| ~~**G-1 — no authentication path**~~ | **Closed in the client and staging.** The 19-test lane and cold-started first run exercise real sessions. Recovery-template verification and deep-link capture remain separate. |
+| **I-10 — account deletion + data export** | **Closed in the client and staging.** Both ran in the integration lane; deletion also ran on device. A privacy policy remains a separate submission requirement. |
+| **I-2 / G-2 — non-atomic `saveWorkout`** | **Closed.** `save_workout_graph` is transactional, reconciles children and is retry-idempotent; local and staging evidence exist. |
 | **G-4 — no observability** | Open. No crash reporting or analytics; user feedback would arrive with no telemetry behind it. |
-| **G-7 — release tooling** | **Partially closed.** `eas.json` and the EAS project id are committed and resolve; profiles are unverified by an actual build. |
-| **I-1 / I-6 — RLS** | Met for the policies as committed, and wired into CI. Not the same as production being reachable. |
+| **G-7 — release tooling** | **Partially closed.** `preview` is a real-backend profile and staging is ready; its only remaining pre-build blocker is the two EAS `preview` variables. No artifact has been proved. |
+| **I-1 / I-6 — RLS** | Met for the committed schema and staging: 154/154 local SQL assertions plus two-account PostgREST integration coverage. Production remains unverified. |
 
 ---
 
