@@ -325,7 +325,6 @@ export default function InsightsScreen() {
         ))}
       </Card>
 
-      <SectionHeader title="Coming next" eyebrow="Roadmap" />
       <PhasePanel
         phase={4}
         summary="A ranked recommendation feed where every card can be acted on without leaving the screen."

@@ -111,7 +111,6 @@ export default function PlansScreen() {
         );
       })}
 
-      <SectionHeader title="Coming next" eyebrow="Roadmap" />
       <PhasePanel
         phase={5}
         summary="Make the plans yours: edit, build from scratch, and see them on a calendar."

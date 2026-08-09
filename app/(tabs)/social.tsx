@@ -123,7 +123,6 @@ export default function SocialScreen() {
         </Card>
       )}
 
-      <SectionHeader title="Coming next" eyebrow="Roadmap" />
       <PhasePanel
         phase={7}
         summary="Nothing is committed. Before any of this is built, the question is whether a social surface belongs in PRism at all."

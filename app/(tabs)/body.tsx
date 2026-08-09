@@ -79,7 +79,6 @@ export default function BodyScreen() {
         ))}
       </Card>
 
-      <SectionHeader title="Coming next" eyebrow="Roadmap" />
       <PhasePanel
         phase={3}
         summary="An original SVG body illustration, front and back, that colours each region by the recovery values listed above."
