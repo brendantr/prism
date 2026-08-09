@@ -26,7 +26,13 @@
  * WHAT THE PROJECT ON THE OTHER END MUST LOOK LIKE
  * ---------------------------------------------------------------------------
  *   1. A **staging** project. Never production. This lane deletes accounts.
- *   2. All five migrations applied, in order, `0001` … `0005`.
+ *   2. All seven migrations applied, in order, `0001` … `0007`. Not optional and
+ *      not "whatever the project already had": this suite asserts against `0006`
+ *      (it expects the seeded catalogue — at least 43 system movements and both
+ *      template plans) and `0007` (it deletes an account holding a custom
+ *      movement, which every earlier schema refuses to do). A project stopped at
+ *      `0005` fails both, and the failure reads like an app bug rather than an
+ *      unapplied migration.
  *   3. Email confirmation **disabled**, so `signUp` returns a session and the
  *      suite can create disposable accounts without a mailbox. `assertSession`
  *      below fails with that instruction rather than a generic null error.

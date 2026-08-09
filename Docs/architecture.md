@@ -137,6 +137,45 @@
   testers — **there is still no way to create an exercise anywhere in the app** (`Repository` has no
   exercise write methods; `activeWorkoutStore.addExercise` only attaches an existing one), so a lifter
   is limited to the seeded 43. Full record: `Docs/sprints/2026-08-07-library-seed.md`.
+- **Delta since 2026-08-08 (`feature/v1-library-seed`, same branch, later commit `c116c7e`):**
+  `supabase/migrations/0007_deletable_account_with_custom_exercises.sql` fixes an **I-10 blocker the
+  SQL suite could not see**: a lifter who created their own movement and logged a session with it
+  could not delete their account. Deleting `auth.users` cascades to `profiles` and from there to both
+  `exercises` and `workouts`; Postgres does not define which branch runs first, and `on delete
+  restrict` is checked immediately, so when the exercise branch went first the whole delete aborted on
+  `workout_exercises_exercise_id_fkey`. `0007` changes both exercise FKs
+  (`workout_exercises`, `routine_exercises`) from `on delete restrict` to `on delete no action
+  deferrable initially deferred` — the same rule, checked at commit instead of at statement time.
+  **Not `cascade`** `[decision, 2026-08-08]`: cascade would silently delete the logged sets performed
+  with a movement, and the `restrict` is what protects training history. `restrict` cannot be
+  deferred; `no action` is the deferrable form of the same constraint.
+  Found by the integration lane against a real project, not by the SQL suite —
+  `05_run_account_deletion_tests.sql` builds its fixture user with a workout that has **no exercise
+  blocks at all**, so the two cascade branches never collided: 21 assertions, all green, none of them
+  this. Evidence: `supabase/tests/rls/run.sh` against a clean local Postgres **16.14** —
+  **154/154 assertions** (57 + 31 + 23 + 21 + 14 + **8 new**), reproduced twice, superseding the
+  146/146 recorded in the delta above. `07_run_exercise_reference_tests.sql` asserts the behaviour
+  *and* the constraint's catalogue shape, because a later migration tidying these to `cascade` would
+  pass every behavioural assertion while destroying logged sets. **Not applied to any hosted
+  project**, including staging — until it is, the integration lane's deletion test stays red and a
+  test account holding a custom movement cannot be deleted. Full record:
+  `Docs/sprints/2026-08-08-account-deletion-fk-fix.md`.
+- **Delta since 2026-08-08 (documentation and drift-guard correction, no schema or product change):**
+  The two deltas above landed with their operator-facing documentation out of step, which for a
+  manually applied migration is a defect rather than untidiness. Corrected: `README.md`'s "Connecting
+  Supabase" named only `0001_init.sql` and then instructed the operator to hand-seed the exercise
+  library — the step `0006` replaced, and one that now collides with the `exercises_system_name_key`
+  unique index; `integrationProject.ts` told the reader to apply `0001`–`0005` while that same lane
+  asserts against `0006` and `0007`; the staging runbook's step 2 said the same. The drift guard
+  (`src/data/__tests__/librarySeed.test.ts`) pinned movements field by field but pinned template
+  **slots only by count and movement name**, so `targetSets`, the rep range, `targetRpe`,
+  `restSeconds`, `dayIndex` and `weekday` could be retuned in TypeScript and never reach a real
+  account. All are now rebuilt from the constants and matched verbatim, as are the routine headers.
+  The 47 drift-guard tests recorded above are now **50**. Evidence: the gap was demonstrated before it
+  was closed — three deliberate drifts (an RPE, a rest timer, a weekday pin) introduced into
+  `routineTemplates.ts` passed the old guard **47/47** and fail the new one; `npm run typecheck` clean
+  and **451/451 tests across 26 suites** with the drifts reverted. No migration, no `eas.json` and no
+  application code was touched, so the 154/154 SQL evidence above still stands unmodified.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five

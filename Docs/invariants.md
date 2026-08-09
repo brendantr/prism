@@ -247,6 +247,20 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   takes no arguments**, so there is no id to forge and the only account it can ever delete is the one
   the JWT names. `search_path` is pinned, and `PUBLIC`/`anon` cannot execute it.
 
+  **Amended 2026-08-08 by `supabase/migrations/0007_deletable_account_with_custom_exercises.sql`.**
+  The cascade above is necessary but was not sufficient: a lifter who created their own movement and
+  logged a session with it could not delete their account at all. `profiles` cascades to both
+  `exercises` and `workouts`, Postgres leaves the order of those branches undefined, and `on delete
+  restrict` is checked immediately — so when the exercise branch ran first, `workout_exercises` still
+  referenced the movement and `delete_my_account()` aborted. `0007` moves both exercise foreign keys
+  to `on delete no action deferrable initially deferred`: identical rule, enforced at commit rather
+  than at statement time, so an in-use movement still cannot be deleted on its own while a whole
+  account can. **`cascade` would satisfy I-10 and violate the reason `restrict` is there** — deleting
+  a movement would silently delete the sets performed with it. Verified by
+  `supabase/tests/rls/07_run_exercise_reference_tests.sql` (8 assertions, 154/154 suite-wide).
+  **Applied to no hosted project yet**, so I-10 is met in the schema as committed and not yet in
+  staging or production.
+
   *Export.* `src/domain/accountExport.ts` assembles a versioned, deterministically sorted document
   covering every stored table plus the lifter's own custom exercises; `Repository.exportAccountData()`
   gathers it so a table added later cannot fall out because a caller forgot it. Delivery is React

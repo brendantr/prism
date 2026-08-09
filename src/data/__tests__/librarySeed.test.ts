@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { EXERCISE_LIBRARY } from '../exerciseLibrary';
+import { EXERCISE_BY_ID, EXERCISE_LIBRARY } from '../exerciseLibrary';
 import { ROUTINE_TEMPLATES } from '../routineTemplates';
 
 /**
@@ -27,6 +27,16 @@ import { ROUTINE_TEMPLATES } from '../routineTemplates';
  *
  * What this deliberately does NOT check: the ids. They differ by design and
  * nothing depends on them agreeing (see the migration's header).
+ *
+ * ---------------------------------------------------------------------------
+ * The template half used to be weaker than the exercise half, and the gap was
+ * the programming itself. Movements were pinned field by field, but a template
+ * slot was pinned only by *count* and by which movement it named — so
+ * `sets`, the rep range, the RPE target, the rest timer, `weekday` and
+ * `dayIndex` could be retuned in TypeScript and silently never reach a real
+ * account. Demo mode would prescribe 4×5–8 @8 and production 3×10–12 @8.5 for
+ * the same day of the same plan, with nothing red anywhere. Every one of those
+ * fields is now rebuilt from the constants and matched verbatim.
  */
 
 const MIGRATION = path.join(
@@ -44,6 +54,8 @@ const sql = fs.readFileSync(MIGRATION, 'utf8');
 /** Exactly the quoting the migration was generated with. */
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const arr = (xs: readonly string[]) => `'{${xs.join(',')}}'`;
+/** `null` is a SQL keyword, not a quoted value, and `8.5` must not become `8.50`. */
+const num = (n: number | null) => (n === null ? 'null' : String(n));
 
 describe('0006_seed_library.sql matches the bundled catalogue', () => {
   it.each(EXERCISE_LIBRARY.map((e) => [e.name, e] as const))(
@@ -79,18 +91,53 @@ describe('0006_seed_library.sql matches the bundled catalogue', () => {
     expect(sql).toContain(`v_slots <> ${slots}`);
   });
 
-  it('resolves every template slot to a movement that is actually seeded', () => {
-    const byId = new Map(EXERCISE_LIBRARY.map((e) => [e.id, e]));
+  it.each(ROUTINE_TEMPLATES.map((r) => [r.name, r] as const))(
+    'seeds the %s header with the same description and schedule',
+    (_name, routine) => {
+      expect(sql).toContain(
+        `values (null, ${q(routine.name)}, ${q(routine.description)}, ` +
+          `${routine.daysPerWeek}, ${routine.isTemplate}, false)`,
+      );
+    },
+  );
 
+  it('seeds every training day with the same name, position and weekday pin', () => {
+    // `dayIndex` orders the rotation and `weekday` is what the schedule screen
+    // pins a session to, so a day that arrives with either one different is a
+    // different plan — not a cosmetic difference.
+    for (const routine of ROUTINE_TEMPLATES) {
+      for (const day of routine.days) {
+        expect(sql).toContain(
+          `values (v_routine, ${q(day.name)}, ${day.dayIndex}, ${num(day.weekday)})`,
+        );
+      }
+    }
+  });
+
+  it('seeds every template slot with the same movement and the same prescription', () => {
     for (const routine of ROUTINE_TEMPLATES) {
       for (const day of routine.days) {
         for (const slot of day.exercises) {
-          const exercise = byId.get(slot.exerciseId);
+          const exercise = EXERCISE_BY_ID.get(slot.exerciseId);
           // A template naming a movement the library does not define would
           // produce a `select` that matches nothing and inserts nothing —
           // silently, which is why the migration also checks the count.
           expect(exercise).toBeDefined();
-          expect(sql).toContain(`lower(e.name) = lower(${q(exercise!.name)})`);
+
+          // Rebuilt whole rather than field by field: the `select` is what the
+          // migration actually runs, and matching it verbatim covers the
+          // prescription (sets, rep range, RPE, rest), the slot's position in
+          // the day, and the name-plus-equipment pair that resolves the
+          // movement. Equipment is part of the key — a barbell bench press and
+          // a dumbbell bench press are different movements with one name.
+          expect(sql).toContain(
+            `select v_day, e.id, ${slot.orderIndex}, ${slot.targetSets}, ` +
+              `${slot.targetRepsLow}, ${slot.targetRepsHigh}, ` +
+              `${num(slot.targetRpe)}, ${slot.restSeconds}\n` +
+              `      from public.exercises e\n` +
+              `     where e.profile_id is null and lower(e.name) = lower(${q(exercise!.name)}) ` +
+              `and e.equipment = ${q(exercise!.equipment)};`,
+          );
         }
       }
     }
