@@ -261,8 +261,13 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   account can. **`cascade` would satisfy I-10 and violate the reason `restrict` is there** — deleting
   a movement would silently delete the sets performed with it. Verified by
   `supabase/tests/rls/07_run_exercise_reference_tests.sql` (8 assertions, 154/154 suite-wide).
-  **Applied to no hosted project yet**, so I-10 is met in the schema as committed and not yet in
-  staging or production.
+
+  **Applied to staging `[fact, owner, 2026-08-09]`.** `0001`–`0007` are on the staging project, so
+  I-10 is met there in schema as well as in the repository. The line this replaces said "applied to no
+  hosted project yet", which was already false when written — an invariant's status against a live
+  project is the owner's report, never something the repository can observe. **Production has had no
+  such treatment**, and I-10 is not met there until it does; `Docs/tester-readiness-runbook.md` §2 is a
+  read-only probe that answers this for any project rather than asserting it.
 
   *Export.* `src/domain/accountExport.ts` assembles a versioned, deterministically sorted document
   covering every stored table plus the lifter's own custom exercises; `Repository.exportAccountData()`
