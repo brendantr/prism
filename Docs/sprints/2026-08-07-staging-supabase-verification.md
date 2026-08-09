@@ -101,7 +101,12 @@ this has been performed.**
 1. **Create a project** named `prism-staging`, in the region you would use for production.
    **Not production.** This lane deletes accounts.
 2. **Apply the migrations in order** — SQL Editor, one at a time, `0001_init.sql` → `0002` → `0003` →
-   `0004` → `0005`. Stop at the first error rather than continuing.
+   `0004` → `0005` → `0006` → `0007`. Stop at the first error rather than continuing.
+   `[updated 2026-08-08]` This step said `0001`–`0005` when it was written, which was the whole
+   inventory at `a72a2e5`. `0006_seed_library.sql` and
+   `0007_deletable_account_with_custom_exercises.sql` have landed on `main` since, and this lane's
+   own assertions now depend on both — the catalogue check needs `0006`, and the account-deletion
+   test needs `0007`. A project stopped at `0005` fails them in a way that reads like an app bug.
 3. **Disable email confirmation** (Authentication → Sign In / Providers → Confirm email → off). The
    suite creates disposable accounts and needs `signUp` to return a session. The harness fails with
    this exact instruction if it does not.

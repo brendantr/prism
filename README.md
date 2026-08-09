@@ -165,12 +165,18 @@ identically against either backend.
 ## Connecting Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Run the migration — SQL Editor, paste `supabase/migrations/0001_init.sql`,
-   execute. This creates all 11 tables, the enums, the indexes, the
-   `handle_new_user` trigger and every row-level-security policy.
-3. Seed the shared exercise library. Insert `src/data/exerciseLibrary.ts` rows
-   into `exercises` with `profile_id = null`; that makes them world-readable and
-   immutable, which is what the RLS policy expects.
+2. Run every migration in `supabase/migrations/`, **in numeric order**, one at a
+   time in the SQL Editor — `0001_init.sql` through `0007_deletable_account_with_custom_exercises.sql`.
+   Applying them to a hosted project is a manual step, so each file is written to
+   be re-runnable: if you lose track of which ones have run, running one again is
+   a no-op rather than an error. Between them they create all 11 tables, the
+   enums, the indexes, the `handle_new_user` trigger, every row-level-security
+   policy, the workout/check-in/deletion RPCs, and the shared movement catalogue.
+3. Do **not** hand-seed the exercise library. `0006_seed_library.sql` seeds the 43
+   system movements and both template plans as `profile_id = null` rows, which is
+   what makes them world-readable and immutable. Pasting
+   `src/data/exerciseLibrary.ts` in as well collides with the
+   `exercises_system_name_key` unique index and gets you nothing.
 4. Set `EXPO_PUBLIC_DEMO_MODE=false` and fill in the two Supabase variables.
 5. Restart the dev server (env changes need a fresh bundle).
 
@@ -233,7 +239,7 @@ prism/
 │   │       └── __tests__/        # Jest suite
 │   │
 │   ├── data/
-│   │   ├── exerciseLibrary.ts    # 42 original exercises with coaching cues
+│   │   ├── exerciseLibrary.ts    # 43 original exercises with coaching cues
 │   │   ├── routineTemplates.ts   # "Spectrum 4" and "Prism 3" plans
 │   │   ├── demoSeed.ts           # Deterministic 8-week generator
 │   │   ├── repository.ts         # Repository interface + both backends
@@ -247,7 +253,9 @@ prism/
 │   │
 │   └── utils/                    # format.ts, id.ts
 │
-└── supabase/migrations/0001_init.sql
+└── supabase/
+    ├── migrations/               # 0001_init … 0007, applied in numeric order
+    └── tests/rls/                # run.sh — RLS, write-integrity and seed suites
 ```
 
 **The one rule:** `src/domain` never imports from `src/components`, `app/`, or
