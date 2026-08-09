@@ -241,7 +241,10 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   `public.delete_my_account()`, and `app/account.tsx` reaches it through
   `deleteAccountAndTearDown` behind two confirmations. Deleting the `auth.users` row cascades through
   `profiles` to all six user tables (0001), so the function names no tables and cannot drift out of
-  step with the schema. **This is the only `security definer` function in PRism**, and deliberately so:
+  step with the schema. It is the only `security definer` function in PRism that **destroys data** — a
+  claim originally and wrongly written here as "the only `security definer` function in PRism", which a
+  review corrected: `handle_new_user` (`0001_init.sql`, re-created with a pinned `search_path` in
+  `0002_security_hardening.sql`) is also one. Deletion is definer deliberately:
   `auth.users` belongs to `supabase_auth_admin`, and the only alternative is the service-role key,
   which I-4 forbids from reaching the client without exception. What contains it is structural — **it
   takes no arguments**, so there is no id to forge and the only account it can ever delete is the one
