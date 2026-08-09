@@ -207,7 +207,25 @@
   had been taking on trust; and `delete_my_account` erasing an account that owns a custom movement
   logged in a session — **the exact cascade-ordering case `0007` fixes, so `0007` is confirmed correct
   on staging, not merely applied**. What remains unverified on a hosted project is everything above
-  the data layer: no screen, no navigation and no build has been exercised there by this lane.
+  the data layer: no screen, no navigation and no build has been exercised there by this lane
+  *(closed the same day — see the delta below)*.
+- **Delta 2026-08-09 — the whole loop, on a device, against staging:**
+  `[fact, owner, 2026-08-09]` **The full first-run walkthrough was performed on a cold-started iOS
+  simulator, on a fresh install, against the staging project, and passed end to end**: sign-up,
+  onboarding, Today, starting a session, adding a movement from the picker, logging a set, finishing
+  it, force-quit and reopen with the session and login intact, history, a check-in, data export, and
+  account deletion through the app.
+  This closes the caveat the entry above ends on. It is the **only** verification in this repository
+  that sees what a lifter sees — the integration lane drives `SupabaseRepository` directly and touches
+  no screen, so a completely broken first run can coexist with 463 green unit tests and 19 green
+  integration tests. That is not hypothetical: it is precisely what #58 was, and it reached `main`.
+  `[recommendation]` Re-run the walkthrough (`Docs/tester-readiness-runbook.md` §6) after any change
+  to routing, onboarding, session storage or the `Repository` interface.
+  `[fact, owner, 2026-08-09]` A **preview build** was produced end to end the same day — Android,
+  ~22 minutes, commit `048114b`, with all three environment variables confirmed resolving into it —
+  which closes **G-7 for `preview`**. `production` and store submission remain unexercised.
+  **The binding gates are now G-4 (no crash reporting or analytics at all) and the two product gaps
+  below the store bar:** no way to create a custom exercise, and check-in days bucketed in UTC.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five
