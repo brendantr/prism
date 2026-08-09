@@ -78,13 +78,18 @@ relaunched after the change — not a hot reload.
 
 ## 5. What the cold start also found
 
-**F-A `[fact]`, copy that is false on a real backend.** `app/onboarding/complete.tsx` tells a new
+~~**F-A `[fact]`, copy that is false on a real backend.**~~ `app/onboarding/complete.tsx` told a new
 lifter: *"PRism opens on eight weeks of sample training so nothing looks empty. Log a real session
 whenever you want and it saves on this device."* On a real account there is no sample training and
 nothing saves to the device — it goes to Postgres under their account. This is demo-mode copy shown to
 a real user, and it is the same class of problem `accountCopy.test.ts` and the deletion-honesty fix
 exist to prevent. **Not fixed here** — it is a content change with its own decision (does the sentence
 branch on mode, or is the whole panel demo-only?).
+
+**Closed in the same PR at `dc31412`** `[fact, 2026-08-08]`: `completionBody(authEnabled)` selects a
+demo sentence or an account sentence, with four content assertions preventing the two storage/history
+claims from collapsing together again. Suite result: **456 tests / 26 suites**; the account variant
+rendered on a wiped, cold-started simulator against staging.
 
 **F-B `[fact]`, dev-only React warning.** Deleting the account emits
 `Cannot update a component ('ForwardRef(NavigationContainerInner)') while rendering a different
@@ -93,8 +98,9 @@ Development-only and invisible in a release build; no user-visible effect observ
 
 ## 6. Handoff
 
-The next decision is **F-A**: the completion screen lies to every tester who reaches it. It is one
-string plus a test, and it should land before a tester build.
+~~The next decision was **F-A**.~~ **Done at `dc31412`**, as recorded above. The remaining finding from
+this sprint is F-B, the dev-only navigation-during-render warning on deletion.
 
-`[open question]` `Docs/architecture.md` §Runtime Architecture 1 still describes the pre-fix
-precedence, and `routing.ts` carries a `TODO(docs)` about it that predates this sprint.
+~~`[open question]` `Docs/architecture.md` §Runtime Architecture 1 still described the pre-fix
+precedence.~~ **Closed by `docs/live-backend-reconciliation`**: the current gate and
+`ONBOARDING_STEPS_ROUTE` are recorded there, and the stale source marker is removed.

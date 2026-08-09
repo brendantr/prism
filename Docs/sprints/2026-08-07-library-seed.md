@@ -2,8 +2,9 @@
 
 ## Document status
 
-- **Status:** Implementation complete and verified against local Postgres 16.14.
-  **Not applied to any hosted project**, and the tester build is not yet usable — see §6.
+- **Status:** Implementation complete, verified locally, **applied to staging**, and the backend path is
+  19/19. The EAS `preview` variables named in §8 as the remaining blocker were set on 2026-08-09 and a
+  preview build has been produced `[fact, owner]`, so this sprint has nothing outstanding.
 - **Date opened:** 2026-08-07
 - **Branch:** `feature/v1-library-seed`, cut from `feature/v1-staging-supabase-verification`
   (not from `main`) so it inherits the integration lane whose assertions it changes.
@@ -151,3 +152,15 @@ tester build?* Before means testers can log anything, including movements the ca
 delays the build by a sprint. After means testers start on the 43 seeded movements and report what is
 missing — which is arguably better feedback, and is the `[recommendation]` here, since a catalogue
 gap found by a real lifter is worth more than one guessed at now.
+
+---
+
+## 8. Owner follow-up — staging applied
+
+`[fact, engineer/owner handoff, 2026-08-08]` Conditions 1 and 3 in §6 are satisfied for staging:
+the project exists, migrations `0001`–`0007` are applied, and real sessions have been issued. The
+integration lane passes **19/19**. ~~Condition 2 is the remaining preview-build blocker: the EAS
+`preview` environment needs `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.~~
+**Closed 2026-08-09** `[fact, owner]`: both are set on the `preview` environment, `eas config` confirms
+all three resolve into that profile, and a preview build has been produced.
+`EXPO_PUBLIC_DEMO_MODE` remains set per profile in `eas.json`.

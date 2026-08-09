@@ -12,9 +12,6 @@
  * has no component-test tooling by decision
  * (`Docs/sprints/2026-08-01-onboarding-ui-redesign.md` Decision 6), so a rule
  * left inside a component is a rule with no coverage at all.
- *
- * TODO(docs): `Docs/architecture.md` §Runtime Architecture 1 describes the old
- * single-gate startup and needs rewriting for this.
  */
 
 /** Mirrors `sessionStore.phase`. Duplicated structurally so `src/domain` imports no store. */

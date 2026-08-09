@@ -166,6 +166,17 @@ reaches "Enter your code" with nothing to enter.
 
 Record: `Docs/sprints/2026-08-09-password-reset.md`.
 
+### Implementation follow-up: the auth-failure boundary
+
+`[fact, reconciled 2026-08-08]` `src/domain/authErrors.ts` collapses every Supabase rejection into the
+closed `AuthFailure` set before it reaches UI copy. Each code maps to one reviewed sentence; unknown
+shapes never pass a raw server message through. Network failures are classified before HTTP-status
+branches so a dropped connection is not reported as a rejected password, credential failures combine
+wrong-password and unknown-address outcomes to avoid account enumeration, and reset-code failures use
+the caller's `resetCode` context because Supabase reuses the same 4xx family. This records an
+implementation boundary, not a new authentication decision; the tests are
+`src/domain/__tests__/authErrors.test.ts` and `src/content/__tests__/authCopy.test.ts`.
+
 ## References
 
 **Implementation** — `src/store/sessionStore.ts`, `src/store/authActions.ts`, `src/data/authRequired.ts`,
