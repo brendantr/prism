@@ -95,9 +95,9 @@ insert into public.workouts (id, profile_id, title, started_at) values
    'C''s Workout', '2026-03-05T10:00:00Z')
 on conflict (id) do nothing;
 
-insert into public.check_ins (id, profile_id, checked_in_at, energy) values
+insert into public.check_ins (id, profile_id, local_date, checked_in_at, energy) values
   ('30000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333',
-   '2026-03-05T07:00:00Z', 4)
+   date '2026-03-05', '2026-03-05T07:00:00Z', 4)
 on conflict (id) do nothing;
 
 insert into public.body_measurements (id, profile_id, bodyweight_kg) values

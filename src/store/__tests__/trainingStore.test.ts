@@ -3,10 +3,12 @@ import { getRepository, resetDemoData } from '@/data/repository';
 import { EXERCISE_BY_ID } from '@/data/exerciseLibrary';
 import {
   selectCompletedWorkouts,
+  selectLatestCheckIn,
   selectTodaysCheckIn,
   useTrainingStore,
 } from '../trainingStore';
 import type { CheckIn } from '@/domain/types';
+import { deviceLocalDate } from '@/domain/trainingDay';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -33,10 +35,12 @@ function todayAt(hour: number, minute: number): string {
 /** Exactly the object `CheckInPrompt.submit` builds from its draft. */
 function submission(draft: Partial<CheckIn>): CheckIn {
   const existing = selectTodaysCheckIn(useTrainingStore.getState());
+  const checkedInAt = todayAt(23, 30);
   return {
     id: existing?.id ?? 'ci_test',
     profileId: useTrainingStore.getState().profile!.id,
-    checkedInAt: todayAt(23, 30),
+    localDate: deviceLocalDate(checkedInAt),
+    checkedInAt,
     sleepQuality: null,
     energy: null,
     soreness: null,
@@ -149,5 +153,55 @@ describe('check-in submit boundary', () => {
     const today = selectTodaysCheckIn(useTrainingStore.getState());
     expect(today).not.toBeNull();
     expect(today!.sleepQuality).toBe(4);
+  });
+
+  it('keeps the stored row id when a fresh-id submission reuses the local date', async () => {
+    const first = submission({ sleepQuality: 4 });
+    await useTrainingStore.getState().saveCheckIn(first);
+    await useTrainingStore
+      .getState()
+      .saveCheckIn({ ...submission({ energy: 2 }), id: 'different_submission_id' });
+
+    const today = selectTodaysCheckIn(useTrainingStore.getState());
+    expect(today?.id).toBe(first.id);
+    expect(
+      useTrainingStore.getState().checkIns.filter((c) => c.localDate === first.localDate),
+    ).toHaveLength(1);
+  });
+});
+
+describe('check-in date selectors', () => {
+  const checkIn = (id: string, localDate: string, checkedInAt: string): CheckIn => ({
+    id,
+    profileId: 'p1',
+    localDate,
+    checkedInAt,
+    sleepQuality: 4,
+    energy: 4,
+    soreness: 2,
+    stress: 2,
+  });
+
+  it('selects today by local date even when a later timestamp belongs to another date', () => {
+    const reference = new Date('2026-03-03T12:00:00.000Z');
+    const today = deviceLocalDate(reference);
+    useTrainingStore.setState({
+      checkIns: [
+        checkIn('today', today, '2026-03-03T11:00:00.000Z'),
+        checkIn('later', '2099-01-01', '2026-03-03T13:00:00.000Z'),
+      ],
+    });
+
+    expect(selectLatestCheckIn(useTrainingStore.getState())?.id).toBe('later');
+    expect(selectTodaysCheckIn(useTrainingStore.getState(), reference)?.id).toBe('today');
+  });
+
+  it('does not infer today from a matching UTC timestamp date', () => {
+    const reference = new Date('2026-03-03T12:00:00.000Z');
+    useTrainingStore.setState({
+      checkIns: [checkIn('other-local-day', '1999-12-31', '2026-03-03T12:00:00.000Z')],
+    });
+
+    expect(selectTodaysCheckIn(useTrainingStore.getState(), reference)).toBeNull();
   });
 });

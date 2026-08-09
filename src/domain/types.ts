@@ -166,6 +166,9 @@ export interface BodyMeasurement {
 export interface CheckIn {
   id: string;
   profileId: string;
+  /** Device-local `YYYY-MM-DD` captured when the check-in is submitted. */
+  localDate: string;
+  /** Latest submission instant; ordering and readiness staleness use this. */
   checkedInAt: string;
   /**
    * 1-5 scales, self-reported each morning. Feed the readiness estimate.

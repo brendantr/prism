@@ -77,6 +77,7 @@ const workout = (id: string, startedAt: string, setCount: number): Workout => ({
 const checkIn = (id: string, at: string): CheckIn => ({
   id,
   profileId: 'p1',
+  localDate: at.slice(0, 10),
   checkedInAt: at,
   sleepQuality: 4,
   energy: 4,
@@ -119,7 +120,15 @@ const AT = '2026-08-06T12:00:00.000Z';
 
 describe('buildAccountExport', () => {
   it('carries a format version, so a file can say what it is years later', () => {
+    expect(ACCOUNT_EXPORT_FORMAT_VERSION).toBe(2);
     expect(buildAccountExport(source(), AT).formatVersion).toBe(ACCOUNT_EXPORT_FORMAT_VERSION);
+  });
+
+  it('includes the captured local date for every check-in', () => {
+    expect(buildAccountExport(source(), AT).checkIns.map((c) => c.localDate)).toEqual([
+      '2026-01-01',
+      '2026-02-01',
+    ]);
   });
 
   it('includes every stored table', () => {

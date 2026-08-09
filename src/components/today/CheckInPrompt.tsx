@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Card, Chip, Text } from '@/components/ui';
 import { useTrainingStore } from '@/store/trainingStore';
 import { newId } from '@/utils/id';
+import { deviceLocalDate } from '@/domain/trainingDay';
 import { space } from '@/theme';
 import type { CheckIn } from '@/domain/types';
 
@@ -75,10 +76,14 @@ export function CheckInPrompt({ profileId, checkIn }: CheckInPromptProps) {
     setSaving(true);
     setFailed(false);
     try {
+      // One instant supplies both values so a submit crossing midnight cannot
+      // carry tomorrow's timestamp and yesterday's training-day label.
+      const now = new Date();
       await saveCheckIn({
         id: checkIn?.id ?? newId('ci'),
         profileId,
-        checkedInAt: new Date().toISOString(),
+        localDate: deviceLocalDate(now),
+        checkedInAt: now.toISOString(),
         sleepQuality: draft.sleepQuality,
         energy: draft.energy,
         soreness: draft.soreness,

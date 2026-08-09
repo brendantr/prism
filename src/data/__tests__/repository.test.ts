@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getRepository, resetDemoData } from '../repository';
+import { getRepository, resetDemoData, resetRepository } from '../repository';
+import { deviceLocalDate } from '@/domain/trainingDay';
 import type { CheckIn, CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -28,11 +29,14 @@ type Scales = Partial<Pick<CheckIn, 'sleepQuality' | 'energy' | 'soreness' | 'st
  * A helper that filled the gaps with nulls could not tell those apart, and
  * would quietly test the wrong thing.
  */
-function patch(fields: Scales & { checkedInAt?: string } = {}): CheckInPatch {
-  const { checkedInAt, ...scales } = fields;
+function patch(
+  fields: Scales & { checkedInAt?: string; localDate?: string } = {},
+): CheckInPatch {
+  const { checkedInAt, localDate, ...scales } = fields;
   return {
     id: `sub_${Math.random().toString(36).slice(2)}`,
     profileId: 'p1',
+    localDate: localDate ?? DAY,
     checkedInAt: checkedInAt ?? at('07:00:00'),
     ...scales,
   };
@@ -44,7 +48,7 @@ async function persisted(): Promise<CheckIn[]> {
   return raw ? (JSON.parse(raw) as CheckIn[]) : [];
 }
 
-const onDay = (all: CheckIn[], day: string) => all.filter((c) => c.checkedInAt.startsWith(day));
+const onDay = (all: CheckIn[], day: string) => all.filter((c) => c.localDate === day);
 
 describe('DemoRepository check-ins', () => {
   beforeEach(async () => {
@@ -141,7 +145,13 @@ describe('DemoRepository check-ins', () => {
   it('keeps a different day as its own check-in', async () => {
     const repo = getRepository();
     await repo.saveCheckIn(patch({ sleepQuality: 4 }));
-    await repo.saveCheckIn(patch({ sleepQuality: 2, checkedInAt: '2020-05-06T07:00:00.000Z' }));
+    await repo.saveCheckIn(
+      patch({
+        sleepQuality: 2,
+        localDate: '2020-05-06',
+        checkedInAt: '2020-05-06T07:00:00.000Z',
+      }),
+    );
 
     expect(onDay(await repo.listCheckIns(), DAY)).toHaveLength(1);
     expect(onDay(await repo.listCheckIns(), '2020-05-06')).toHaveLength(1);
@@ -151,15 +161,109 @@ describe('DemoRepository check-ins', () => {
     const repo = getRepository();
     const seeded = (await repo.listCheckIns()).at(-1)!;
 
-    await repo.saveCheckIn(patch({ energy: 1, checkedInAt: seeded.checkedInAt }));
+    await repo.saveCheckIn(
+      patch({ energy: 1, localDate: seeded.localDate, checkedInAt: seeded.checkedInAt }),
+    );
 
     const all = await repo.listCheckIns();
-    const sameDay = all.filter((c) => c.checkedInAt.slice(0, 10) === seeded.checkedInAt.slice(0, 10));
+    const sameDay = all.filter((c) => c.localDate === seeded.localDate);
     expect(sameDay).toHaveLength(1);
     expect(sameDay[0].id).toBe(seeded.id);
     expect(sameDay[0].energy).toBe(1);
     // The rest of the seeded record survived the patch.
     expect(sameDay[0].sleepQuality).toBe(seeded.sleepQuality);
+  });
+
+  it('keeps adjacent local dates separate even when both timestamps share one UTC date', async () => {
+    const repo = getRepository();
+    await repo.saveCheckIn(
+      patch({
+        sleepQuality: 4,
+        localDate: '2026-03-02',
+        checkedInAt: '2026-03-03T03:30:00.000Z',
+      }),
+    );
+    await repo.saveCheckIn(
+      patch({
+        energy: 2,
+        localDate: '2026-03-03',
+        checkedInAt: '2026-03-03T04:30:00.000Z',
+      }),
+    );
+
+    expect(onDay(await repo.listCheckIns(), '2026-03-02')).toHaveLength(1);
+    expect(onDay(await repo.listCheckIns(), '2026-03-03')).toHaveLength(1);
+  });
+
+  it('merges one local date even when its timestamps fall on different UTC dates', async () => {
+    const repo = getRepository();
+    await repo.saveCheckIn(
+      patch({
+        sleepQuality: 4,
+        localDate: '2026-03-02',
+        checkedInAt: '2026-03-01T22:00:00.000Z',
+      }),
+    );
+    await repo.saveCheckIn(
+      patch({
+        energy: 2,
+        localDate: '2026-03-02',
+        checkedInAt: '2026-03-02T08:00:00.000Z',
+      }),
+    );
+
+    const sameDay = onDay(await repo.listCheckIns(), '2026-03-02');
+    expect(sameDay).toHaveLength(1);
+    expect(sameDay[0].sleepQuality).toBe(4);
+    expect(sameDay[0].energy).toBe(2);
+    expect(sameDay[0].checkedInAt).toBe('2026-03-02T08:00:00.000Z');
+  });
+
+  it('backfills the local date on demo check-ins stored before the field existed', async () => {
+    const checkedInAt = '2020-05-05T07:00:00.000Z';
+    await AsyncStorage.setItem(
+      'prism.demo.checkins.v1',
+      JSON.stringify([
+        {
+          id: 'legacy_ci',
+          profileId: 'p1',
+          checkedInAt,
+          sleepQuality: 4,
+          energy: null,
+          soreness: null,
+          stress: null,
+        },
+      ]),
+    );
+    resetRepository();
+
+    const legacy = (await getRepository().listCheckIns()).find((c) => c.id === 'legacy_ci');
+    expect(legacy?.localDate).toBe(deviceLocalDate(checkedInAt));
+  });
+
+  it('rejects an impossible local date instead of diverging from Postgres date', async () => {
+    const repo = getRepository();
+    await expect(
+      repo.saveCheckIn(patch({ localDate: '2026-02-30', energy: 3 })),
+    ).rejects.toThrow(RangeError);
+    expect(onDay(await repo.listCheckIns(), '2026-02-30')).toHaveLength(0);
+  });
+
+  it('derives a local date for a legacy caller that predates the required field', async () => {
+    const checkedInAt = '2020-05-05T07:00:00.000Z';
+    const legacyPatch = {
+      id: 'legacy_submission',
+      profileId: 'p1',
+      checkedInAt,
+      energy: 3,
+    } as CheckInPatch;
+
+    await getRepository().saveCheckIn(legacyPatch);
+
+    const stored = (await getRepository().listCheckIns()).find(
+      (c) => c.id === 'legacy_submission',
+    );
+    expect(stored?.localDate).toBe(deviceLocalDate(checkedInAt));
   });
 });
 

@@ -166,6 +166,7 @@ describe('the repository is the source of truth for ownership', () => {
     await repo.saveCheckIn({
       id: '55555555-5555-4555-8555-555555555555',
       profileId: ATTACKER_SUPPLIED_UID,
+      localDate: '2026-07-30',
       checkedInAt: '2026-07-30T07:00:00.000Z',
       sleepQuality: 4,
       energy: 4,
@@ -176,6 +177,7 @@ describe('the repository is the source of truth for ownership', () => {
     const args = payloadFor('save_check_in');
     const patch = args.p_patch as Record<string, unknown>;
     expect(patch.profile_id).toBeUndefined();
+    expect(patch.local_date).toBe('2026-07-30');
     expect(patch.sleep_quality).toBe(4);
     expect(JSON.stringify(args)).not.toContain(ATTACKER_SUPPLIED_UID);
   });
@@ -189,6 +191,7 @@ describe('the repository is the source of truth for ownership', () => {
     await repo.saveCheckIn({
       id: '55555555-5555-4555-8555-555555555555',
       profileId: ATTACKER_SUPPLIED_UID,
+      localDate: '2026-07-30',
       checkedInAt: '2026-07-30T07:00:00.000Z',
       sleepQuality: 4,
       // energy and soreness omitted entirely; stress explicitly cleared.
@@ -229,6 +232,7 @@ describe('the repository is the source of truth for ownership', () => {
     await repo.saveCheckIn({
       id: '55555555-5555-4555-8555-555555555555',
       profileId: ATTACKER_SUPPLIED_UID,
+      localDate: '2026-07-30',
       checkedInAt: '2026-07-30T07:00:00.000Z',
       sleepQuality: 3,
       energy: 3,

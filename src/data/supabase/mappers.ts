@@ -184,6 +184,7 @@ export function toCheckIn(row: any): CheckIn {
   return {
     id: row.id,
     profileId: row.profile_id,
+    localDate: row.local_date,
     checkedInAt: row.checked_in_at,
     sleepQuality: row.sleep_quality ?? null,
     energy: row.energy ?? null,

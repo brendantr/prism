@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getRepository } from '@/data/repository';
 import { isAuthRequiredError } from '@/data/authRequired';
 import { useSessionStore } from './sessionStore';
+import { deviceLocalDate } from '@/domain/trainingDay';
 import type {
   BodyMeasurement,
   CheckIn,
@@ -176,11 +177,23 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   saveCheckIn: async (checkIn) => {
     await getRepository().saveCheckIn(checkIn);
-    set((s) => ({
-      checkIns: [...s.checkIns.filter((c) => c.id !== checkIn.id), checkIn].sort((a, b) =>
-        a.checkedInAt.localeCompare(b.checkedInAt),
-      ),
-    }));
+    set((s) => {
+      // The database keeps the existing row id when a caller submits a new id
+      // for the same date. Mirror that here so the read model never diverges
+      // until the next refresh merely because its cache was cold.
+      const existing = s.checkIns.find((c) => c.localDate === checkIn.localDate);
+      const saved = existing
+        ? { ...checkIn, id: existing.id, profileId: existing.profileId }
+        : checkIn;
+      return {
+        checkIns: [
+          ...s.checkIns.filter(
+            (c) => c.id !== saved.id && c.localDate !== saved.localDate,
+          ),
+          saved,
+        ].sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt)),
+      };
+    });
   },
 
   updateProfile: async (patch) => {
@@ -205,15 +218,11 @@ export function selectLatestCheckIn(s: TrainingState): CheckIn | null {
   return s.checkIns.length > 0 ? s.checkIns[s.checkIns.length - 1] : null;
 }
 
-/** Today's check-in, if one exists. There is at most one per calendar day. */
-export function selectTodaysCheckIn(s: TrainingState): CheckIn | null {
-  const latest = selectLatestCheckIn(s);
-  if (!latest) return null;
-  const at = new Date(latest.checkedInAt);
-  const now = new Date();
-  const sameDay =
-    at.getFullYear() === now.getFullYear() &&
-    at.getMonth() === now.getMonth() &&
-    at.getDate() === now.getDate();
-  return sameDay ? latest : null;
+/** Today's check-in by captured local date, independent of its UTC timestamp. */
+export function selectTodaysCheckIn(
+  s: TrainingState,
+  reference: Date = new Date(),
+): CheckIn | null {
+  const today = deviceLocalDate(reference);
+  return [...s.checkIns].reverse().find((checkIn) => checkIn.localDate === today) ?? null;
 }

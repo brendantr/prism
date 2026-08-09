@@ -274,23 +274,29 @@ integrationSuite('SupabaseRepository against a real project', () => {
     const DAY = '2026-01-15';
 
     /**
-     * Found by this suite: **the timestamp you send is not the string you get
-     * back.** The client sends ISO-8601 (`2026-01-15T09:00:00.000Z`); Postgres
-     * stores `timestamptz` and PostgREST returns its own rendering. Matching on
-     * the exact string therefore finds nothing.
+     * Matched on `localDate`, which is the day identity as of `0008` — and it is
+     * a `date` column, so it round-trips as exactly the string that was sent.
      *
-     * `DemoRepository` stores what it was handed verbatim, so any code comparing
-     * `checkedInAt` by string equality would behave differently in demo than
-     * against a real backend. Nothing does today — the readiness code parses to
-     * `Date` — but it is a real divergence and it is recorded in the sprint.
+     * This used to slice `checkedInAt`, for a reason worth keeping recorded:
+     * **the timestamp you send is not the string you get back.** The client
+     * sends ISO-8601 (`2026-01-15T09:00:00.000Z`); Postgres stores `timestamptz`
+     * and PostgREST returns its own rendering, so matching the exact string
+     * found nothing. `DemoRepository` stores what it was handed verbatim, so
+     * code comparing `checkedInAt` by string equality behaves differently in
+     * demo than against a real backend. Nothing does today — the readiness code
+     * parses to `Date` — but the divergence is real.
+     *
+     * `localDate` removes the hazard from this suite rather than working around
+     * it: a calendar day is now stored as a calendar day.
      */
-    const onDay = (c: { checkedInAt: string }) => c.checkedInAt.slice(0, 10) === DAY;
+    const onDay = (c: { localDate: string }) => c.localDate === DAY;
 
     it('stores only the answers given, leaving the rest null', async () => {
       const patch: CheckInPatch = {
         id: newUuid(),
         profileId: FOREIGN_PROFILE_ID, // ignored — the function reads auth.uid()
         checkedInAt,
+        localDate: DAY,
         sleepQuality: 4,
       };
 
@@ -312,6 +318,7 @@ integrationSuite('SupabaseRepository against a real project', () => {
         id: newUuid(),
         profileId: account.userId,
         checkedInAt,
+        localDate: DAY,
         energy: 2,
       });
 
@@ -326,6 +333,7 @@ integrationSuite('SupabaseRepository against a real project', () => {
         id: newUuid(),
         profileId: account.userId,
         checkedInAt,
+        localDate: DAY,
         sleepQuality: null,
       });
 
