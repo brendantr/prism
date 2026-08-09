@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Input, Text } from '@/components/ui';
 import {
@@ -55,7 +55,6 @@ import { color, opacity, space } from '@/theme';
  * state row for this screen; close §9 open question 1.
  */
 export default function AuthScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ mode?: string }>();
 
@@ -138,7 +137,16 @@ export default function AuthScreen() {
     // and sign-in on the same process the store may still look loaded.
     setPassword('');
     await refreshTraining();
-    router.replace('/(tabs)');
+
+    // NO NAVIGATION HERE, deliberately. This used to `router.replace('/(tabs)')`,
+    // which made it a second navigator competing with the route gate -- the exact
+    // shape `app/_layout.tsx`'s "ONE GATE, NOT TWO" comment warns about. On a
+    // first run it produced two redirects in a row, and the lifter landed back on
+    // the welcome screen having just created an account.
+    //
+    // The phase flip to 'authenticated' is the signal; the gate is keyed on it and
+    // decides where this goes -- Today when the first run is done, the setup
+    // questions when it is not. One authority, and it already knows both answers.
   };
 
   const switchMode = () => {

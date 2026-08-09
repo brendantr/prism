@@ -4,8 +4,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, FadeIn, LinearSpectrum, Text } from '@/components/ui';
+import { isAuthEnabled } from '@/data/supabase/auth';
 import {
   COMPLETE,
+  completionBody,
   DAYS_OPTIONS,
   EQUIPMENT_OPTIONS,
   EXPERIENCE_OPTIONS,
@@ -75,7 +77,7 @@ export default function CompleteScreen() {
         <FadeIn delay={140}>
           <Card padding="base" style={styles.note}>
             <Text variant="bodySm" tone="secondary">
-              {COMPLETE.body}
+              {completionBody(isAuthEnabled())}
             </Text>
           </Card>
         </FadeIn>
