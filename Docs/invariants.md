@@ -44,7 +44,7 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   repository has been executed against one (the integration lane is credential-gated and skipped). RLS
   remains verified against a disposable local Postgres, not against production.
 
-  **Index model superseded 2026-08-06** (sprint `v1-local-training-day`). Migration `0006` drops the
+  **Index model superseded 2026-08-06** (sprint `v1-local-training-day`). Migration `0008` drops the
   UTC expression index named in the original evidence above and replaces it with an ordinary unique
   index on `(profile_id, local_date)`. This changes day identity, not authorization: `save_check_in`
   remains `security invoker`, RLS still applies to every statement, and ownership still comes only
@@ -182,7 +182,7 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 
   **The day-boundary open question above is superseded and closed as of 2026-08-06** (sprint
   `v1-local-training-day`). A training day is the device-local calendar date captured when the
-  check-in is submitted. `supabase/migrations/0006_local_training_day.sql` adds required `local_date`,
+  check-in is submitted. `supabase/migrations/0008_local_training_day.sql` adds required `local_date`,
   replaces the UTC expression index with uniqueness on `(profile_id, local_date)`, and replaces
   `save_check_in` so it merges on that value. `checkedInAt` remains separate: it still orders rows and
   drives readiness staleness in elapsed hours; only one-per-day identity and `selectTodaysCheckIn`
@@ -196,7 +196,7 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   **20/20** new local-training-day SQL assertions, **152/152** across the full database runner, and the
   branch-only Jest run **423 passed / 27 suites** with 5 credential-gated integration tests skipped.
 
-  **Still true:** migrations `0001`–`0006` have not been applied to a live Supabase project. This is
+  **Still true:** migrations `0001`–`0008` have not been applied to a live Supabase project. This is
   verified against disposable local Postgres 16.14, not production. The "never medical" copy bar also
   has no standing formal review process (see I-8). Check-in data is not exempt from I-1/I-6; both are
   verified in the committed client/schema and remain unverified against a live project.
@@ -269,11 +269,33 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   `public.delete_my_account()`, and `app/account.tsx` reaches it through
   `deleteAccountAndTearDown` behind two confirmations. Deleting the `auth.users` row cascades through
   `profiles` to all six user tables (0001), so the function names no tables and cannot drift out of
-  step with the schema. **This is the only `security definer` function in PRism**, and deliberately so:
+  step with the schema. It is the only `security definer` function in PRism that **destroys data** — a
+  claim originally and wrongly written here as "the only `security definer` function in PRism", which a
+  review corrected: `handle_new_user` (`0001_init.sql`, re-created with a pinned `search_path` in
+  `0002_security_hardening.sql`) is also one. Deletion is definer deliberately:
   `auth.users` belongs to `supabase_auth_admin`, and the only alternative is the service-role key,
   which I-4 forbids from reaching the client without exception. What contains it is structural — **it
   takes no arguments**, so there is no id to forge and the only account it can ever delete is the one
   the JWT names. `search_path` is pinned, and `PUBLIC`/`anon` cannot execute it.
+
+  **Amended 2026-08-08 by `supabase/migrations/0007_deletable_account_with_custom_exercises.sql`.**
+  The cascade above is necessary but was not sufficient: a lifter who created their own movement and
+  logged a session with it could not delete their account at all. `profiles` cascades to both
+  `exercises` and `workouts`, Postgres leaves the order of those branches undefined, and `on delete
+  restrict` is checked immediately — so when the exercise branch ran first, `workout_exercises` still
+  referenced the movement and `delete_my_account()` aborted. `0007` moves both exercise foreign keys
+  to `on delete no action deferrable initially deferred`: identical rule, enforced at commit rather
+  than at statement time, so an in-use movement still cannot be deleted on its own while a whole
+  account can. **`cascade` would satisfy I-10 and violate the reason `restrict` is there** — deleting
+  a movement would silently delete the sets performed with it. Verified by
+  `supabase/tests/rls/07_run_exercise_reference_tests.sql` (8 assertions, 154/154 suite-wide).
+
+  **Applied to staging `[fact, owner, 2026-08-09]`.** `0001`–`0007` are on the staging project, so
+  I-10 is met there in schema as well as in the repository. The line this replaces said "applied to no
+  hosted project yet", which was already false when written — an invariant's status against a live
+  project is the owner's report, never something the repository can observe. **Production has had no
+  such treatment**, and I-10 is not met there until it does; `Docs/tester-readiness-runbook.md` §2 is a
+  read-only probe that answers this for any project rather than asserting it.
 
   *Export.* `src/domain/accountExport.ts` assembles a versioned, deterministically sorted document
   covering every stored table plus the lifter's own custom exercises; `Repository.exportAccountData()`

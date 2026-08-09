@@ -1,8 +1,19 @@
 -- ===========================================================================
 -- PRism -- local training day
 -- ===========================================================================
--- Follows 0005_account_deletion.sql. Resolves the final demo/Supabase parity
--- gap recorded by Docs/invariants.md I-7.
+-- Follows 0007_deletable_account_with_custom_exercises.sql. Resolves the final
+-- demo/Supabase parity gap recorded by Docs/invariants.md I-7.
+--
+-- RENUMBERED. This file was written as `0006_local_training_day.sql` on a branch
+-- cut from `main` at a72a2e5. While it sat unlanded, `0006_seed_library.sql` and
+-- `0007_deletable_account_with_custom_exercises.sql` were merged, so two
+-- different migrations claimed the 0006 prefix. Applying these to a hosted
+-- project is a manual, ordered, by-hand step (see Docs/tester-readiness-runbook.md),
+-- and an ambiguous order there is not a tidiness problem — it is an operator
+-- applying the wrong file, or skipping one, on a project holding real training
+-- data. It touches nothing 0006 or 0007 touch: they concern `exercises`,
+-- `routines` and two foreign keys; this concerns `check_ins` and
+-- `save_check_in`. The renumber is positional only.
 --
 -- Demo mode has always treated a check-in day as the device's local calendar
 -- date. The original database index used the UTC date of `checked_in_at`.

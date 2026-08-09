@@ -9,7 +9,7 @@
 - **Status:** Implemented and validated locally.
 - **Labelling** per I-15: `[fact]` / `[decision]` / `[assumption]` /
   `[open question]`.
-- **Approved before starting** `[decision]`: migration `0006`, client changes,
+- **Approved before starting** `[decision]`: migration `0008`, client changes,
   SQL and unit coverage, I-7 evidence, and this sprint record.
 
 ---
@@ -131,7 +131,7 @@ field a reader can observe.
 
 ### 5.2 Database
 
-Migration `0006`:
+Migration `0008`:
 
 1. Adds and backfills `check_ins.local_date date`, then makes it required.
 2. Drops the UTC expression index and recreates `check_ins_one_per_day` on
@@ -187,12 +187,12 @@ src/domain/types.ts
 src/store/__tests__/authActions.test.ts
 src/store/__tests__/trainingStore.test.ts
 src/store/trainingStore.ts
-supabase/migrations/0006_local_training_day.sql
+supabase/migrations/0008_local_training_day.sql
 supabase/tests/rls/01_seed_test_data.sql
 supabase/tests/rls/02_run_isolation_tests.sql
 supabase/tests/rls/04_run_check_in_tests.sql
 supabase/tests/rls/05_run_account_deletion_tests.sql
-supabase/tests/rls/06_run_local_training_day_tests.sql
+supabase/tests/rls/08_run_local_training_day_tests.sql
 supabase/tests/rls/run.sh
 ```
 
@@ -200,11 +200,11 @@ supabase/tests/rls/run.sh
 
 ## 8. Known incompleteness
 
-- **No live Supabase verification** `[fact]`. Migrations `0001`–`0006` are
+- **No live Supabase verification** `[fact]`. Migrations `0001`–`0008` are
   applied nowhere real. The SQL evidence is disposable local Postgres only.
 - **Rollout order matters** `[fact]`. A new client against schema through
   `0004` still gets UTC grouping because the old function ignores the extra
-  key. Migration `0006` against an old client rejects a missing `local_date`.
+  key. Migration `0008` against an old client rejects a missing `local_date`.
   The handoff states no production users/data exist, so both must land together
   before the first preview build rather than requiring a compatibility window.
 - **Legacy demo backfill is best-effort** `[fact]`. A pre-field local record did
@@ -220,7 +220,7 @@ supabase/tests/rls/run.sh
 
 ## 9. The exact next decision
 
-**Who will apply migrations `0001`–`0006` to the real Supabase project, and
+**Who will apply migrations `0001`–`0008` to the real Supabase project, and
 will that happen before the first preview build is distributed?** The local
 implementation is complete; the fix does not exist in the real path until that
 owner-only operation happens.

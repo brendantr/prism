@@ -28,6 +28,14 @@ export interface RouteGateInput {
 }
 
 export const ONBOARDING_ROUTE = '/onboarding';
+/**
+ * Where a lifter resumes after signing up part-way through the first run.
+ *
+ * Deliberately the questions, not `ONBOARDING_ROUTE`: sending them back to the
+ * welcome screen after they have just created an account reads as the sign-up
+ * having failed. Engineer/owner decision, 2026-08-08.
+ */
+export const ONBOARDING_STEPS_ROUTE = '/onboarding/steps';
 export const AUTH_ROUTE = '/auth';
 export const HOME_ROUTE = '/(tabs)';
 
@@ -47,12 +55,45 @@ export function resolveInitialRoute({
   // on a guess. Defensive -- `app/_layout.tsx` does not call this while unknown.
   if (sessionPhase === 'unknown') return null;
 
-  // First run wins over everything, including an already-valid session: a user
-  // who signed in on the onboarding auth step still has the rest of the flow
-  // ahead of them, and bouncing them to Today mid-sequence would strand the
-  // questions that follow.
+  /*
+    FIRST RUN, AND THE ACCOUNT STEP INSIDE IT
+    -----------------------------------------
+    First run still wins over a valid session -- someone who signed up mid-flow
+    has the rest of the questions ahead of them, and dropping them on Today
+    would strand those. What changed on 2026-08-08 is that the account step is
+    no longer *inside* the `onboarding` segment.
+
+    This branch used to be one line: anything not in `onboarding` was evicted to
+    `ONBOARDING_ROUTE`. That was correct while the sign-in form lived at
+    `app/onboarding/auth.tsx`. The auth sprint moved the real form to
+    `app/auth/`, which left the segment -- so the rule protecting the flow began
+    evicting the one step that has to happen during it. `/onboarding/auth` is
+    now a `<Redirect>` to `/auth`, this gate immediately sent the lifter back to
+    the welcome screen, and on a real-backend build **a new install could
+    neither sign up nor sign in**. Found by a cold-start run against a live
+    project; every unit test passed throughout, because the function did exactly
+    what it was specified to do and the specification had gone stale.
+
+    Demo builds never hit it: `resolveOnboardingAuthHref` sends them to
+    `/onboarding/steps`, which never leaves the segment. The defect existed only
+    in the mode that ships.
+  */
   if (!onboardingCompleted) {
-    return currentSegment === 'onboarding' ? null : ONBOARDING_ROUTE;
+    // Signed up or signed in part-way through: forward into the questions, not
+    // back to the welcome screen, which reads as the sign-up having failed.
+    if (sessionPhase === 'authenticated') {
+      return currentSegment === 'onboarding' ? null : ONBOARDING_STEPS_ROUTE;
+    }
+
+    if (currentSegment === 'onboarding') return null;
+
+    // Signing in is a step of the first run, so `auth` is a legal place to be
+    // during it -- but only where accounts exist. A 'disabled' build (demo, or
+    // misconfigured) falls through and is returned to onboarding, because there
+    // is no account for it to be creating.
+    if (sessionPhase === 'unauthenticated' && currentSegment === 'auth') return null;
+
+    return ONBOARDING_ROUTE;
   }
 
   if (sessionPhase === 'unauthenticated') {

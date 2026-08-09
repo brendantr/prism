@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Local training-day suite (I-7, migration 0006).
+-- Local training-day suite (I-7, migration 0008).
 -- ===========================================================================
 -- Proves that one-per-day identity follows the client-captured local calendar
 -- date while `checked_in_at` remains the event instant. The two boundary cases

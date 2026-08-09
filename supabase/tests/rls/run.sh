@@ -41,14 +41,27 @@ run_sql "$MIGRATIONS_DIR/0002_security_hardening.sql"
 run_sql "$MIGRATIONS_DIR/0003_workout_write_integrity.sql"
 run_sql "$MIGRATIONS_DIR/0004_partial_check_ins.sql"
 run_sql "$MIGRATIONS_DIR/0005_account_deletion.sql"
-run_sql "$MIGRATIONS_DIR/0006_local_training_day.sql"
+run_sql "$MIGRATIONS_DIR/0006_seed_library.sql"
+run_sql "$MIGRATIONS_DIR/0007_deletable_account_with_custom_exercises.sql"
+run_sql "$MIGRATIONS_DIR/0008_local_training_day.sql"
 run_sql "$TEST_DIR/01_seed_test_data.sql"
 run_sql "$TEST_DIR/02_run_isolation_tests.sql"
 run_sql "$TEST_DIR/03_run_write_integrity_tests.sql"
 run_sql "$TEST_DIR/04_run_check_in_tests.sql"
-run_sql "$TEST_DIR/06_run_local_training_day_tests.sql"
+run_sql "$TEST_DIR/08_run_local_training_day_tests.sql"
 # Last: it creates and destroys its own fixture user, and deletion is the one
 # operation that would invalidate the shared fixtures if it touched them.
 run_sql "$TEST_DIR/05_run_account_deletion_tests.sql"
 
-echo "=== RLS isolation + write-integrity + check-in + deletion + local-training-day suites passed ==="
+# 0006 applied a second time, then asserted. Idempotency is a property the
+# library seed has to have -- applying migrations to a hosted project is manual,
+# so "did I already run that one?" must be answerable by running it again -- and
+# a property asserted without actually re-applying the file is an assumption.
+run_sql "$MIGRATIONS_DIR/0006_seed_library.sql"
+run_sql "$TEST_DIR/06_run_library_seed_tests.sql"
+
+# Account deletion for a lifter with their OWN movement logged in a session --
+# the case 05 does not build, and the one that was broken in production.
+run_sql "$TEST_DIR/07_run_exercise_reference_tests.sql"
+
+echo "=== RLS + write-integrity + check-in + local-training-day + deletion + library seed + exercise reference suites passed ==="
