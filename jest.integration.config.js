@@ -31,7 +31,23 @@ module.exports = {
   testEnvironment: 'node',
 
   testMatch: ['**/*.integration.test.[jt]s?(x)'],
-  testPathIgnorePatterns: ['/node_modules/'],
+  // `.claude/worktrees/` holds git worktrees of this same repository, each with
+  // its own copy of these files at whatever commit that worktree sits on. Jest
+  // walks the whole tree from `rootDir`, so without this it collects those
+  // copies too — and this lane CREATES AND DELETES ACCOUNTS on a real project.
+  // Running a stale checkout's tests against live staging is not a slower test
+  // run, it is a different program touching your data.
+  //
+  // Seen for real on 2026-08-09: a run from the primary checkout collected four
+  // nested copies, and the failure it produced (`AsyncStorage is null`, from the
+  // worktrees that predate this config file) read like an app defect.
+  //
+  // Anchored with `<rootDir>` rather than written as a bare `/\.claude/`. These
+  // patterns match the ABSOLUTE path, and an agent worktree lives *at*
+  // `.claude/worktrees/<name>/` — so the unanchored form excludes every test in
+  // the very checkout you are running from. It matches nothing here and
+  // everything there, which is the opposite of the intent.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/\\.claude/'],
 
   // `babel-preset-expo` on its own, without the preset's device setup files.
   transform: {
