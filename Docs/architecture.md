@@ -131,7 +131,8 @@
   drift-guard tests (`src/data/__tests__/librarySeed.test.ts`) pinning the migration to
   `EXERCISE_LIBRARY`/`ROUTINE_TEMPLATES` in both directions. `eas.json`'s `preview` profile is flipped
   to `EXPO_PUBLIC_DEMO_MODE: "false"`. **Two things this does not mean:** `0006` has run against a
-  disposable local database only and no hosted project has it; and a preview build cut today shows
+  disposable local database only and no hosted project has it *(superseded 2026-08-09 — applied to
+  staging, see the delta below)*; and a preview build cut today shows
   `SUPABASE_MISCONFIGURED_MESSAGE` rather than the app, because the EAS `preview` environment still
   has no Supabase variables. A second, separate gap remains open and is now the binding one for
   testers — **there is still no way to create an exercise anywhere in the app** (`Repository` has no
@@ -157,8 +158,9 @@
   146/146 recorded in the delta above. `07_run_exercise_reference_tests.sql` asserts the behaviour
   *and* the constraint's catalogue shape, because a later migration tidying these to `cascade` would
   pass every behavioural assertion while destroying logged sets. **Not applied to any hosted
-  project**, including staging — until it is, the integration lane's deletion test stays red and a
-  test account holding a custom movement cannot be deleted. Full record:
+  project**, including staging *(superseded 2026-08-09 — applied to staging, see the delta below)* —
+  until it is, the integration lane's deletion test stays red and a test account holding a custom
+  movement cannot be deleted. Full record:
   `Docs/sprints/2026-08-08-account-deletion-fk-fix.md`.
 - **Delta since 2026-08-08 (documentation and drift-guard correction, no schema or product change):**
   The two deltas above landed with their operator-facing documentation out of step, which for a
@@ -176,6 +178,23 @@
   `routineTemplates.ts` passed the old guard **47/47** and fail the new one; `npm run typecheck` clean
   and **451/451 tests across 26 suites** with the drifts reverted. No migration, no `eas.json` and no
   application code was touched, so the 154/154 SQL evidence above still stands unmodified.
+- **Delta 2026-08-09 — the schema is on a hosted project, and this document was the last to know:**
+  `[fact, owner, 2026-08-09]` **The owner created a staging project and applied `0001`–`0007` to it.**
+  Every "not applied to a live project" statement above is superseded, including the two marked
+  inline. The residual risks those entries recorded — that `save_workout_graph` would fail outright
+  against the real project, that the exercise picker would be empty, that I-10 would break for an
+  account holding a custom movement — are closed **on staging**. They remain open for any project that
+  has not had the same treatment, and production is such a project.
+  **The failure worth recording is not the staleness, it is the mechanism** `[recommendation]`: this
+  document inferred hosted state from the repository, which cannot observe it. An agent has no
+  dashboard, so a claim here about a live project is the owner's report or it is nothing, and one
+  written as a bare `[fact]` will be read as current long after it stops being true. Cloud-state
+  claims belong in `Docs/tester-readiness-runbook.md` §2, whose probe reads the project directly and
+  settles the question instead of asserting an answer. **Still open and unconfirmed:** whether the
+  integration lane has been run against staging, and whether its two repository secrets are set — so
+  the nightly lane may still be reporting "nothing exercised". **Still open and confirmed:** the EAS
+  `preview` environment has no Supabase variables, which is now the binding blocker for a tester
+  build. Full record: `Docs/tester-readiness-runbook.md`.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five
@@ -321,7 +340,7 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
   - *Local draft* — every mutation mirrors `workout` to `AsyncStorage` under `prism.activeWorkout.draft.v1`, so a killed process can recover it on relaunch (`hydrate()`, and the `subscribe` at the foot of the module). Writes are queued and revision-checked, so the newest state is the one that survives a kill and a discarded session cannot be resurrected by a stale write. This mirror is read by nothing except that `hydrate()`, is scoped to a `DraftOwner`, and is removed on sign-out (`src/store/authActions.ts`).
   - *Repository-backed workout* — only on `finish()`, when the completed workout goes to `trainingStore.completeWorkout` and through the repository. This is the only layer that reaches Postgres.
 - **`src/data` (repositories/data access):** `repository.ts` defines the `Repository` interface and two implementations (`DemoRepository`, `SupabaseRepository`), selected once at module load via `getRepository()` based on `isSupabaseConfigured`. `supabase/client.ts` lazily constructs the Supabase client only when configured, so demo mode makes zero network calls.
-- **Supabase/database:** A single SQL migration (`supabase/migrations/0001_init.sql`) is the only schema artifact in the repo. It is not applied by CI or any script found in `package.json` — applying it is a manual, documented step in the README ("SQL Editor, paste ... execute").
+- **Supabase/database:** `supabase/migrations/` holds the schema — **seven files as of 2026-08-09** (`0001_init` … `0007_deletable_account_with_custom_exercises`), not the single `0001_init.sql` this line described until then. They are exercised by CI against a disposable Postgres (`supabase/tests/rls/run.sh`, wired into `.github/workflows/ci.yml`), but **applying them to a hosted project is still a manual dashboard step** — there is no `supabase/config.toml`, no `supabase link`, and therefore no `supabase db push`. That gap is why `Docs/tester-readiness-runbook.md` §2 needs a hand-written probe to answer "which migrations does this project have".
 - **Tests:** **Corrected 2026-08-06** `[fact, `npx jest --ci`]`. This entry claimed tests existed "only for `src/domain/calc`" with "no tests found for `src/data`, `src/store`". That stopped being true several sprints ago and stayed in the baseline. Actual coverage today: **24 suites, 375 tests**, across `src/content`, `src/data` (repository, ownership, auth posture, Supabase session flow, secure storage), `src/domain` (calc, schedule, history, auth validation, auth errors, routing, account), `src/store` (active workout, training, auth actions, session), and `src/utils`. Still genuinely untested: **anything under `app/` and anything under `src/components`** — there is no component or screen test in the repository.
 - **Configuration/build/CI:** `app.json` (Expo config), `tsconfig.json` (strict TS, `@/*` path alias to `src/`), `.env.example` (documents three `EXPO_PUBLIC_*` variables), `.github/workflows/ci.yml` (Node 20, `npm ci`, typecheck, test).
 

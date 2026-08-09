@@ -2,18 +2,34 @@
 
 ## Document status
 
-- **Status:** Repository-side work is complete. **Every step below is owner-only and none has been
-  performed.**
+- **Status:** Repository-side work is complete. **§3 is done — the owner has applied `0001`–`0007` to
+  staging.** §5 (EAS `preview` variables) is the remaining blocker; §4 is unconfirmed.
 - **Date opened:** 2026-08-09
-- **Baseline:** `main` at `4277083`, which includes the first-run routing fix (#58) and the
-  documentation/drift-guard correction (#59).
+- **Corrected:** 2026-08-09, same day. The first version of this document asserted that *none* of it
+  had been performed. That was wrong when written — see the correction note below.
+- **Baseline:** `main` at `08d373b`.
 - **Labels:** `[fact]` (with evidence), `[assumption]`, `[recommendation]`, `[open question]` — per
   `Docs/agents.md` and `Docs/invariants.md` I-15.
 
 `[fact]` Every step here needs a dashboard, a credential, or a build service. Per `CLAUDE.md`
-(cloud-resource changes) and `Docs/invariants.md` I-4, an agent does not hold or use those. Nothing in
-this document has been executed against a hosted project — the SQL was verified against a disposable
-local Postgres 16.14 only, as stated per step.
+(cloud-resource changes) and `Docs/invariants.md` I-4, an agent does not hold or use those — so the
+status of each step is **reported by the owner**, and this document says which are confirmed and which
+are not.
+
+### Correction, 2026-08-09
+
+`[fact]` The first version of this runbook stated that nothing in it had been executed against a hosted
+project. **The owner had already created the staging project and applied `0001`–`0007` to it**
+`[fact, owner, 2026-08-09]`, so §3 was describing work that was already done.
+
+The claim came from `Docs/architecture.md`, which recorded "not applied to any hosted project" — true
+when written, and stale by the time it was read. Worth naming the failure mode, because it is the same
+one this repository keeps hitting: **an agent cannot see a dashboard, so every statement here about the
+hosted project is the owner's report or it is nothing.** A document that infers cloud state from the
+repository will be wrong the moment someone acts outside it, and it will be wrong confidently.
+
+`[recommendation]` Treat §2's probe as the arbiter. It reads the project directly, so it settles the
+question in a way no document can.
 
 ---
 
@@ -27,17 +43,26 @@ local Postgres 16.14 only, as stated per step.
 | A real account can be deleted (I-10) | `0007_deletable_account_with_custom_exercises.sql` — the cascade-ordering defect is fixed |
 | A real user can get in at all | #58 — before it, a real-backend build could neither sign up nor sign in |
 
-`[fact]` What is **not** true is anything about the hosted project or the build environment. The
-migrations have been applied to disposable local databases only, and the EAS `preview` environment has
-no Supabase variables. Those two gaps are the whole of this runbook.
+`[fact, owner, 2026-08-09]` A staging project exists and carries **`0001`–`0007`**. So the schema half
+of tester readiness is done, on the repository side *and* on the project.
+
+What remains is the build environment: `[fact]` the EAS `preview` environment still has no Supabase
+variables, and `eas.json` sets `EXPO_PUBLIC_DEMO_MODE: "false"` there — so a preview build cut today
+shows the misconfiguration message rather than the app. That is §5, and it is the one blocker left
+between here and a tester holding the app.
+
+`[open question]` Whether the integration lane (§4) has been run against staging, and whether the two
+repository secrets are set, is not confirmed. Both are quick to check and worth checking, because the
+lane is the only thing that exercises PRism's own data layer against the real project.
 
 ---
 
-## 2. Step 0 — find out what your project already has
+## 2. Step 0 — confirm what the project actually has
 
 `[fact]` PRism has no migration-tracking table. Migrations are applied by hand in the SQL Editor, so
-"which ones has this project had?" is answered by looking for what each one creates. Run this in the
-SQL Editor of the project you intend to point testers at:
+"which ones does this project have?" is answered by looking for what each one creates. This query is
+the only authority on that question — the repository cannot see a dashboard, and this document is a
+report, not an observation. Run it in the SQL Editor of the project you intend to point testers at:
 
 ```sql
 with fn as (
@@ -69,13 +94,17 @@ in both directions against a local Postgres 16.14: on a database migrated to `00
 first five `true` and the last two `false`; after applying `0006` and `0007` all seven read `true`. It
 is a read-only query and changes nothing.
 
-`[assumption]` Based on `Docs/sprints/2026-08-08-first-run-routing-fix.md`, which records an account
-being created, onboarded and deleted on the live staging project, that project is at least at `0005`.
-The probe replaces that assumption with an answer.
+`[fact, owner, 2026-08-09]` On the staging project all seven are expected to read `true`, because
+`0001`–`0007` have been applied. Run it anyway, once: it costs nothing, and it is the difference
+between believing the project is migrated and knowing it.
 
 ---
 
-## 3. Step 1 — apply the missing migrations
+## 3. Step 1 — apply any migration the probe reported `false` — **done on staging**
+
+`[fact, owner, 2026-08-09]` **Already performed for the staging project: `0001`–`0007` are applied.**
+This section stays because it is still the procedure for the next project — production, or a second
+staging project if §4's email-confirmation tension is resolved by splitting them.
 
 For each file the probe reported `false`, in **numeric order**, paste the whole file into the SQL
 Editor and run it. Stop at the first error rather than continuing.
@@ -97,6 +126,12 @@ the store-submission blocker I-10 names.
 ---
 
 ## 4. Step 2 — prove it with the integration lane, before any tester sees it
+
+`[open question, 2026-08-09]` **Status unconfirmed.** `Docs/sprints/2026-08-08-live-backend-reconciliation.md`
+records this lane being run against staging; that has not been confirmed alongside the migration
+status, and the repository secrets are a separate step again. Now that `0006` and `0007` are on the
+project, this is the fastest way to find out whether the app actually works against it — and unlike
+§3, it produces evidence rather than a report.
 
 `[fact]` This is the acceptance test, and it already exists. It drives PRism's own data layer — not a
 client the test built for itself — against the real project: sign-up on the real `auth.users`, the
@@ -175,7 +210,7 @@ if the account owns a custom movement — which, today, is not reachable from th
 | **No custom movements** | `Repository` has no exercise write methods at all. A tester is capped at the 43 seeded movements — if their program uses something else, they cannot log it. This is the binding product gap. |
 | **No body measurements** | `listMeasurements()` has no writer anywhere in the interface, so bodyweight and measurements can never be recorded against a real account. |
 | **No observability (G-4)** | No crash reporting and no analytics. Tester feedback will arrive with nothing behind it — a report of "it crashed" is unactionable. `[recommendation]` Decide this before the cohort grows past people you can talk to directly. |
-| **Check-in day is bucketed in UTC** | Uncommitted work on `feature/v1-local-training-day` addresses it. Testers west or east of UTC can see two adjacent local dates collapse, or one local date split. |
+| **Check-in day is bucketed in UTC** | `feature/v1-local-training-day` addresses it (committed and pushed 2026-08-09, not yet landed — it still needs its `0006_local_training_day.sql` renamed to `0008` and a rebase). Testers west or east of UTC can see two adjacent local dates collapse, or one local date split. |
 | **No favourites on a real account** | `trainingStore`'s default `favouriteExerciseIds` are bundle slugs (`ex_*`) that match no seeded UUID. Cosmetic. |
 | **Active routine is arbitrary** | `getActiveRoutine()` returns the first non-template routine or else the first by name, so every new account silently starts on "Prism 3". Nobody chose that. |
 
