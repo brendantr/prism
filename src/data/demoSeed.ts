@@ -12,6 +12,7 @@ import type {
   WorkoutExercise,
   WorkoutSet,
 } from '@/domain/types';
+import { deviceLocalDate } from '@/domain/trainingDay';
 
 /**
  * DEMO SEED
@@ -266,14 +267,14 @@ export function generateDemoData(now: Date = new Date()): DemoDataset {
 // --- Sub-generators --------------------------------------------------------
 
 function generateCheckIns(now: Date, workouts: Workout[], rand: () => number): CheckIn[] {
-  const trainedDays = new Set(workouts.map((w) => w.startedAt.slice(0, 10)));
+  const trainedDays = new Set(workouts.map((w) => deviceLocalDate(w.startedAt)));
   const checkIns: CheckIn[] = [];
 
   // One morning check-in per day, including today.
   for (let i = DEMO_WEEKS * 7; i >= 0; i--) {
     const day = addDays(startOfDay(now), -i);
-    const key = day.toISOString().slice(0, 10);
-    const yesterday = addDays(day, -1).toISOString().slice(0, 10);
+    const key = deviceLocalDate(day);
+    const yesterday = deviceLocalDate(addDays(day, -1));
     const trainedYesterday = trainedDays.has(yesterday);
 
     const at = new Date(day);
@@ -288,6 +289,7 @@ function generateCheckIns(now: Date, workouts: Workout[], rand: () => number): C
     checkIns.push({
       id: `ci_${key}`,
       profileId: DEMO_PROFILE_ID,
+      localDate: deviceLocalDate(at),
       checkedInAt: at.toISOString(),
       sleepQuality: sleep,
       energy,

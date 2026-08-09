@@ -42,7 +42,7 @@ import type {
  * gone, and a document that cannot say what it is is a document that has to be
  * reverse-engineered.
  */
-export const ACCOUNT_EXPORT_FORMAT_VERSION = 1;
+export const ACCOUNT_EXPORT_FORMAT_VERSION = 2;
 
 export interface AccountExport {
   formatVersion: number;

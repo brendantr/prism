@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Re-runnable RLS isolation test: applies both migrations plus the auth
-# emulation and assertion suite in supabase/tests/rls/ against a Postgres
+# Re-runnable database test runner: applies every migration plus the auth
+# emulation and assertion suites in supabase/tests/rls/ against a Postgres
 # instance, then reports pass/fail.
 #
 # Requires a running, empty (or disposable) Postgres database reachable via
@@ -41,12 +41,14 @@ run_sql "$MIGRATIONS_DIR/0002_security_hardening.sql"
 run_sql "$MIGRATIONS_DIR/0003_workout_write_integrity.sql"
 run_sql "$MIGRATIONS_DIR/0004_partial_check_ins.sql"
 run_sql "$MIGRATIONS_DIR/0005_account_deletion.sql"
+run_sql "$MIGRATIONS_DIR/0006_local_training_day.sql"
 run_sql "$TEST_DIR/01_seed_test_data.sql"
 run_sql "$TEST_DIR/02_run_isolation_tests.sql"
 run_sql "$TEST_DIR/03_run_write_integrity_tests.sql"
 run_sql "$TEST_DIR/04_run_check_in_tests.sql"
+run_sql "$TEST_DIR/06_run_local_training_day_tests.sql"
 # Last: it creates and destroys its own fixture user, and deletion is the one
 # operation that would invalidate the shared fixtures if it touched them.
 run_sql "$TEST_DIR/05_run_account_deletion_tests.sql"
 
-echo "=== RLS isolation + write-integrity + check-in + deletion suites passed ==="
+echo "=== RLS isolation + write-integrity + check-in + deletion + local-training-day suites passed ==="

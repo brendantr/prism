@@ -118,9 +118,9 @@ insert into body_measurements (id, profile_id, bodyweight_kg) values
   ('20000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 75.0)
 on conflict (id) do nothing;
 
-insert into check_ins (id, profile_id, sleep_quality, energy, soreness, stress) values
-  ('30000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111', 4, 4, 2, 2),
-  ('30000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 3, 3, 3, 3)
+insert into check_ins (id, profile_id, local_date, sleep_quality, energy, soreness, stress) values
+  ('30000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111', timezone('utc', now())::date, 4, 4, 2, 2),
+  ('30000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', timezone('utc', now())::date, 3, 3, 3, 3)
 on conflict (id) do nothing;
 
 -- personal_records: HAS the exercise-visibility trigger.

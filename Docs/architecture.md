@@ -99,6 +99,17 @@
     unchanged (still gated, still skipped) — **nothing here was exercised against a live Supabase
     project**, only against local Postgres. **I-10 remains open.** Full record:
     `Docs/sprints/2026-08-06-v1-workout-write-integrity.md`.
+- **Delta 2026-08-06 (`feature/v1-local-training-day`, based on `main` at `a72a2e5`):** the final
+  demo/Postgres check-in parity gap recorded by I-7 is closed in the client and committed schema.
+  `supabase/migrations/0006_local_training_day.sql` adds required `check_ins.local_date` and replaces
+  UTC-date uniqueness with `(profile_id, local_date)`. The client captures that date from the device
+  calendar at the same instant it stamps `checked_in_at`; demo merging, the Postgres function, and
+  Today's selector now use it. The timestamp remains the sort key and the readiness staleness clock.
+  `save_check_in` remains `security invoker`, takes no owner, and reads `auth.uid()`. Literal coverage
+  includes west-of-UTC collapse, east-of-UTC split, non-integral offsets, DST, and travel. Evidence:
+  `npx tsc --noEmit` clean; branch-only Jest **423 passed / 27 suites**, with 5 integration tests
+  skipped; all SQL suites **152/152** on disposable local Postgres 16.14. Nothing was applied to a
+  live Supabase project. Full record: `Docs/sprints/2026-08-06-v1-local-training-day.md`.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five

@@ -4,6 +4,7 @@ import { ROUTINE_TEMPLATES, SPECTRUM_FOUR } from './routineTemplates';
 import { generateDemoData, DEMO_PROFILE_ID } from './demoSeed';
 import { AuthRequiredError } from './authRequired';
 import { buildAccountExport, type AccountExport } from '@/domain/accountExport';
+import { deviceLocalDate, isLocalDate } from '@/domain/trainingDay';
 import {
   DEMO_MODE,
   SUPABASE_MISCONFIGURED,
@@ -134,7 +135,17 @@ class DemoRepository implements Repository {
       this.userWorkouts = safeParse<Workout[]>(w[1], []);
       this.profileOverride = safeParse<Partial<Profile>>(p[1], {});
       this.userRecords = safeParse<PersonalRecord[]>(r[1], []);
-      this.userCheckIns = safeParse<CheckIn[]>(c[1], []);
+      // `localDate` was added after the v1 demo-storage key shipped. Old demo
+      // records have only an instant, so derive the best available local date
+      // on hydration rather than dropping a lifter's locally logged check-ins.
+      this.userCheckIns = safeParse<Array<CheckIn & { localDate?: string }>>(c[1], []).map(
+        (checkIn) => ({
+          ...checkIn,
+          localDate: isLocalDate(checkIn.localDate)
+            ? checkIn.localDate
+            : deviceLocalDate(checkIn.checkedInAt),
+        }),
+      );
     } catch {
       // A corrupt cache should never block the app; fall back to pure seed data.
       this.userWorkouts = [];
@@ -229,7 +240,7 @@ class DemoRepository implements Repository {
   }
 
   /**
-   * One check-in per calendar day, built up a few taps at a time.
+   * One check-in per captured local calendar date, built up a few taps at a time.
    *
    * A later submission on the same day merges into the existing record instead
    * of adding a second one -- matching the `check_ins_one_per_day` unique index
@@ -238,10 +249,11 @@ class DemoRepository implements Repository {
    */
   async saveCheckIn(patch: CheckInPatch): Promise<void> {
     await this.hydrate();
-    const today = (await this.listCheckIns()).find((c) =>
-      sameCalendarDay(c.checkedInAt, patch.checkedInAt),
+    const normalized = withCheckInLocalDate(patch);
+    const today = (await this.listCheckIns()).find(
+      (c) => c.localDate === normalized.localDate,
     );
-    const record = mergeCheckIn(today ? today : blankCheckIn(patch), patch);
+    const record = mergeCheckIn(today ? today : blankCheckIn(normalized), normalized);
     this.userCheckIns = [...this.userCheckIns.filter((c) => c.id !== record.id), record];
     await AsyncStorage.setItem(STORAGE_KEYS.checkIns, JSON.stringify(this.userCheckIns));
   }
@@ -484,15 +496,17 @@ class SupabaseRepository implements Repository {
    */
   async saveCheckIn(checkIn: CheckInPatch): Promise<void> {
     await this.uid();
+    const normalized = withCheckInLocalDate(checkIn);
 
     const patch: Record<string, unknown> = {
-      id: checkIn.id,
-      checked_in_at: checkIn.checkedInAt,
+      id: normalized.id,
+      local_date: normalized.localDate,
+      checked_in_at: normalized.checkedInAt,
     };
     for (const field of CHECK_IN_SCALES) {
       // `in`, not a truthiness or null test: an explicitly-null answer has to
       // reach the database as a present key so it clears the stored value.
-      if (field in checkIn) patch[CHECK_IN_COLUMN[field]] = checkIn[field] ?? null;
+      if (field in normalized) patch[CHECK_IN_COLUMN[field]] = normalized[field] ?? null;
     }
 
     const { error } = await getSupabase().rpc('save_check_in', { p_patch: patch });
@@ -638,14 +652,19 @@ const CHECK_IN_COLUMN: Record<(typeof CHECK_IN_SCALES)[number], string> = {
   stress: 'stress',
 };
 
-function sameCalendarDay(a: string, b: string): boolean {
-  const x = new Date(a);
-  const y = new Date(b);
-  return (
-    x.getFullYear() === y.getFullYear() &&
-    x.getMonth() === y.getMonth() &&
-    x.getDate() === y.getDate()
-  );
+/**
+ * The TypeScript contract requires `localDate`; the fallback is for a caller
+ * from an older in-process bundle or persisted action shape. It still computes
+ * the date on the client, from the event instant and this device's timezone,
+ * and both repositories use this same boundary so demo and Supabase agree.
+ */
+function withCheckInLocalDate(patch: CheckInPatch): CheckInPatch {
+  const supplied = (patch as CheckInPatch & { localDate?: unknown }).localDate;
+  const localDate = supplied == null ? deviceLocalDate(patch.checkedInAt) : supplied;
+  if (!isLocalDate(localDate)) {
+    throw new RangeError('Check-in localDate must be a real YYYY-MM-DD date.');
+  }
+  return { ...patch, localDate };
 }
 
 /**
@@ -660,7 +679,11 @@ function sameCalendarDay(a: string, b: string): boolean {
  * the old value would reappear on the next read.
  */
 function mergeCheckIn(existing: CheckIn, patch: CheckInPatch): CheckIn {
-  const merged: CheckIn = { ...existing, checkedInAt: patch.checkedInAt };
+  const merged: CheckIn = {
+    ...existing,
+    localDate: patch.localDate,
+    checkedInAt: patch.checkedInAt,
+  };
 
   for (const field of CHECK_IN_SCALES) {
     if (!(field in patch)) continue;
@@ -676,6 +699,7 @@ function blankCheckIn(patch: CheckInPatch): CheckIn {
   return {
     id: patch.id,
     profileId: patch.profileId,
+    localDate: patch.localDate,
     checkedInAt: patch.checkedInAt,
     sleepQuality: null,
     energy: null,

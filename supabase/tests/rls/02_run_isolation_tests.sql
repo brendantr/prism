@@ -588,8 +588,8 @@ begin
   get diagnostics v_count = row_count;
   reset role;
   if v_count > 0 then
-    insert into check_ins (id, profile_id, sleep_quality, energy, soreness, stress) values
-      ('30000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', 3, 3, 3, 3)
+    insert into check_ins (id, profile_id, local_date, sleep_quality, energy, soreness, stress) values
+      ('30000000-0000-0000-0000-0000000000b1', '22222222-2222-2222-2222-222222222222', timezone('utc', now())::date, 3, 3, 3, 3)
       on conflict (id) do nothing;
   end if;
   perform public._record('check_ins: A cannot DELETE B''s row', v_count = 0, 'rows_affected=' || v_count);
@@ -603,8 +603,8 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
   begin
-    insert into check_ins (id, profile_id, sleep_quality, energy, soreness, stress)
-      values ('30000000-0000-0000-0000-0000000000c1', '22222222-2222-2222-2222-222222222222', 4, 4, 4, 4);
+    insert into check_ins (id, profile_id, local_date, sleep_quality, energy, soreness, stress)
+      values ('30000000-0000-0000-0000-0000000000c1', '22222222-2222-2222-2222-222222222222', date '2040-01-01', 4, 4, 4, 4);
   exception when others then
     v_failed := true;
     v_errmsg := sqlerrm;

@@ -452,6 +452,7 @@ describe('deleteAccountAndTearDown()', () => {
         {
           id: 'c1',
           profileId: 'user-1',
+          localDate: '2026-01-01',
           checkedInAt: '2026-01-01T07:00:00.000Z',
           sleepQuality: 4,
           energy: 4,

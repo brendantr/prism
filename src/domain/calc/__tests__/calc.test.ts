@@ -339,6 +339,7 @@ describe('readiness score', () => {
     return {
       id: `ci${checkInSeq++}`,
       profileId: 'p1',
+      localDate: '2026-06-10',
       checkedInAt: '2026-06-10T07:00:00.000Z',
       sleepQuality: 4,
       energy: 4,
@@ -475,13 +476,16 @@ describe('readiness score', () => {
     expect(at(1, 3).sufficient).toBe(false); // volume 3 -> chronicWeekly 0.75
   });
 
-  it('counts a check-in up to 36 hours old and no further', () => {
+  it('uses timestamp age, not localDate, at the 36-hour staleness boundary', () => {
     const wellbeingAt = (checkedInAt: string) =>
       computeReadiness({
         profile,
         workouts: HISTORY,
         recovery: estimateRecovery(HISTORY, EXERCISE_BY_ID, NOW),
         targetMuscles: [],
+        // `checkIn()` deliberately leaves localDate at 2026-06-10 even for
+        // the June 8 timestamps below. Recency is elapsed time, not the date
+        // bucket used to enforce one check-in per training day.
         latestCheckIn: checkIn({ checkedInAt }),
         now: NOW,
       }).factors.find((f) => f.key === 'wellbeing')!;

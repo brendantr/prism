@@ -2,7 +2,7 @@
 -- Partial check-in suite (I-7).
 -- ===========================================================================
 -- Verifies `public.save_check_in` (0004_partial_check_ins.sql) against a live
--- Postgres instance with all four migrations applied exactly as committed.
+-- Postgres instance with migrations through 0006 applied exactly as committed.
 --
 -- What this is really testing is **parity with demo mode**. `DemoRepository`
 -- has always supported partial check-ins with three-way per-field semantics,
@@ -62,7 +62,7 @@ create or replace function public._a_day1() returns public.check_ins
 language sql stable as $$
   select * from public.check_ins
   where profile_id = '11111111-1111-1111-1111-111111111111'
-    and timezone('utc', checked_in_at)::date = date '2026-03-01'
+    and local_date = date '2026-03-01'
   limit 1;
 $$;
 
@@ -79,6 +79,7 @@ begin
     '11111111-1111-1111-1111-111111111111',
     jsonb_build_object(
       'id', '31000000-0000-0000-0000-000000000001',
+      'local_date', '2026-03-01',
       'checked_in_at', '2026-03-01T07:00:00Z',
       'sleep_quality', 4
     )
@@ -109,6 +110,7 @@ begin
     '11111111-1111-1111-1111-111111111111',
     jsonb_build_object(
       'id', '31000000-0000-0000-0000-0000000000ff',
+      'local_date', '2026-03-01',
       'checked_in_at', '2026-03-01T19:00:00Z',
       'energy', 3
     )
@@ -120,7 +122,7 @@ end $$;
 select public._record('merge: still exactly one check-in for that day',
   (select count(*) from public.check_ins
    where profile_id = '11111111-1111-1111-1111-111111111111'
-     and timezone('utc', checked_in_at)::date = date '2026-03-01') = 1);
+     and local_date = date '2026-03-01') = 1);
 select public._record('merge: the row kept its original id -- the new one was discarded',
   (select id from public._a_day1()) = '31000000-0000-0000-0000-000000000001');
 select public._record('merge: the newly answered scale is stored',
@@ -146,6 +148,7 @@ begin
   v_err := public._check_in_as(
     '11111111-1111-1111-1111-111111111111',
     jsonb_build_object(
+      'local_date', '2026-03-01',
       'checked_in_at', '2026-03-01T20:00:00Z',
       'sleep_quality', null
     )
@@ -170,7 +173,11 @@ declare v_err text;
 begin
   v_err := public._check_in_as(
     '11111111-1111-1111-1111-111111111111',
-    jsonb_build_object('checked_in_at', '2026-03-01T21:00:00Z', 'energy', null)
+    jsonb_build_object(
+      'local_date', '2026-03-01',
+      'checked_in_at', '2026-03-01T21:00:00Z',
+      'energy', null
+    )
   );
   perform public._record('empty: clearing the last answered scale is permitted',
     v_err is null, coalesce(v_err, 'ok'));
@@ -190,6 +197,7 @@ begin
     '11111111-1111-1111-1111-111111111111',
     jsonb_build_object(
       'id', '31000000-0000-0000-0000-000000000002',
+      'local_date', '2026-03-02',
       'checked_in_at', '2026-03-02T07:00:00Z',
       'soreness', 5
     )
@@ -200,7 +208,7 @@ end $$;
 select public._record('day: two distinct check-ins now exist across the two days',
   (select count(*) from public.check_ins
    where profile_id = '11111111-1111-1111-1111-111111111111'
-     and timezone('utc', checked_in_at)::date in (date '2026-03-01', date '2026-03-02')) = 2);
+     and local_date in (date '2026-03-01', date '2026-03-02')) = 2);
 
 -- =====================================================================
 -- 7. Cross-tenant: the merge is scoped per lifter
@@ -215,6 +223,7 @@ begin
     '22222222-2222-2222-2222-222222222222',
     jsonb_build_object(
       'id', '31000000-0000-0000-0000-0000000000b1',
+      'local_date', '2026-03-01',
       'checked_in_at', '2026-03-01T07:00:00Z',
       'stress', 1
     )
@@ -226,7 +235,7 @@ end $$;
 select public._record('cross-tenant: B got their own row',
   (select stress from public.check_ins
    where profile_id = '22222222-2222-2222-2222-222222222222'
-     and timezone('utc', checked_in_at)::date = date '2026-03-01') = 1);
+     and local_date = date '2026-03-01') = 1);
 select public._record('cross-tenant: A''s row for that day was not merged into',
   (select stress is null from public._a_day1()));
 select public._record('cross-tenant: A''s row still belongs to A',
@@ -242,7 +251,11 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
   begin
     perform public.save_check_in(
-      jsonb_build_object('checked_in_at', '2026-03-03T07:00:00Z', 'energy', 3));
+      jsonb_build_object(
+        'local_date', '2026-03-03',
+        'checked_in_at', '2026-03-03T07:00:00Z',
+        'energy', 3
+      ));
   exception when others then
     v_err := sqlerrm;
   end;
@@ -253,7 +266,7 @@ end $$;
 
 select public._record('unauthenticated: no check-in was created',
   (select count(*) from public.check_ins
-   where timezone('utc', checked_in_at)::date = date '2026-03-03') = 0);
+   where local_date = date '2026-03-03') = 0);
 
 -- =====================================================================
 -- 9. The one-per-day index is still doing its job
@@ -264,9 +277,10 @@ do $$
 declare v_err text := null;
 begin
   begin
-    insert into public.check_ins (id, profile_id, checked_in_at, energy)
+    insert into public.check_ins (id, profile_id, local_date, checked_in_at, energy)
     values ('31000000-0000-0000-0000-0000000000ee',
-            '11111111-1111-1111-1111-111111111111', '2026-03-01T08:00:00Z', 2);
+            '11111111-1111-1111-1111-111111111111', date '2026-03-01',
+            '2026-03-01T08:00:00Z', 2);
   exception when others then
     v_err := sqlerrm;
   end;
@@ -278,7 +292,7 @@ end $$;
 -- Cleanup
 -- =====================================================================
 delete from public.check_ins
-where timezone('utc', checked_in_at)::date in
+where local_date in
   (date '2026-03-01', date '2026-03-02', date '2026-03-03');
 
 drop function if exists public._a_day1();
