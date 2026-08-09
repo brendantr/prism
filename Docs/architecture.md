@@ -190,11 +190,24 @@
   dashboard, so a claim here about a live project is the owner's report or it is nothing, and one
   written as a bare `[fact]` will be read as current long after it stops being true. Cloud-state
   claims belong in `Docs/tester-readiness-runbook.md` §2, whose probe reads the project directly and
-  settles the question instead of asserting an answer. **Still open and unconfirmed:** whether the
-  integration lane has been run against staging, and whether its two repository secrets are set — so
-  the nightly lane may still be reporting "nothing exercised". **Still open and confirmed:** the EAS
+  settles the question instead of asserting an answer. **Still open and confirmed:** the EAS
   `preview` environment has no Supabase variables, which is now the binding blocker for a tester
   build. Full record: `Docs/tester-readiness-runbook.md`.
+- **Delta 2026-08-09 — the app has been verified against a hosted project, for the first time:**
+  `[fact, owner, 2026-08-09]` `npm run test:integration` against the staging project: **19/19 across 2
+  suites**, with both repository secrets set so the nightly lane now has something to run. This
+  supersedes every "verified against an emulator only" caveat in the entries above, and it is the
+  strongest evidence in this document — the app's own module graph, against the real system, rather
+  than an inference drawn from the repository.
+  Confirmed against a real PostgREST rather than a mocked `rpc()`: `handle_new_user` on the real
+  `auth.users`; `save_workout_graph` committing the whole graph, stamping ownership over a forged
+  payload, no-op on exact retry, reconciling removed children (**I-2/G-2 hold against a real
+  project**); `save_check_in`'s omit/value/explicit-null semantics through the real jsonb round trip;
+  RLS between **two real accounts** in both directions, which `src/data/__tests__/ownership.test.ts`
+  had been taking on trust; and `delete_my_account` erasing an account that owns a custom movement
+  logged in a session — **the exact cascade-ordering case `0007` fixes, so `0007` is confirmed correct
+  on staging, not merely applied**. What remains unverified on a hosted project is everything above
+  the data layer: no screen, no navigation and no build has been exercised there by this lane.
 - **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
   contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
   guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five

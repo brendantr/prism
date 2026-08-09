@@ -3,7 +3,8 @@
 ## Document status
 
 - **Status:** Repository-side work is complete. **§3 is done — the owner has applied `0001`–`0007` to
-  staging.** §5 (EAS `preview` variables) is the remaining blocker; §4 is unconfirmed.
+  staging, and §4's integration lane is green against it — 19/19.** §5 (EAS `preview` variables) is
+  the only remaining blocker.
 - **Date opened:** 2026-08-09
 - **Corrected:** 2026-08-09, same day. The first version of this document asserted that *none* of it
   had been performed. That was wrong when written — see the correction note below.
@@ -51,9 +52,9 @@ variables, and `eas.json` sets `EXPO_PUBLIC_DEMO_MODE: "false"` there — so a p
 shows the misconfiguration message rather than the app. That is §5, and it is the one blocker left
 between here and a tester holding the app.
 
-`[open question]` Whether the integration lane (§4) has been run against staging, and whether the two
-repository secrets are set, is not confirmed. Both are quick to check and worth checking, because the
-lane is the only thing that exercises PRism's own data layer against the real project.
+`[fact, owner, 2026-08-09]` The integration lane (§4) has been run against staging and **passes,
+19/19**, and both repository secrets are set. So the claim "the app works against the real project" is
+no longer an inference from the repository — it is an observation, and §4 records what it covers.
 
 ---
 
@@ -127,11 +128,24 @@ the store-submission blocker I-10 names.
 
 ## 4. Step 2 — prove it with the integration lane, before any tester sees it
 
-`[open question, 2026-08-09]` **Status unconfirmed.** `Docs/sprints/2026-08-08-live-backend-reconciliation.md`
-records this lane being run against staging; that has not been confirmed alongside the migration
-status, and the repository secrets are a separate step again. Now that `0006` and `0007` are on the
-project, this is the fastest way to find out whether the app actually works against it — and unlike
-§3, it produces evidence rather than a report.
+`[fact, owner, 2026-08-09]` **Done, and green: 19/19 across 2 suites against the staging project.**
+The two repository secrets are set as well, so the nightly workflow now has something to run.
+
+This is the first time PRism's data layer has been verified end-to-end against a hosted project, and
+it is the strongest evidence in the repository — unlike every other status line here, it was produced
+by the app's own code talking to the real thing. What it establishes:
+
+- `handle_new_user` creates a profile on the real `auth.users`; sign-up returns a usable session.
+- `save_workout_graph` commits the whole graph through PostgREST, stamps ownership from the session
+  over a forged payload, treats an exact retry as a no-op, and reconciles removed children — I-2 and
+  G-2 confirmed against a real project, not an emulator.
+- `save_check_in`'s omit / value / explicit-null semantics survive the real jsonb round trip,
+  including the merge under a new id that `0004` exists for.
+- RLS holds between two real accounts: no cross-account read by id or by list, and a write forging
+  another account as owner is rejected.
+- `0006` landed — the catalogue assertion requires at least 43 system movements and both templates.
+- **`0007` landed** — the deletion test creates a custom movement, logs a session with it, then
+  deletes the account. That is exactly the cascade-ordering case `0007` fixes, and it passes.
 
 `[fact]` This is the acceptance test, and it already exists. It drives PRism's own data layer — not a
 client the test built for itself — against the real project: sign-up on the real `auth.users`, the
