@@ -49,6 +49,15 @@ module.exports = {
   // everything there, which is the opposite of the intent.
   testPathIgnorePatterns: ['/node_modules/', '<rootDir>/\\.claude/'],
 
+  // `testPathIgnorePatterns` stops those copies being RUN; it does not stop
+  // `jest-haste-map` INDEXING them, and the crawler reads every `package.json`
+  // it finds. Each nested worktree has one declaring `"name": "prism"`, so the
+  // run still opened with `Haste module naming collision: prism`. Cosmetic here
+  // — but a haste map holding two modules under one name is a resolution
+  // hazard, not just noise, and the warning trains people to ignore output from
+  // the one lane that talks to a real project.
+  modulePathIgnorePatterns: ['<rootDir>/\\.claude/'],
+
   // `babel-preset-expo` on its own, without the preset's device setup files.
   transform: {
     '^.+\\.[jt]sx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],

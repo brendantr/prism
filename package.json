@@ -58,6 +58,9 @@
       "/node_modules/",
       "<rootDir>/\\.claude/",
       "\\.integration\\.test\\.[jt]sx?$"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/\\.claude/"
     ]
   }
 }
