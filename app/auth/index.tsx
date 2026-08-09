@@ -50,9 +50,6 @@ import { color, opacity, space } from '@/theme';
  * install has already onboarded -- routing them through the first-run stack to
  * sign in would give them a back gesture into a form they finished months ago.
  * `app/onboarding/auth.tsx` is now a redirect into here.
- *
- * TODO(docs): supersede D2 in `Docs/ui-ux-foundation-v1.md`; update §4.1's
- * state row for this screen; close §9 open question 1.
  */
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();

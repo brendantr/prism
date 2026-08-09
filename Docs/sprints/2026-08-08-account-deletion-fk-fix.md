@@ -2,8 +2,8 @@
 
 ## Document status
 
-- **Status:** Fixed and verified against local Postgres 16.14. **Not yet applied to the staging
-  project** — that is the owner's step, and the integration lane stays red until it is.
+- **Status:** Fixed, verified against local Postgres 16.14, **applied to staging**, and returned the
+  integration lane to **19/19**.
 - **Date opened:** 2026-08-08
 - **Branch:** `feature/v1-library-seed` (continues that branch; see §5)
 - **Labels:** `[fact]`, `[assumption]`, `[recommendation]`, `[open question]`.
@@ -83,9 +83,8 @@ was missing, and asserts the constraint's *catalogue shape* as well as its behav
 migration "tidying" these to `cascade` would pass every behavioural assertion while silently
 destroying logged sets.
 
-`[fact]` **Not verified:** `0007` has not been applied to the staging project. Until it is, the
-integration lane's deletion test stays red, and every test account that created a custom movement
-cannot be deleted — including the leftovers this investigation created.
+~~`[fact]` **Not verified:** `0007` had not been applied to staging at sprint handoff.~~ **Owner
+follow-up 2026-08-08:** it is applied, the deletion case passes, and the integration lane is 19/19.
 
 ## 5. Why the same branch
 
@@ -97,8 +96,10 @@ follow, not easier.
 
 ## 6. The next decision
 
-**Apply `0007` to the staging project**, then re-run `npm run test:integration` — 19/19 expected.
+~~**Apply `0007` to the staging project**, then re-run `npm run test:integration`.~~ **Done
+2026-08-08: 19/19.**
 
-`[open question]` The leftover `prism-int-…@example.com` accounts in staging: those that created
-custom movements will not delete until `0007` is applied. After it, they will. No manual cleanup
-should be needed.
+~~`[open question]` The leftover integration accounts could not delete until `0007` was applied.~~
+**Resolved by application:** new disposable accounts delete normally and no manual cleanup path is
+required. Whether any pre-fix leftovers remain is an owner-side project-state check, not a migration
+or client change.

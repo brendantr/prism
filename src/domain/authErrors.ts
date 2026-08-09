@@ -9,9 +9,6 @@
  * boundary. A raw `AuthError` never travels past `toAuthFailure` -- those carry
  * server-side detail (endpoint names, provider internals, sometimes whether an
  * address is registered) that has no business on a screen.
- *
- * TODO(docs): record the taxonomy in ADR-0004-authentication-and-session, and
- * the "one code, one sentence" rule alongside `Docs/invariants.md` I-8.
  */
 
 export type AuthFailure =

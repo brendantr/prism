@@ -2,7 +2,9 @@
 
 ## Document status
 
-- **Status:** Implementation complete in the repository; **not yet executed against a real project**.
+- **Status:** Implementation complete, and **executed 19/19 against staging on 2026-08-08**, locally
+  and in the separate GitHub Actions workflow. Sections below preserve the pre-run state at sprint
+  handoff; §9 records the owner follow-up.
 - **Date opened:** 2026-08-07
 - **Branch:** `feature/v1-staging-supabase-verification`
 - **Base:** `main` at `a72a2e5`
@@ -95,8 +97,12 @@ write forging another account as owner is rejected. This is the assumption
 ## 4. Runbook — the owner-only steps
 
 `[fact]` Every step in this section requires credentials or a dashboard, and per `CLAUDE.md`
-(cloud-resource changes) and `Docs/invariants.md` I-4 an agent does not hold or use them. **None of
-this has been performed.**
+(cloud-resource changes) and `Docs/invariants.md` I-4 an agent does not hold or use them.
+
+~~**None of this has been performed.**~~ **All six steps were performed on 2026-08-08–09**
+`[fact, owner]` — project created, `0001`–`0007` applied, confirmation disabled, lane green 19/19
+locally, and both repository secrets set. **`0008` is the exception and is still outstanding** (see
+step 2). The steps are kept as the procedure for the next project.
 
 1. **Create a project** named `prism-staging`, in the region you would use for production.
    **Not production.** This lane deletes accounts.
@@ -107,6 +113,10 @@ this has been performed.**
    `0007_deletable_account_with_custom_exercises.sql` have landed on `main` since, and this lane's
    own assertions now depend on both — the catalogue check needs `0006`, and the account-deletion
    test needs `0007`. A project stopped at `0005` fails them in a way that reads like an app bug.
+   `[updated 2026-08-09]` **`0008_local_training_day.sql` is now on `main` and is NOT yet applied to
+   staging.** It is the one step of this runbook still outstanding. Its `save_check_in` raises `22023`
+   without a `local_date` and the mapper reads `row.local_date`, so this lane's check-in assertions
+   fail until it is applied — they match on `local_date` now, not on a sliced timestamp.
 3. **Disable email confirmation** (Authentication → Sign In / Providers → Confirm email → off). The
    suite creates disposable accounts and needs `signUp` to return a session. The harness fails with
    this exact instruction if it does not.
@@ -226,3 +236,19 @@ where PRism's catalogue lives, and would need its own ADR.
 
 Separately, and not blocking: **§4 is yours to run.** Until it is run, this sprint has changed what
 can be verified, not what has been.
+
+---
+
+## 9. Owner follow-up — runbook completed 2026-08-08
+
+`[fact, engineer/owner handoff]` The staging project now exists with migrations `0001`–`0007`
+applied. `npm run test:integration` passes **19/19** locally and in `Integration (staging Supabase)`.
+The first live run found the custom-exercise deletion FK defect; `0007` fixed it and returned the lane
+to green. No production project is claimed, and the recovery-email `{{ .Token }}` template remains
+owner-side and unverified.
+
+`[fact, owner, 2026-08-09]` Since that handoff: the two repository secrets are set so the nightly
+workflow runs for real; the EAS `preview` variables are set and a preview build has been produced; and
+the full first-run walkthrough passed on a cold-started simulator against staging. **`0008_local_training_day.sql`
+landed on `main` afterwards and is not yet applied to staging** — until it is, this lane's check-in
+assertions fail, because they now match on `local_date`.

@@ -166,7 +166,7 @@ identically against either backend.
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Run every migration in `supabase/migrations/`, **in numeric order**, one at a
-   time in the SQL Editor — `0001_init.sql` through `0007_deletable_account_with_custom_exercises.sql`.
+   time in the SQL Editor — `0001_init.sql` through `0008_local_training_day.sql`.
    Applying them to a hosted project is a manual step, so each file is written to
    be re-runnable: if you lose track of which ones have run, running one again is
    a no-op rather than an error. Between them they create all 11 tables, the

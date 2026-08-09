@@ -34,10 +34,6 @@ import type { SessionPhase } from '@/domain/routing';
  *
  * Transient *operation* failures (a rejected password, a rate limit) are form
  * state and live in `lastFailure`, not in the phase.
- *
- * TODO(docs): `Docs/architecture.md` §Runtime Architecture 1/3/4 and the
- * `src/store` layering bullet all predate this store. ADR-0004 should record
- * the phase machine and the session-in-Keychain posture it builds on.
  */
 
 export interface SessionState {

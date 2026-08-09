@@ -159,9 +159,6 @@ export const AUTH = {
     gate and the autofill attributes to change as one unit, which is why their
     absence is asserted by `src/content/__tests__/onboarding.test.ts`: a partial
     reversal is the failure mode worth pinning.
-
-    TODO(docs): supersede D2 in `Docs/ui-ux-foundation-v1.md` and close §9
-    open question 1 (auth is hidden in demo builds -- `src/domain/routing.ts`).
   */
   checkEmailTitle: 'Confirm your email',
   checkEmailBody:

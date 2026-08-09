@@ -25,10 +25,6 @@ import { useTrainingStore } from './trainingStore';
  *  - `prism.onboarding.v1` -- first-run state belongs to the device, not the
  *    account. Clearing it would replay the carousel for a returning lifter.
  *  - `prism.demo.*` -- unreachable from a build that has a session to end.
- *
- * TODO(docs): propose this as `Docs/invariants.md` I-19 ("sign-out leaves no
- * prior user's data on the device"), with the tests in
- * `src/store/__tests__/authActions.test.ts` as its enforcement evidence.
  */
 export async function signOutAndTearDown(): Promise<void> {
   await tearDownLocalState({ endRemoteSession: true });
