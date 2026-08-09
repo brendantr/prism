@@ -197,7 +197,24 @@ enforces access. A service-role key in this environment would be readable by any
 
 ---
 
-## 6. Step 4 — cut the build and walk the loop yourself first
+## 6. Step 4 — cut the build and walk the loop yourself first — **done**
+
+`[fact, owner, 2026-08-09]` **Performed, and the whole walkthrough passed** — on a cold-started iOS
+simulator, on a fresh install, against the staging project. Every step below, including account
+deletion through the app.
+
+That is the last gap this runbook existed to close. Until it, everything verified against staging was
+the **data layer only**: the integration lane drives `SupabaseRepository` directly and touches no
+screen, no navigation and no build. A first-run path can therefore be completely broken while 463 unit
+tests and 19 integration tests are green — which is not hypothetical, it is exactly what #58 was.
+
+`[fact, owner, 2026-08-09]` A **preview build** was also produced end to end (Android, ~22 minutes,
+commit `048114b`), with all three environment variables confirmed resolving into it. `Docs/release-checklist.md`
+§4's G-7 is closed for `preview` on that evidence; `production` and store submission remain
+unexercised.
+
+Repeat this walkthrough after any change to routing, onboarding, session storage or the repository
+interface. It is cheap, and it is the only check in this repository that sees what a lifter sees:
 
 `[recommendation]` Before distributing, do the whole first-run path on a device, on a **fresh install**
 — the defect #58 fixed was invisible to every unit test and only appeared on a cold start against a

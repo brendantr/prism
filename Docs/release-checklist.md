@@ -103,16 +103,27 @@ anywhere in this repository, and none may (I-4, I-5).
 ## 4. Blocking gates before a store submission
 
 Restated from `Docs/ui-ux-foundation-v1.md` §8 so this checklist cannot be read as a complete
-pre-flight. **None is closed by this branch** `[fact]`.
+pre-flight.
+
+**Refreshed 2026-08-09.** The table below said "**None is closed by this branch**" and listed five
+open gates. That was accurate for the branch it was written on and false for months afterwards — a
+pre-flight checklist that goes stale is worse than none, because it is read as current by whoever is
+about to ship. Each row now carries the evidence that closed it, or says plainly that it is still
+open.
 
 | Gate | Status |
 |---|---|
-| **G-1 — no authentication path** | Open. Supabase mode is unreachable by any UI. |
-| **I-10 — account deletion + data export** | Open, and **blocking for store submission**, not negotiable. |
-| **I-2 / G-2 — non-atomic `saveWorkout`** | Open. Three sequential non-transactional upserts. |
-| **G-4 — no observability** | Open. No crash reporting or analytics; user feedback would arrive with no telemetry behind it. |
-| **G-7 — release tooling** | **Partially closed.** `eas.json` and the EAS project id are committed and resolve; profiles are unverified by an actual build. |
-| **I-1 / I-6 — RLS** | Met for the policies as committed, and wired into CI. Not the same as production being reachable. |
+| **G-1 — no authentication path** | **Closed** 2026-08-06 (auth sprint) and repaired 2026-08-08 (#58, `feature/v1-first-run-routing`) after it was found that a real-backend build could neither sign up nor sign in. Verified on a cold-started simulator against staging `[fact, owner, 2026-08-09]`. |
+| **I-10 — account deletion + data export** | **Closed.** `0005` (deletion RPC) and `0007` (the cascade-ordering defect that stopped a lifter with a custom movement deleting at all). Both applied to staging; export and deletion driven through the UI on device `[fact, owner, 2026-08-09]`. |
+| **I-2 / G-2 — non-atomic `saveWorkout`** | **Closed** 2026-08-06. `save_workout_graph` (`0003`), one transaction, verified against a real project by the integration lane — whole-graph commit, ownership stamped over a forged payload, no-op on exact retry, removed children reconciled. |
+| **G-4 — no observability** | **Open.** No crash reporting or analytics. Tester feedback arrives with no telemetry behind it, and "it crashed" is unactionable. **The binding gate on this list.** |
+| **G-7 — release tooling** | **Closed for `preview`.** A preview build was produced end to end on 2026-08-09 (Android, ~22 min, commit `048114b`), with all three environment variables confirmed resolving into it. The `production` profile and store submission remain unexercised. |
+| **I-1 / I-6 — RLS** | **Met, and now confirmed against a real project** — the integration lane checks isolation between two real accounts in both directions, which the unit suite had been taking on trust. |
+
+`[fact]` Two gates outside this table now bind harder than anything in it: **no way to create a custom
+exercise** (`Repository` has no exercise write methods, so a lifter is capped at the 43 seeded
+movements) and **check-in days bucketed in UTC** (`feature/v1-local-training-day`, unlanded). Neither
+blocks a store submission; both will be reported as bugs by the first cohort.
 
 ---
 
