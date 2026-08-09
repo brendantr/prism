@@ -144,7 +144,6 @@ export default function ProgressScreen() {
         ))}
       </Card>
 
-      <SectionHeader title="Coming next" eyebrow="Roadmap" />
       <PhasePanel
         phase={2}
         summary="Interactive charts on top of the series this screen already computes."
