@@ -2,9 +2,25 @@
 
 ## Document status
 
-- **Status:** Repository-side work is complete. **§3 is done — the owner has applied `0001`–`0007` to
-  staging, and §4's integration lane is green against it — 19/19.** §5 (EAS `preview` variables) is
-  the only remaining blocker.
+- **Status — REWRITTEN 2026-08-10, because the previous status was false.** It read: *"§3 is done —
+  the owner has applied `0001`–`0007` to staging, and §4's integration lane is green against it —
+  19/19."*
+
+  **The database disagreed.** On 2026-08-10 the probe in `Docs/store-submission-runbook.md` §3 was run
+  against the only PRism Supabase project that exists (`prism-rls-verification`, the sole PRism project
+  in the account alongside an unrelated app) and returned **nine `false`s** — no `0001`, therefore no
+  schema at all. The first symptom was `0008` failing to paste with `relation "public.check_ins" does
+  not exist`.
+
+  So neither claim above can have described this project: the migrations were not applied to it, and an
+  integration lane cannot have passed 19/19 against an empty database. Whether they described a project
+  since deleted, or were simply mistaken, is not knowable from here and is not worth guessing — what
+  matters is that **both were recorded as `[fact, owner]` and both were read as current for a day.**
+
+  **Current state `[fact, verified by probe 2026-08-10]`:** migrations `0001`–`0009` were applied to
+  that project in one transaction, and the probe now returns **nine `true`s**. That is the first
+  verified presence of PRism's schema on any hosted project. The integration lane has **not** been run
+  against it, and the 19/19 figure below is withdrawn rather than re-stated.
 - **Date opened:** 2026-08-09
 - **Corrected:** 2026-08-09, same day. The first version of this document asserted that *none* of it
   had been performed. That was wrong when written — see the correction note below.
@@ -44,17 +60,21 @@ question in a way no document can.
 | A real account can be deleted (I-10) | `0007_deletable_account_with_custom_exercises.sql` — the cascade-ordering defect is fixed |
 | A real user can get in at all | #58 — before it, a real-backend build could neither sign up nor sign in |
 
-`[fact, owner, 2026-08-09]` A staging project exists and carries **`0001`–`0007`**. So the schema half
-of tester readiness is done, on the repository side *and* on the project.
+~~`[fact, owner, 2026-08-09]` A staging project exists and carries **`0001`–`0007`**.~~
+**Withdrawn 2026-08-10** — the probe returned nine `false`s against that project. It now carries
+`0001`–`0009`, applied 2026-08-10 and confirmed by probe.
 
 What remains is the build environment: `[fact]` the EAS `preview` environment still has no Supabase
 variables, and `eas.json` sets `EXPO_PUBLIC_DEMO_MODE: "false"` there — so a preview build cut today
 shows the misconfiguration message rather than the app. That is §5, and it is the one blocker left
 between here and a tester holding the app.
 
-`[fact, owner, 2026-08-09]` The integration lane (§4) has been run against staging and **passes,
-19/19**, and both repository secrets are set. So the claim "the app works against the real project" is
-no longer an inference from the repository — it is an observation, and §4 records what it covers.
+~~`[fact, owner, 2026-08-09]` The integration lane (§4) has been run against staging and **passes,
+19/19**.~~ **Withdrawn 2026-08-10.** The project was empty until 2026-08-10, so nothing can have passed
+against it. **The app's own code has still never been exercised against a hosted project.** Running the
+lane is now the highest-value unblocked step, and there is a narrow window for it: the lane creates and
+deletes accounts and needs email confirmation off, which is only acceptable while the project has no
+real users.
 
 ---
 
@@ -103,7 +123,8 @@ between believing the project is migrated and knowing it.
 
 ## 3. Step 1 — apply any migration the probe reported `false` — **done on staging**
 
-`[fact, owner, 2026-08-09]` **Already performed for the staging project: `0001`–`0007` are applied.**
+`[fact, verified by probe 2026-08-10]` **Performed: `0001`–`0009` applied in one transaction**, after
+the probe reported nine `false`s. Re-probed afterwards: nine `true`s.
 This section stays because it is still the procedure for the next project — production, or a second
 staging project if §4's email-confirmation tension is resolved by splitting them.
 
@@ -128,8 +149,8 @@ the store-submission blocker I-10 names.
 
 ## 4. Step 2 — prove it with the integration lane, before any tester sees it
 
-`[fact, owner, 2026-08-09]` **Done, and green: 19/19 across 2 suites against the staging project.**
-The two repository secrets are set as well, so the nightly workflow now has something to run.
+~~`[fact, owner, 2026-08-09]` **Done, and green: 19/19 across 2 suites.**~~ **Withdrawn 2026-08-10 —
+not done.** See the status note at the head of this document.
 
 This is the first time PRism's data layer has been verified end-to-end against a hosted project, and
 it is the strongest evidence in the repository — unlike every other status line here, it was produced
