@@ -795,12 +795,13 @@ gestures this runtime recognises as a scroll, proven by the same failure on unto
 | Exercise reorder, per-exercise notes UI | v2 | Store actions exist with zero call sites — features, not polish | Product decision |
 | Readiness suggestion surface + "Not now" (I-17) | v2 | ADR-0002 Phase B | ADR-0002 sequencing |
 | Rule versioning + suggestion audit (I-12) | v2 | ADR-0002 Phase C; must not write into an unauthenticated path | Auth, then migration |
-| Onboarding answers applied to `Profile` | v2 | Deferred since the expansion sprint | Product decision |
+| ~~Onboarding answers applied to `Profile`~~ | **Shipped in v1, 2026-08-09** (`feature/v1-user-data-writes`) | The answers are now written to the server-side `profiles` row on completion, and `app/settings.tsx` can edit every one of them afterwards | — |
 | Interactive Progress charts, body map, Insights trends | v2 | `PhasePanel` already states these as unbuilt | Phase 3–4 |
 | Offline-specific UX (banner, queue, retry) | v2 | One generic retry banner is the honest posture until it can be tested | Auth + a test path (G-9) |
 | History search, filtering, paging | v2 | In-memory derivation is correct at demo scale; the seam is already right | A real account with years of data |
 | Re-enterable summary | v2 | D8 | Feedback showing lifters hunt for it |
-| Real Social, sharing, subscriptions | v2 | ADR-0001 non-goals | Product decision |
+| Real Social, sharing | v2 | ADR-0001 non-goals | Product decision |
+| ~~Subscriptions~~ → **a one-time purchase, shipped in v1** | **Decision reversed 2026-08-09** by `Docs/decisions/ADR-0005-monetization.md` `[decision, owner, 2026-08-09]` | This row previously deferred *subscriptions* to v2 under ADR-0001's non-goals. What shipped is deliberately **not** a subscription: a single non-consumable unlock, with logging, history, custom movements, measurements and profile free forever, and only the analysis surfaces (28/84-day Insights, Progress, Body's recovery estimate) behind it. Recorded as a reversal rather than edited away, because a non-goal that quietly becomes a feature is how a product loses track of what it decided | — |
 | Component-render test framework | v2 | Standing decision, reconfirmed by every UI sprint | Explicit approval |
 
 ---

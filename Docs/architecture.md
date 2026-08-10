@@ -289,10 +289,43 @@
   baseline.
 
   **What integration does and does not establish** `[fact]`: each branch was green on its own
-  (543/529/502/532 tests respectively), and that is *not* evidence the merge is green — the merged
-  figure is recorded below and is the only one that describes what exists now. Nothing here has been
-  applied to a hosted project, no build has been cut, and no screen has been exercised on a device
-  since these landed.
+  (543/529/502/532 tests respectively), and that is *not* evidence the merge is green. Nothing here
+  has been applied to a hosted project, no build has been cut, and no screen has been exercised on a
+  device since these landed.
+- **Integration delta 2026-08-09 — the four sprints above, merged** `[fact]`: `npx tsc --noEmit`
+  clean and **642/642 tests across 46 suites**. That is the figure describing what exists now; the
+  four per-branch numbers describe four repositories that no longer exist.
+
+  **Two conflicts of intent were resolved by hand at integration, and neither was a textual
+  conflict** — both merged cleanly and both would have shipped a defect:
+
+  1. **The paywall took the screen the measurement writer had just been added to.**
+     `feature/v1-entitlements` gated the whole Body screen behind the Pro unlock, correctly per its
+     own brief. `feature/v1-user-data-writes` put body-measurement entry on Body, also correctly.
+     Together they put a lifter's own bodyweight log behind a purchase, which is the single thing
+     `Docs/decisions/ADR-0005-monetization.md`'s free tier is defined to prevent. Body is now split
+     across the line rather than sitting on one side of it: measurements always render, and only the
+     recovery estimate locks (`LockedProPanel`, a card, rather than `LockedProScreen`, a return).
+  2. **Two independent early returns each swallowed the whole screen.** The lock and
+     `fix/v1-zero-data-surfaces`'s no-evidence state both returned before the measurement section,
+     so a lifter with no logged sessions — exactly the person recording a starting bodyweight — could
+     not reach the writer at all. Both are now inline states within one page.
+
+  **The same class of failure hit the privacy documents, and there it was worse**
+  `[fact, see `Docs/privacy-data-inventory.md`]`: the observability and entitlement sprints each
+  rewrote that file as though it were the only change in flight, so each described **two**
+  third-party processors. There are **three** (Supabase, Sentry, RevenueCat), and both crash
+  diagnostics *and* purchase history are now collected. Separately,
+  `feature/v1-user-data-writes` falsified three standing claims in that document — that no screen
+  calls `updateProfile`, that the training preferences have no UI write path, and that
+  `body_measurements` and custom `exercises` rows are dormant. Body measurements are the **sensitive
+  health/fitness category**, so that last one would have produced a store privacy declaration that
+  under-reported the most scrutinised data PRism holds. All corrected at integration and marked as
+  corrections rather than silently rewritten.
+
+  `[recommendation]` The mechanism is worth more than the fixes: **a document owned by one sprint is
+  wrong the moment two sprints run in parallel.** Privacy and store-form claims should be re-derived
+  at integration by default, not merged.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
