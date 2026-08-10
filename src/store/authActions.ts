@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRepository, resetRepository } from '@/data/repository';
 import { signOut as signOutRemote } from '@/data/supabase/auth';
 import { DRAFT_STORAGE_KEY, flushDraftWrites, useActiveWorkoutStore } from './activeWorkoutStore';
+import { useEntitlementStore } from './entitlementStore';
 import { useSessionStore } from './sessionStore';
 import { useTrainingStore } from './trainingStore';
 
@@ -27,7 +28,7 @@ import { useTrainingStore } from './trainingStore';
  *  - `prism.demo.*` -- unreachable from a build that has a session to end.
  */
 export async function signOutAndTearDown(): Promise<void> {
-  await tearDownLocalState({ endRemoteSession: true });
+  await tearDownLocalState({ endRemoteSession: true, accountDeleted: false });
 }
 
 /**
@@ -60,7 +61,10 @@ export class AccountDeletedLocalCleanupError extends Error {
  * partial teardown means. Ordering is unchanged and still load-bearing: the
  * phase flips LAST, so the route gate cannot navigate against half-cleared data.
  */
-async function tearDownLocalState(opts: { endRemoteSession: boolean }): Promise<unknown | null> {
+async function tearDownLocalState(opts: {
+  endRemoteSession: boolean;
+  accountDeleted: boolean;
+}): Promise<unknown | null> {
   let firstFailure: unknown = null;
   const attempt = async (step: () => Promise<void> | void) => {
     try {
@@ -82,6 +86,11 @@ async function tearDownLocalState(opts: { endRemoteSession: boolean }): Promise<
     await AsyncStorage.removeItem(DRAFT_STORAGE_KEY);
   });
   await attempt(() => useTrainingStore.getState().reset());
+  await attempt(() =>
+    opts.accountDeleted
+      ? useEntitlementStore.getState().resetAfterAccountDeletion()
+      : useEntitlementStore.getState().reset(),
+  );
   await attempt(() => resetRepository());
   // Not inside `attempt`: if this throws the app is unrecoverable anyway, and
   // swallowing it would leave the route gate pointing at a dead session.
@@ -129,6 +138,6 @@ export async function deleteAccountAndTearDown(): Promise<void> {
   // about, but it is a *cleanup* failure -- reporting it as "your account is
   // unchanged" is a lie, and reporting nothing leaves stale data on the device
   // with no explanation.
-  const failure = await tearDownLocalState({ endRemoteSession: false });
+  const failure = await tearDownLocalState({ endRemoteSession: false, accountDeleted: true });
   if (failure !== null) throw new AccountDeletedLocalCleanupError(failure);
 }

@@ -6,6 +6,21 @@
 - **Date:** 2026-07-25
 - **Repository commit reviewed:** `2490c8de94b6492c2c20a3a91299313c30042320` (branch `main`, working tree clean, no staged/unstaged changes at time of review — verified via `git status`).
 - **Current baseline (2026-07-29):** `main` is at `c59cbdb12d8ba2374d4d22ad6a9f8e0b91481fcb`. Everything merged between the reviewed commit and that baseline was documentation-only (product-intent-and-guardrails, architecture-baseline-audit, readiness-inputs-and-confidence-foundation planning); no code, schema, or test changed, so this document's findings held up to that point. **The `readiness-inputs-and-confidence-foundation` implementation sprint then changed code**: the check-in path, `src/domain/types.ts`, and `src/domain/calc/readiness.ts` no longer match this document's description of them. Findings touching those files are superseded by that sprint and by `Docs/invariants.md` I-7 and I-18; the rest of this document was not re-verified from 2026-07-29 to 2026-08-01.
+- **S4 entitlement delta (2026-08-09, `feature/v1-entitlements`, not yet integrated):**
+  `react-native-purchases@10.7.0` provides purchase/restore transport for the exact lifetime product
+  `app.prism.trainer.pro.lifetime`. `src/store/entitlementStore.ts` is a fail-closed phase machine;
+  only `Repository.getEntitlement()` reading an authenticated Postgres row may unlock paid UI. The
+  paywall gates 28/84-day Insights, Progress and Body while seven-day Insights, logging, history,
+  exercises, measurements and account controls remain free. Migration `0009_entitlements.sql` adds
+  owner-select-only entitlement rows, invisible event-target rows and a service-role-only atomic,
+  idempotent event RPC. `supabase/functions/revenuecat-webhook` authenticates RevenueCat delivery and
+  maps the supported exact-product events. The authenticated `delete-account` function erases the
+  gateway-verified UUID from RevenueCat before invoking the existing no-argument database deletion,
+  preventing account deletion from leaving processor data behind. Local evidence: typecheck clean,
+  **532/532 Jest tests across 36 suites**, all **191 SQL assertions** (including 17 new entitlement
+  assertions), and iOS/Android Expo exports passed. **No hosted migration/function, RevenueCat project, App Store,
+  Play Console, EAS variable, native project or purchase was changed or exercised.** Those operational
+  steps are release blockers, not implemented facts; see `Docs/revenuecat-release-runbook.md`.
 - **Delta since the 2026-08-01 refresh (recorded 2026-08-03, not a full re-verification):** two
   feature sprints have landed on top of that baseline. `workout-session-continuity-v1`
   (2026-08-02) added the `workout/templates` route and local active-workout draft recovery;
@@ -292,13 +307,14 @@
 | Routing | Expo Router | `~57.0.8` | File-based navigation, typed routes (`experiments.typedRoutes: true`) | `package.json`, `app.json` |
 | State management | Zustand | `^5.0.3` | Two stores: persisted training data, ephemeral active-workout session | `package.json`, `src/store/*.ts` |
 | Backend / data | Supabase (`@supabase/supabase-js`) | `^2.48.1` | Postgres + auth + RLS backend, optional (demo mode is default) | `package.json`, `src/data/supabase/client.ts` |
+| In-app purchase transport | RevenueCat (`react-native-purchases`) | `^10.7.0` | Exact-product native purchase/restore and store-localized price; never entitlement authority | `package.json`, `src/data/purchases.ts` |
 | Local persistence | `@react-native-async-storage/async-storage` | `2.2.0` | Demo-mode local writes; Supabase session storage | `src/data/repository.ts`, `src/data/supabase/client.ts` |
 | Auth | Supabase Auth (client SDK only) | `^2.48.1` | `auth.getUser()` used to scope queries; **no sign-in/out UI exists** | `src/data/repository.ts` (`SupabaseRepository.uid()`) |
 | Forms | *(removed 2026-08-01)* | — | `react-hook-form`, `@hookform/resolvers`, `zod` were declared but never imported anywhere in `app/` or `src/`; removed as dead weight (`Docs/sprints/2026-08-01-dependency-hygiene.md`). Auth and check-in forms use hand-rolled validation instead. | `git log` |
 | Testing | Jest `^29.7.0` + `jest-expo` `~57.0.2` | — | Unit tests for `src/domain/calc` | `package.json`, `src/domain/calc/__tests__/calc.test.ts` |
 | CI | GitHub Actions | — | Typecheck + test on push/PR to `main` | `.github/workflows/ci.yml` |
 | Build / release | Expo CLI (`expo run:ios`/`run:android`), no EAS config | — | Local native builds only; no `eas.json` found in repo | `package.json` scripts; absence confirmed via file search |
-| Environment config | `EXPO_PUBLIC_*` vars, inlined at build time | — | Demo-mode toggle + Supabase URL/anon key | `.env.example`, `src/data/supabase/client.ts` |
+| Environment config | `EXPO_PUBLIC_*` vars, inlined at build time | — | Demo-mode toggle, Supabase URL/anon key, and RevenueCat public platform SDK keys | `.env.example`, `src/data/supabase/client.ts`, `src/data/purchases.ts` |
 | Icons | `@expo/vector-icons` | `^15.0.2` | Ionicons used throughout tab bar and UI | `package.json`, `app/(tabs)/_layout.tsx` |
 | Gestures/safe area | `react-native-gesture-handler` `~2.32.0`, `react-native-safe-area-context` `~5.7.0`, `react-native-screens` `~4.26.0` | — | Navigation plumbing required by Expo Router | `package.json`, `app/_layout.tsx` |
 | Graphics | `react-native-svg` `15.15.4` | — | Present but no SVG component found in `src/components` yet (Phase 3 body map is "planned") | `package.json` |
@@ -331,7 +347,7 @@ prism/
 │   ├── store/                 # trainingStore (persisted read model),
 │   │                          # activeWorkoutStore (ephemeral session state)
 │   └── utils/                 # format.ts, id.ts
-├── supabase/migrations/       # 0001_init.sql — schema + RLS, single migration
+├── supabase/migrations/       # 0001–0009 — schema, RLS, integrity, seed, lifecycle, entitlement
 ├── .github/workflows/ci.yml   # Typecheck + test on push/PR
 ├── ios/, android/             # Git-ignored, regenerated via `expo prebuild`
 └── package.json / tsconfig.json / app.json / .env.example
@@ -371,7 +387,13 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
   - *Local draft* — every mutation mirrors `workout` to `AsyncStorage` under `prism.activeWorkout.draft.v1`, so a killed process can recover it on relaunch (`hydrate()`, and the `subscribe` at the foot of the module). Writes are queued and revision-checked, so the newest state is the one that survives a kill and a discarded session cannot be resurrected by a stale write. This mirror is read by nothing except that `hydrate()`, is scoped to a `DraftOwner`, and is removed on sign-out (`src/store/authActions.ts`).
   - *Repository-backed workout* — only on `finish()`, when the completed workout goes to `trainingStore.completeWorkout` and through the repository. This is the only layer that reaches Postgres.
 - **`src/data` (repositories/data access):** `repository.ts` defines the `Repository` interface and two implementations (`DemoRepository`, `SupabaseRepository`), selected once at module load via `getRepository()` based on `isSupabaseConfigured`. `supabase/client.ts` lazily constructs the Supabase client only when configured, so demo mode makes zero network calls.
-- **Supabase/database:** `supabase/migrations/` holds the schema — **seven files as of 2026-08-09** (`0001_init` … `0007_deletable_account_with_custom_exercises`), not the single `0001_init.sql` this line described until then. They are exercised by CI against a disposable Postgres (`supabase/tests/rls/run.sh`, wired into `.github/workflows/ci.yml`), but **applying them to a hosted project is still a manual dashboard step** — there is no `supabase/config.toml`, no `supabase link`, and therefore no `supabase db push`. That gap is why `Docs/tester-readiness-runbook.md` §2 needs a hand-written probe to answer "which migrations does this project have".
+- **Supabase/database:** `supabase/migrations/` holds the schema — **nine files as of S4 on
+  2026-08-09** (`0001_init` … `0009_entitlements`). They are exercised against a disposable Postgres
+  by `supabase/tests/rls/run.sh`. S4 adds `supabase/config.toml` to declare that the RevenueCat
+  webhook performs its own Authorization check (`verify_jwt = false`) while account deletion keeps
+  the platform user-JWT gate (`verify_jwt = true`), plus both Edge Function sources; the repository is
+  still unlinked and nothing was deployed or applied to a hosted project.
+  Hosted migration/function deployment remains an explicit manual release operation.
 - **Tests:** **Corrected 2026-08-06** `[fact, `npx jest --ci`]`. This entry claimed tests existed "only for `src/domain/calc`" with "no tests found for `src/data`, `src/store`". That stopped being true several sprints ago and stayed in the baseline. Actual coverage today: **24 suites, 375 tests**, across `src/content`, `src/data` (repository, ownership, auth posture, Supabase session flow, secure storage), `src/domain` (calc, schedule, history, auth validation, auth errors, routing, account), `src/store` (active workout, training, auth actions, session), and `src/utils`. Still genuinely untested: **anything under `app/` and anything under `src/components`** — there is no component or screen test in the repository.
 - **Configuration/build/CI:** `app.json` (Expo config), `tsconfig.json` (strict TS, `@/*` path alias to `src/`), `.env.example` (documents three `EXPO_PUBLIC_*` variables), `.github/workflows/ci.yml` (Node 20, `npm ci`, typecheck, test).
 
@@ -380,7 +402,7 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
 ## Runtime Architecture
 
 **1. App startup and route entry** *(verified, `app/_layout.tsx`)*
-Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account` (modal, added 2026-08-08), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
+Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account` (modal, added 2026-08-08), `paywall` (modal, added by S4), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
 
 **Rewritten 2026-08-06 (`feature/v1-auth-and-session`).** The root layout previously ran two things on mount — an unconditional `trainingStore.load()` and a redirect effect that knew only about onboarding — and held the splash until the persisted onboarding flag resolved. It now holds **one combined gate**. `sessionStore.initialize()` and `onboardingStore.load()` both fire on mount and are allowed to race, because each only reads local storage and neither redirects; `Splash` renders until `sessionPhase !== 'unknown' && onboardingStatus === 'ready'`. Adding a second condition to the old shape would have meant two effects redirecting off the same `useSegments()` array, which is how a gate turns into a redirect loop.
 
@@ -477,13 +499,32 @@ The sign-out step at the end is deliberate: `verifyOtp` leaves the app authentic
 
 Category: **resolved in the client.** What is *not* resolved, and must not be read into the above: **no code path in this repository has been executed against a live Supabase project.** The integration suite (`src/data/supabase/__tests__/sessionFlow.integration.test.ts`) is gated on `PRISM_INTEGRATION_SUPABASE_*` and skipped; no credentials were created. Sign-in has never obtained a real token here, and **whether the recovery email actually carries a six-digit code depends on an owner-side edit to the Supabase recovery template (`{{ .Token }}`) that this repository did not and cannot make.** Deep-link session capture still does not exist, and account deletion and export (I-10) remain absent — neither the Account surface nor the reset flow claims any of them.
 
-**RLS status and evidence:** RLS is enabled on all 11 tables and policies exist for every table, scoped consistently to `auth.uid()` (verified, migration lines 275–387). Category: **confirmed** as *written*; **unknown requiring validation** as *enforced*, since no test applies the migration and asserts policy behavior (e.g. that user A cannot read user B's `workouts`).
+**RLS status and evidence:** RLS is enabled on all 13 tables after S4. The full migration sequence is
+applied by the disposable Postgres runner and 191 assertions cover ownership, write integrity,
+deletion, seed visibility, local-day semantics and entitlements. Hosted production enforcement is
+still an operational validation gate.
 
-**Environment variable names (values never read or reproduced):** `EXPO_PUBLIC_DEMO_MODE`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (source: `.env.example`). All three are `EXPO_PUBLIC_`-prefixed and therefore inlined into the client bundle by design — the README explicitly states the anon key is safe for this because RLS is the actual enforcement boundary, not variable secrecy. No service-role key or other server-only secret was found referenced anywhere in the repository.
+**Environment variable names (values never read or reproduced):** `EXPO_PUBLIC_DEMO_MODE`,
+`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+`EXPO_PUBLIC_REVENUECAT_IOS_KEY`, and `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` (source:
+`.env.example`). All are public build values, inlined into the client bundle by design. The Edge
+Functions read `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`REVENUECAT_WEBHOOK_AUTH`, `REVENUECAT_SECRET_API_KEY`, and `REVENUECAT_PROJECT_ID` from their server
+environment as needed. The anon key and project id are identifiers/public configuration; the other
+three are privileged server values. No value is committed or logged.
 
-**Client/server trust boundaries:** The client (mobile app) holds only the Supabase anon key and relies entirely on Postgres RLS for row-level authorization — there is no separate backend/API layer in this repository. This is a standard, low-risk Supabase pattern **if and only if** RLS is correct (see "unknown requiring validation" above), since the anon key alone grants no access without matching policies.
+**Client/server trust boundaries:** The mobile client holds only public Supabase and RevenueCat SDK
+keys. Training/account authorization relies on Postgres RLS. Entitlement writes are a separate
+server-only path: RevenueCat calls an authenticated Edge Function, which uses the service role to call
+the exact-product event RPC. The client can select its entitlement row but has no policy permitting
+insert, update or delete. SDK state is therefore a transport hint, never access authority (I-9).
 
-**Risks around user health/training data:** The schema stores body measurements (`body_measurements.bodyweight_kg`, `body_fat_pct`, `circumferences_cm`) and check-ins (sleep/energy/soreness/stress) — data a user might reasonably consider sensitive. Category: **likely risk, requires product decision** — no privacy policy, data-export, or data-deletion UI exists yet (README lists these as Phase 6/"planned"), even though the schema's cascade-delete design would make a "delete my account" feature straightforward to implement once auth exists.
+**Risks around user health/training data:** The schema stores body measurements
+(`body_measurements.bodyweight_kg`, `body_fat_pct`, `circumferences_cm`) and check-ins
+(sleep/energy/soreness/stress) — data a user might reasonably consider sensitive. Export and deletion
+UI now exist and the privacy-policy draft inventories both Supabase and RevenueCat processing. The
+remaining release risk is operational/legal: production migrations, deletion/export, owner
+placeholders, processor terms and the published policy URL are not yet verified.
 
 **Secrets, logging, dependency, or data-access concerns:**
 - No `.env` file contents were read or reproduced by this audit, per instruction.
@@ -500,7 +541,8 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 | Route | File | Type |
 |---|---|---|
 | `auth` | `app/auth/index.tsx` | Stack screen — sign-in / sign-up, gestures disabled (added 2026-08-06, `feature/v1-auth-and-session`). There is nothing behind sign-in to return to. `app/onboarding/auth.tsx` is no longer a screen: it is a `<Redirect>` that resolves to `/auth` where accounts exist and to `/onboarding/steps` where they do not. |
-| `account` | `app/account.tsx` | Modal — identity, sign out, one explanatory line (added 2026-08-08, `feature/v1-signout-surface`). Reached only from Today's `headerRight` Account control, which renders only when `canOfferSignOut` is true. Deliberately not a settings screen: a fourth item on it would make it one. |
+| `account` | `app/account.tsx` | Modal — identity, export, deletion, sign out, and S4's required **Restore purchases** entry. Reached from Today's account control. |
+| `paywall` | `app/paywall.tsx` | Modal — original Pro explanation, exact lifetime product price, purchase, restore, and support-oriented outcomes. SDK success never grants access directly. |
 | `(tabs)/index` | `app/(tabs)/index.tsx` | Tab — Today |
 | `(tabs)/progress` | `app/(tabs)/progress.tsx` | Tab — Progress |
 | `(tabs)/body` | `app/(tabs)/body.tsx` | Tab — Body |
@@ -653,7 +695,8 @@ per `Docs/invariants.md` I-15, a document's history of what was found and fixed 
 | G-7 | Low | Release tooling | **Partially resolved 2026-08-06.** `eas.json` (development/preview/production, `appVersionSource: remote`) and an EAS project id in `app.json` are committed; `npx eas config --platform ios --profile production` resolves cleanly; each profile now sets `EXPO_PUBLIC_DEMO_MODE` explicitly. **No build has been run**, `submit.production` is empty, and the production EAS environment still has no Supabase variables — so a production build today hits the misconfigured path by design rather than shipping demo silently (`Docs/production-posture-v1.md` §4–§5). **Updated 2026-08-06 (auth sprint):** the `preview` flip from demo to real is now unblocked *in code* — G-1 no longer stands in its way — but it remains blocked on three things outside this repository, two of them owner-only: EAS environment variables for the `preview` environment (§4 currently documents only `production`), the migrations actually applied to the real project, and the project's email-confirmation setting. | A cloud build path exists on paper; whether it produces a working artifact is unverified. The auth blocker is gone, so this is now the nearest gate to a testable release | Create the EAS env vars for `preview` **and** `production`, confirm migrations are applied, then prove the `preview` profile with one build | Yes |
 | ~~G-8~~ | ~~Low~~ | ~~Accessibility (unconfirmed)~~ | **Resolved.** `maxFontSizeMultiplier` is implemented — confirmed in `src/components/ui/Text.tsx:41` (1.6×) plus `SearchField.tsx`, `Input.tsx` (1.4× each; `Stepper.tsx` also had it before its 2026-08-01 removal as dead code). The original discrepancy was this document not having read those files, not an implementation gap. | — | — | — |
 | G-9 | Low | Offline handling | No network-state detection code found (`NetInfo` or equivalent). **Precondition met 2026-08-06:** this row's recommended action was gated on "once production mode has an auth path", and that path now exists, so the item is actionable rather than blocked. | Behavior of the Supabase path when offline is unverified. One narrow case is now handled: `signOutAndTearDown` completes local teardown even when the server sign-out fails, so an offline sign-out cannot leave a lifter signed in on a shared device | Add offline detection/handling; its own branch, and out of v1 UX scope per `Docs/ui-ux-foundation-v1.md` §7 | No |
-| G-10 | Low | Dependency vulnerabilities | `npm audit`: 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling). `--force --dry-run` confirms no fix short of downgrading `expo` to `46.0.21` | Build-tooling-only exposure, not shipped in the app bundle; low real-world risk but nonzero | Re-check when a newer Expo SDK release lands | No |
+| G-10 | Low | Dependency vulnerabilities | **Rechecked 2026-08-09 on S4:** `npm audit --omit=dev` reports **26 findings (18 high, 8 moderate)** across transitive Expo/Metro/React Native paths (`brace-expansion`, `image-size`, `js-yaml`, `nanoid`, `uuid`). Some advisory fixes are offered by `npm audit fix`; others require forced breaking Expo/React Native changes. No fix was run because dependency upgrades beyond the approved RevenueCat addition are outside this sprint. This supersedes the older 11-moderate count. | These are dependency-tree advisories, not evidence of an exploitable PRism path; their runtime/build-time reach and safe compatible resolutions have not been assessed, so the risk cannot honestly be called build-tooling-only anymore | Open a dedicated dependency-hygiene sprint, review each path and compatible patch, then re-run Expo Doctor, exports and the full suite; do not use `--force` blindly | No |
+| G-11 | High | Monetization operations | S4 implements fail-closed entitlements and processor-aware account deletion in source, but the exact Apple/Google products, dedicated RevenueCat project/entitlement/offering, custom-ID restore behavior, webhook plan/configuration, server secrets, hosted migration/functions, public SDK keys, and sandbox purchase/restore/refund/transfer/delete have not been configured or exercised. | A missing public key disables purchase; a missing/misrouted webhook can take payment while access remains locked; a drifted product cannot be sold; missing customer-deletion configuration blocks account deletion by design. | Complete `Docs/revenuecat-release-runbook.md` against staging/sandbox, preserve evidence, then repeat the verified configuration for production before submission. | Yes |
 
 ---
 

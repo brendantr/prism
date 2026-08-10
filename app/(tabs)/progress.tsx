@@ -2,12 +2,15 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Card, LinearSpectrum, Screen, ScreenState, SectionHeader, StatBlock, Text } from '@/components/ui';
+import { LockedProScreen } from '@/components/paywall/LockedProScreen';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { e1rmSeries } from '@/domain/calc/prs';
 import { volumeInWindow } from '@/domain/calc/readiness';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatVolume } from '@/utils/format';
+import { isSurfaceLocked } from '@/domain/entitlements';
+import { useEntitlementStore } from '@/store/entitlementStore';
 import { color, space } from '@/theme';
 
 /**
@@ -28,6 +31,7 @@ export default function ProgressScreen() {
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
 
   const now = useMemo(() => new Date(), []);
 
@@ -74,6 +78,10 @@ export default function ProgressScreen() {
     onBack: back,
     backLabel: 'Back to Insights',
   } as const;
+
+  if (isSurfaceLocked({ requiresPro: true, phase: entitlementPhase })) {
+    return <LockedProScreen eyebrow={header.eyebrow} title={header.title} onBack={back} />;
+  }
 
   // Status must be checked before the profile/headline guard below: both stay
   // null for the entire loading/error window, so checking them first silently

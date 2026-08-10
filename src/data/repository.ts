@@ -4,6 +4,7 @@ import { ROUTINE_TEMPLATES, SPECTRUM_FOUR } from './routineTemplates';
 import { generateDemoData, DEMO_PROFILE_ID } from './demoSeed';
 import { AuthRequiredError } from './authRequired';
 import { buildAccountExport, type AccountExport } from '@/domain/accountExport';
+import { PRO_ENTITLEMENT_ID, type EntitlementRecord } from '@/domain/entitlements';
 import { deviceLocalDate, isLocalDate } from '@/domain/trainingDay';
 import {
   DEMO_MODE,
@@ -98,6 +99,26 @@ export interface Repository {
    * response is safe.
    */
   deleteAccount(): Promise<void>;
+
+  /**
+   * THE SERVER'S ANSWER on whether this account has paid (`Docs/invariants.md` I-9).
+   *
+   * Read-only from the client's side, and that is the entire point of the
+   * method: there is no `saveEntitlement`, no `grantEntitlement`, and no
+   * argument anywhere in this interface that could assert one. The row is
+   * written only by the RevenueCat webhook using the service-role key
+   * server-side (`supabase/functions/revenuecat-webhook/`), and the RLS policy
+   * on `entitlements` grants the owner `select` and nothing else — no insert, no
+   * update, no delete, for any client role
+   * (`supabase/migrations/0009_entitlements.sql`).
+   *
+   * Returns null when the account has never had one. A *revoked* entitlement
+   * still returns a row, carrying `revokedAt`, because "never bought it" and
+   * "bought it and was refunded" are different facts even though they grant the
+   * same access — `resolveEntitlementPhase` collapses them, deliberately, at the
+   * point where access is decided rather than at the point where it is read.
+   */
+  getEntitlement(): Promise<EntitlementRecord | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +306,7 @@ class DemoRepository implements Repository {
         checkIns: await this.listCheckIns(),
         measurements: await this.listMeasurements(),
         personalRecords: await this.listPersonalRecords(),
+        entitlement: null,
       },
       new Date().toISOString(),
     );
@@ -301,6 +323,22 @@ class DemoRepository implements Repository {
    */
   async deleteAccount(): Promise<void> {
     await this.resetDemo();
+  }
+
+  /**
+   * Demo mode has no store, no account and nothing to pay for.
+   *
+   * Null rather than a fabricated grant, and the difference matters. A demo
+   * build resolves to `EntitlementPhase.'disabled'` *before* this is ever
+   * called (`entitlementStore.initialize`), and `'disabled'` unlocks every
+   * surface — so demo mode shows the whole app without anyone having to invent
+   * an entitlement record to make that happen. Returning a fake "you own it"
+   * row here would be a client-side entitlement by another name, which is
+   * exactly what I-9 forbids; this exists so the interface has one meaning in
+   * both implementations rather than a method that throws in one of them.
+   */
+  async getEntitlement(): Promise<EntitlementRecord | null> {
+    return null;
   }
 
   /** Wipe locally logged demo data and return to the pristine seed. */
@@ -562,7 +600,7 @@ class SupabaseRepository implements Repository {
    * this adds no new authorization surface. It is a fan-out, not a privilege.
    */
   async exportAccountData(): Promise<AccountExport> {
-    const [profile, exercises, workouts, checkIns, measurements, personalRecords] =
+    const [profile, exercises, workouts, checkIns, measurements, personalRecords, entitlement] =
       await Promise.all([
         this.getProfile(),
         this.listExercises(),
@@ -570,34 +608,83 @@ class SupabaseRepository implements Repository {
         this.listCheckIns(),
         this.listMeasurements(),
         this.listPersonalRecords(),
+        this.getEntitlement(),
       ]);
 
     return buildAccountExport(
-      { profile, exercises, workouts, checkIns, measurements, personalRecords },
+      { profile, exercises, workouts, checkIns, measurements, personalRecords, entitlement },
       new Date().toISOString(),
     );
   }
 
   /**
-   * Delete the account, via `delete_my_account`
-   * (`supabase/migrations/0005_account_deletion.sql`).
+   * Delete the account and its purchase-processor customer record.
    *
-   * No arguments are sent and none can be: the function takes none, and derives
-   * the account from `auth.uid()`. That is the containment on the one
-   * `security definer` function in this schema -- there is no id here to get
-   * wrong, and no id the server would accept if there were.
+   * The authenticated `delete-account` Edge Function deletes the same verified
+   * UUID from RevenueCat first, then invokes the existing no-argument
+   * `delete_my_account` RPC under this user's JWT. No id is sent by the client.
+   * If processor erasure fails, database deletion does not begin and the UI
+   * cannot make the false claim that all account data is gone.
    *
    * `uid()` first so an unauthenticated call fails with `AuthRequiredError`
-   * rather than a database error, matching every other write here.
+   * rather than a function error, matching every other write here.
    */
   async deleteAccount(): Promise<void> {
     await this.uid();
-    const { error } = await getSupabase().rpc('delete_my_account');
+    const { error } = await getSupabase().functions.invoke('delete-account', { body: {} });
     if (error) throw error;
+  }
+
+  /**
+   * The entitlement row, straight out of Postgres (I-9).
+   *
+   * This is the whole of the client's involvement in deciding who has paid: one
+   * select, against a table whose only client-facing policy is
+   * `"entitlements: read own"` — select, owner-scoped, and no insert, update or
+   * delete policy exists for `authenticated` or `anon` at all. A modified client
+   * can read this row; it has no statement available to it that could write one.
+   *
+   * Scoped by `profile_id` as well as by RLS, matching `deleteWorkout`'s posture:
+   * RLS already limits the read to this account's rows, so this changes no
+   * outcome — it means a bug in one layer is not the only thing standing between
+   * a query and someone else's purchase.
+   *
+   * `maybeSingle()` because "no row" is the ordinary case for most accounts and
+   * must not read as an error. The primary key on `(profile_id, entitlement_id)`
+   * makes the explicit `pro` predicate singular.
+   */
+  async getEntitlement(): Promise<EntitlementRecord | null> {
+    const profileId = await this.uid();
+    const { data, error } = await getSupabase()
+      .from('entitlements')
+      .select('entitlement_id, product_id, granted_at, revoked_at, source')
+      .eq('profile_id', profileId)
+      .eq('entitlement_id', PRO_ENTITLEMENT_ID)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? toEntitlement(data) : null;
   }
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Entitlement row -> domain record.
+ *
+ * Deliberately keeps `revoked_at` rather than collapsing it to a boolean here.
+ * A mapper that returned `{ entitled: true }` would be the client-controlled
+ * boolean I-9 is about — the shape would invite someone to construct one.
+ */
+function toEntitlement(row: any): EntitlementRecord {
+  return {
+    entitlementId: row.entitlement_id,
+    productId: row.product_id,
+    grantedAt: row.granted_at,
+    revokedAt: row.revoked_at ?? null,
+    source: row.source,
+  };
+}
+
 function toRoutine(row: any): Routine {
   return {
     id: row.id,

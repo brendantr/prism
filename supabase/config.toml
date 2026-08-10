@@ -1,0 +1,10 @@
+[functions.revenuecat-webhook]
+# RevenueCat is not a Supabase user and cannot present a user JWT. The function
+# authenticates the dedicated provider Authorization value inside the handler.
+verify_jwt = false
+
+[functions.delete-account]
+# Account deletion is called only by the signed-in mobile user. Keep the
+# platform JWT gate enabled; the handler relies on that verified token when it
+# deletes the same UUID from RevenueCat and invokes delete_my_account under RLS.
+verify_jwt = true

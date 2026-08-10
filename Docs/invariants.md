@@ -229,7 +229,17 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
 ### I-9. Entitlements are never trusted from a client-controlled boolean
 - **Rule:** Whether a user has an active paid entitlement must be determined server-side (Supabase + RevenueCat webhook/verification), never from a value the client can set or spoof.
 - **Why:** A client-controlled entitlement flag is trivially bypassable and would give away paid features for free.
-- **Enforcement evidence or expected validation:** No RevenueCat integration exists in the repository yet (`package.json` has no RevenueCat dependency; `Docs/architecture.md` does not mention one). This is a forward requirement to be validated when payments are implemented — expected validation is a documented server-side entitlement check before any paywall ships.
+- **Enforcement evidence or expected validation:** **Met in the S4 repository implementation as of
+  2026-08-09; operational release validation remains open.** `react-native-purchases` performs only
+  purchase/restore transport. `useEntitlementStore` changes its phase only after
+  `Repository.getEntitlement()` reads the authenticated account's Postgres row; SDK customer info and
+  purchase results never grant access. Migration `0009_entitlements.sql` gives the client owner-select
+  only, denies client writes, and exposes one service-role-only, security-invoker event RPC. The
+  RevenueCat webhook authenticates before calling that RPC and applies supported events idempotently.
+  Deterministic unit tests cover fail-closed resolution, purchase/restore polling, identity switching,
+  and exact-product selection; the disposable Postgres suite adds 17 entitlement assertions. This
+  does **not** prove the hosted webhook, product, offering, or store transaction: all remain release
+  gates in `Docs/revenuecat-release-runbook.md`.
 - **Exception process:** None. Any payment implementation must be designed against this invariant from the start, per the approval-gate for payment changes in `CLAUDE.md`.
 
 ### I-10. Account deletion and export are required before store release
@@ -298,8 +308,10 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   read-only probe that answers this for any project rather than asserting it.
 
   *Export.* `src/domain/accountExport.ts` assembles a versioned, deterministically sorted document
-  covering every stored table plus the lifter's own custom exercises; `Repository.exportAccountData()`
-  gathers it so a table added later cannot fall out because a caller forgot it. Delivery is React
+  covering the user-facing account/training tables plus the lifter's own custom exercises;
+  `Repository.exportAccountData()` gathers it so a user-data table added later cannot fall out because
+  a caller forgot it. S4's internal, non-client-selectable webhook idempotency ledger is deliberately
+  excluded and disclosed as such in the privacy policy; it is erased on account deletion. Delivery is React
   Native's own `Share` — deliberately no new dependency, since `expo-file-system`/`expo-sharing` are
   behind `CLAUDE.md`'s approval gate.
 
@@ -311,10 +323,21 @@ Related: `CLAUDE.md`, `Docs/agents.md`, `Docs/decisions/`.
   the one that matters most: **a failed remote delete must not tear the device down**, or a lifter is
   returned to a sign-in screen believing their data is gone while all of it remains.
 
-  **Not yet met as a release gate** `[fact]`. The invariant says deletion and export must "exist and
-  **work**". They exist and are tested against local Postgres; neither has been run against a live
-  Supabase project, and `0005` is not applied to one. Store submission still requires that, and it
-  requires a privacy policy, which does not exist in this repository (`Docs/architecture.md` §Risks).
+  **Extended by S4 on 2026-08-09.** Export format version 3 includes the current entitlement record,
+  and profile deletion cascades through both `entitlements` and `revenuecat_event_targets`. Migration
+  `0009` and its 17 local Postgres assertions verify those rows are removed with the account. The
+  authenticated `delete-account` Edge Function closes the new processor-side gap: it derives the UUID
+  from the platform-verified JWT, deletes the RevenueCat customer first, and only then invokes the
+  no-argument database RPC under that JWT. RevenueCat failure stops before database deletion. Hosted
+  production deployment/configuration through `0009` and both functions remains mandatory before
+  either promise is true in release.
+
+  **Not yet met for production release** `[fact]`. The invariant says deletion and export must "exist
+  and **work**". The owner reports both driven through the UI against staging, whose schema includes
+  `0001`–`0007`; production remains unverified and S4 adds new cascade/export scope in `0009` that is
+  local-only. `Docs/privacy-policy-draft.md` now exists, but still has owner/legal placeholders and is
+  not a published policy URL. Store submission remains blocked until the production path, final policy
+  and public URL are verified.
 - **Exception process:** None — this is a blocking requirement for store submission, not a negotiable scope item.
 
 ---
@@ -424,6 +447,13 @@ Continued from I-11/I-12 above; grouped separately here only to keep invariant I
   preferences into the next one's session unnoticed. `hydrate()` takes a `DraftOwner` and discards any
   draft whose `profileId` does not match the signed-in user, which also covers a device moving from demo
   to a real session, where the stored id is the `DEMO_PROFILE_ID` literal.
+
+  **Extended by S4 on 2026-08-09.** The fixed teardown now calls
+  `entitlementStore.reset()` after `trainingStore.reset()` and before `resetRepository()` and the final
+  unauthenticated phase. It clears the previous account's entitlement phase, localized price and
+  purchase outcome without calling RevenueCat `logOut`; a later account is identified with custom-ID
+  `logIn`, avoiding creation of an anonymous RevenueCat identity. The auth teardown test observes the
+  entitlement store as cleared before the phase flip.
 
   Two deliberate exceptions, both tested: `prism.onboarding.v1` **survives** a sign-out (first-run state
   belongs to the device, not the account — clearing it would replay the carousel for a returning

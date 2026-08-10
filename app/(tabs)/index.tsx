@@ -34,6 +34,9 @@ import {
 import { useOnboardingStore } from '@/store/onboardingStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { DEEPER_SECTION, DEEPER_SURFACES } from '@/content/deeperSurfaces';
+import { PAYWALL, PAYWALL_ROUTE } from '@/content/paywall';
+import { isSurfaceLocked } from '@/domain/entitlements';
+import { useEntitlementStore } from '@/store/entitlementStore';
 import { ACCOUNT } from '@/content/account';
 import { canOfferSignOut } from '@/domain/account';
 import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
@@ -62,6 +65,7 @@ import { a11y, color, opacity, space } from '@/theme';
  */
 export default function TodayScreen() {
   const router = useRouter();
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
@@ -405,18 +409,22 @@ export default function TodayScreen() {
       */}
       <SectionHeader title={DEEPER_SECTION.title} eyebrow={DEEPER_SECTION.eyebrow} />
       <Card style={styles.deeperCard} padding="base">
-        {DEEPER_SURFACES.map((surface, i) => (
-          <ListRow
-            key={surface.key}
-            title={surface.label}
-            subtitle={surface.rowSubtitle}
-            icon={surface.icon}
-            iconTone={surface.iconTone}
-            chevron
-            divided={i > 0}
-            onPress={() => router.push(surface.route)}
-          />
-        ))}
+        {DEEPER_SURFACES.map((surface, i) => {
+          const locked = isSurfaceLocked({ requiresPro: surface.requiresPro, phase: entitlementPhase });
+          return (
+            <ListRow
+              key={surface.key}
+              title={surface.label}
+              subtitle={locked ? PAYWALL.lockedRowHint : surface.rowSubtitle}
+              icon={surface.icon}
+              iconTone={surface.iconTone}
+              trailing={locked ? <Chip label={PAYWALL.lockedBadge} tone="violet" icon="lock-closed" /> : undefined}
+              chevron={!locked}
+              divided={i > 0}
+              onPress={() => router.push((locked ? PAYWALL_ROUTE : surface.route) as never)}
+            />
+          );
+        })}
       </Card>
 
       <Text variant="eyebrow" tone="faint" style={styles.version}>

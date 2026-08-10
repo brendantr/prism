@@ -7,8 +7,9 @@
 > filled in from verified fact rather than from memory. The owner is responsible for the legal
 > sufficiency of anything derived from it.
 >
-> **Scope of evidence:** the repository at branch `claude/reconciliation-cherry-pick`, HEAD `d5c44ef`.
-> Line numbers are correct as of that commit and will drift. Re-verify before submitting store forms.
+> **Scope of evidence:** the repository on branch `feature/v1-entitlements`, based on `main` at
+> `6d8e4d9`, including the uncommitted S4 entitlement diff under review. Line numbers are indicative
+> and will drift. Re-verify the final integration commit before submitting store forms.
 >
 > **Status placeholders the owner must fill:** `[OWNER: ...]` markers below.
 
@@ -44,7 +45,7 @@ unless marked otherwise.
 | Email address | Supabase-managed `auth.users` (not in PRism's own schema); held in app memory while signed in | Sign-in identifier; password-reset delivery; answers "which account am I in?" on a shared device | **Required** to create an account | `src/data/supabase/auth.ts:67-79`, `:92-103`; `app/auth/index.tsx:61`, `:293-306`; `src/store/sessionStore.ts:44-55` |
 | Password | **Never stored by PRism.** Transmitted to Supabase Auth, which stores a hash | Authentication | **Required** | `src/data/supabase/auth.ts:71`, `:96`, `:180-184`; `app/auth/index.tsx:62` |
 | Password-reset code (one-time) | **Never stored.** React component state only, for the duration of the flow | Verify a reset request | Optional (reset flow only) | `src/data/supabase/auth.ts:162` ("user-supplied, transient, and never stored"), `:164-193`; `app/auth/index.tsx:74`, `:314-328` |
-| Account id (UUID) | `auth.users.id`, mirrored to `profiles.id` | Owns every row; the value RLS checks | **Required**, server-generated | `supabase/migrations/0001_init.sql:43`; `:256-268` (`handle_new_user`) |
+| Account id (UUID) | `auth.users.id`, mirrored to `profiles.id`; used as RevenueCat's custom App User ID when purchase transport is configured | Owns every row; the value RLS checks; connects a store event to the correct PRism account without sending an email address | **Required**, server-generated | `supabase/migrations/0001_init.sql:43`; `:256-268` (`handle_new_user`); `src/data/purchases.ts` |
 | Display name | `profiles.display_name` (text, 1–60 chars, default `'Lifter'`) | Greeting on Today; fallback identity on the Account sheet | **Required by schema**, but never asked for — see note below | `supabase/migrations/0001_init.sql:44`, `:259-260`; `supabase/migrations/0002_security_hardening.sql:50-51`; `app/(tabs)/index.tsx:182`; `app/account.tsx:59` |
 | Account creation timestamp | `profiles.created_at` | Record keeping | Automatic | `supabase/migrations/0001_init.sql:55` |
 | Profile last-modified timestamp | `profiles.updated_at` | Record keeping | Automatic (trigger) | `supabase/migrations/0001_init.sql:56`, `:248-250` |
@@ -135,6 +136,27 @@ something the app does today.]`
 
 ---
 
+## 5.1 Purchase and access data
+
+| Data item | Stored where | Purpose | Required? | Evidence |
+| --- | --- | --- | --- | --- |
+| Store transaction and purchase history | Apple App Store or Google Play; processed by RevenueCat | Complete, validate and restore the one-time Pro unlock | Only if the user chooses to buy | `src/data/purchases.ts`; `package.json` (`react-native-purchases`) |
+| PRism account id (UUID) | RevenueCat custom App User ID | Associate the store event with the correct authenticated PRism account | Required for purchase/restore; server-generated | `src/data/purchases.ts` (`configurePurchases`, `identifyPurchaseUser`) |
+| Entitlement record | Supabase `entitlements`: account id, entitlement id, product id, active/revoked state, event time and update time | Server-established access truth read by the client | Automatic after a supported purchase event | `supabase/migrations/0009_entitlements.sql`; `src/data/repository.ts` (`getEntitlement`) |
+| Processed event target | Supabase `revenuecat_event_targets`: RevenueCat event id, target account, entitlement id, event time and resulting action | Idempotent webhook delivery and replay protection | Automatic after a supported purchase event | `supabase/migrations/0009_entitlements.sql`; `supabase/functions/revenuecat-webhook/` |
+
+PRism does **not** receive card or bank details. PRism sends RevenueCat the account UUID, but not the
+account email, password, workouts, check-ins, body information, or free-text notes. The app contains
+only RevenueCat's public platform SDK key; the webhook authorization value and Supabase service-role
+credential are server environment values and must never enter the client or repository.
+
+The client has owner-select access to its entitlement record and no insert/update/delete policy.
+Only the server-side webhook RPC may write entitlement and event-target rows. In explicit demo mode
+the purchase module is not configured, no RevenueCat call is made, and paid surfaces are available
+without a fabricated entitlement.
+
+---
+
 ## 6. Device-local state
 
 Nothing in this section is transmitted anywhere. It is listed because it is data about the user held
@@ -174,14 +196,15 @@ future sprint could start writing them without anyone revisiting the store forms
 
 ## 8. What is NOT collected — verified
 
-Each of these was checked, not assumed. All are true of the code at HEAD `d5c44ef`.
+Each of these was checked, not assumed. All are true of the S4 branch described in this document's
+scope note.
 
 | Claim | How it was verified |
 | --- | --- |
 | **No analytics or product-analytics SDK** | Full dependency list is `package.json:17-51` — Expo modules, `@supabase/supabase-js`, `zustand`, React Native, `react-native-svg`, `@expo/vector-icons`. A case-insensitive repo search for `sentry\|bugsnag\|crashlytics\|firebase\|amplitude\|segment\|posthog\|mixpanel\|appsflyer\|adjust\|onesignal\|datadog\|newrelic\|logrocket\|smartlook\|admob` returns **nothing** in `package.json` and nothing in `src/` or `app/` (only false positives: `SegmentedControl`, `useSegments`, and comments describing Insights as an "analytics hub") |
 | **No crash reporting** | Same search. Corroborated independently by `Docs/architecture.md:260` and gap **G-4** at `Docs/architecture.md:650` — "No crash reporting, analytics, or logging framework found in dependencies" |
 | **No advertising SDK, no ad identifiers (IDFA / AAID), no ATT prompt** | No ad or attribution dependency; no `expo-tracking-transparency`; no `NSUserTrackingUsageDescription` in `app.json:11-25` |
-| **No third-party trackers of any kind** | The only network destination reachable from app code is the configured Supabase project URL (`src/data/supabase/client.ts:9-10`, `:62`). A repo-wide search for `fetch(`, `axios`, `XMLHttpRequest` and `WebSocket` outside `supabase-js` returns **nothing** in `src/` or `app/` |
+| **No advertising, analytics, or cross-app tracking SDK** | Runtime network services are Supabase for account/training data and RevenueCat for purchase/restore transport. `react-native-purchases` is used only for the Pro transaction and entitlement delivery; PRism does not use it for ads, attribution, product analytics, or cross-app tracking. No advertising, attribution, session-replay, or analytics dependency is present |
 | **No device permissions requested** | `app.json:11-25` declares **no** iOS usage-description strings and **no** Android permissions. No `expo-notifications`, `expo-location`, `expo-camera`, `expo-image-picker`, `expo-contacts`, `expo-calendar`, `expo-media-library`, `expo-av` or `expo-sensors` in `package.json` |
 | **No health-platform integration** | No HealthKit, Google Fit, Health Connect or `react-native-health` dependency. All body/wellbeing data is typed by the user |
 | **No photos, camera, microphone, contacts, calendar** | Same — no such module is a dependency |
@@ -189,7 +212,7 @@ Each of these was checked, not assumed. All are true of the code at HEAD `d5c44e
 | **No over-the-air update service** | No `expo-updates` dependency; no `updates` block in `app.json` |
 | **No social graph, no feed, no sharing backend** | The Social tab is an explicit shell: "there is no account, no network call, and no persisted state behind this screen" (`app/(tabs)/social.tsx:11-30`) |
 | **No push notifications** | No `expo-notifications` dependency; no push token is ever obtained |
-| **No service-role or other privileged credential in the client** | Only `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are read (`src/data/supabase/client.ts:9-10`); `.env.example:24-28` states the rule explicitly |
+| **No service-role or other privileged credential in the client** | The client reads public Supabase and RevenueCat platform SDK values only. `SUPABASE_SERVICE_ROLE_KEY` and `REVENUECAT_WEBHOOK_AUTH` are referenced only by the Edge Function's server environment; `.env.example` contains neither privileged value |
 
 **One honest caveat to keep in the policy.** Apple and Google collect their own crash and usage
 diagnostics at the OS and store level, governed by the device owner's own settings and by each
@@ -202,8 +225,9 @@ build service processes **source code** at build time; it does not process user 
 
 | Party | Role | What they hold |
 | --- | --- | --- |
-| **Supabase** | Hosting and processing — the database, the auth service, and the API the app talks to | Everything in §2–§5: `auth.users` (email, password hash) plus the eleven application tables |
-| **Apple / Google** | App distribution | Whatever their own store terms cover — purchase/download records, OS-level diagnostics. Nothing sent by PRism |
+| **Supabase** | Hosting and processing — the database, auth service, API and entitlement webhook write target | Everything in §2–§5.1: `auth.users` (email, password hash) plus the thirteen application tables |
+| **RevenueCat** | Purchase and restore processor | The store transaction/entitlement data and the random PRism account UUID; no training, body, password, email, or free-text data is sent by PRism |
+| **Apple / Google** | App distribution and payment processing | Purchase/download records, payment information handled by the store, and OS-level diagnostics under their own terms |
 | **The OS share sheet** | Export delivery only | The export JSON is handed to the OS share sheet; **the destination is chosen by the user**, not by the app (`app/account.tsx:134-137`) |
 
 **No other party.** No data broker, no advertiser, no analytics vendor, no partner integration.
@@ -214,6 +238,9 @@ determined from this repository.]`
 
 `[OWNER: confirm whether a Supabase Data Processing Addendum has been executed, and record the
 answer here.]`
+
+`[OWNER: confirm RevenueCat's current data-processing terms, store-disclosure guidance, project
+restore behavior, and whether the account plan supports webhooks before release configuration.]`
 
 ---
 
@@ -226,8 +253,9 @@ Both are reachable in-app today, with no support ticket and no email.
 **Path:** Today → account control → **Account** → **Export my data**.
 
 Produces a versioned, deterministically sorted JSON document containing the profile, custom
-exercises, every workout with its exercises and sets, every check-in, every body measurement and
-every personal record — then hands it to the OS share sheet.
+exercises, every workout with its exercises and sets, every check-in, every body measurement, every
+personal record and the current entitlement record if one exists — then hands it to the OS share
+sheet.
 
 - Screen: `app/account.tsx:123-146`, `:251-260`
 - Assembly: `src/domain/accountExport.ts:45-62`, `:81-96`
@@ -236,17 +264,26 @@ every personal record — then hands it to the OS share sheet.
 
 The export deliberately excludes PRism's own seeded exercise library, which is the app's data rather
 than the lifter's (`src/domain/accountExport.ts:52-57`).
+It also excludes `revenuecat_event_targets`, an internal idempotency ledger that is not client-
+selectable. The public policy states this limitation rather than calling the in-app file a complete
+backend dump; those rows are erased by account deletion.
 
 ### Erasure
 
 **Path:** Today → account control → **Account** → **Delete account**, then two separate confirmations.
 
-Calls `delete_my_account()`, which takes **no arguments** and derives the account solely from
-`auth.uid()`. It deletes one row from `auth.users`; `profiles.id references auth.users(id) on delete
-cascade` and all user tables cascade from `profiles`, so the whole account goes with it.
+Calls the authenticated `delete-account` Edge Function with **no user id in the request**. The
+function derives the UUID from the gateway-verified session, erases that RevenueCat customer first,
+then invokes `delete_my_account()` under the same JWT. The RPC itself takes no arguments and derives
+the account solely from `auth.uid()`. It deletes one row from `auth.users`; `profiles.id references
+auth.users(id) on delete cascade` and all user tables cascade from `profiles`, including the
+entitlement and processed-event-target rows introduced by `0009_entitlements.sql`.
+After remote success, local teardown detaches the native purchase SDK from the erased UUID before the
+session phase changes, preventing the live process from continuing to identify as the deleted customer.
 
 - Screen and double confirmation: `app/account.tsx:158-212`
 - Client call: `src/data/repository.ts:593-597`
+- Processor erasure orchestration: `supabase/functions/delete-account/`
 - Function: `supabase/migrations/0005_account_deletion.sql:65-89`; execute granted only to
   `authenticated` (`:97-98`)
 - Local teardown after deletion: `src/store/authActions.ts:63-91`, `:114-119`
@@ -261,7 +298,7 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 > `0001`–`0007` are on **staging** but that **"Production has had no such treatment"**. If `0005` is
 > not applied to the production project, the in-app **Delete account** button fails against a real
 > account — which is both a broken promise in the privacy policy and a store-review failure.
-> `[OWNER: apply and verify all migrations on the production project before submission; the
+> `[OWNER: apply and verify all migrations through 0009 on the production project before submission; the
 > read-only probe in Docs/tester-readiness-runbook.md §2 answers this.]`
 
 ---
@@ -270,25 +307,28 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 
 | Control | Evidence |
 | --- | --- |
-| Row-level security enabled on **all eleven** tables | `supabase/migrations/0001_init.sql:279-289` |
+| Row-level security enabled on **all thirteen** tables | `supabase/migrations/0001_init.sql:279-289`; `supabase/migrations/0009_entitlements.sql` |
 | Every policy scopes rows to `auth.uid()`; child tables are guarded by an `EXISTS` walk to the owning parent | `supabase/migrations/0001_init.sql:291-391` |
-| Only the anon/publishable key ships in the client; RLS is the authorization boundary | `src/data/supabase/client.ts:9-10`, `:62`; `.env.example:24-28` |
+| Only Supabase's anon/publishable key and RevenueCat's public platform SDK key ship in the client; RLS and the authenticated webhook are the authorization boundaries | `src/data/supabase/client.ts`; `src/data/purchases.ts`; `.env.example` |
 | No service-role credential anywhere in the client or the repository | `Docs/invariants.md:108` (I-4), `:126` (I-5) |
 | Writes never carry a client-supplied owner id — the database reads `auth.uid()` | `src/data/supabase/mappers.ts:130-134`, `:158-159`; `src/data/repository.ts:496` |
 | Exactly one `security definer` function destroys data; it takes no arguments, so it can only ever delete the caller | `supabase/migrations/0005_account_deletion.sql:36-51`, `:65-89` |
+| Account deletion erases the gateway-authenticated UUID from RevenueCat before invoking the no-argument database deletion; an unconfirmed processor failure stops the sequence | `supabase/functions/delete-account/`; `src/data/repository.ts` |
 | `search_path` pinned to `''` on definer functions | `supabase/migrations/0005_account_deletion.sql:69`; `0002_security_hardening.sql:131-134` |
 | Session tokens in the hardware-backed Keychain/Keystore, device-only, excluded from backups | `src/data/supabase/secureStorage.ts:39-53` |
 | A partially written session reads as "signed out", never as a corrupt one | `src/data/supabase/secureStorage.ts:15-24`, `:138-151` |
 | Client-side ids use the platform CSPRNG, not `Math.random()` | `src/utils/id.ts:10-27` |
 | Display name length-bounded to defeat an unbounded-write vector at signup | `supabase/migrations/0002_security_hardening.sql:26-31`, `:50-51` |
 | Sign-out tears down local state even when the network call fails | `src/data/supabase/auth.ts:105-121`; `src/store/authActions.ts:73-77` |
+| Entitlement rows are owner-select-only to the client; event-target rows are invisible; a service-role-only security-invoker RPC applies each event atomically and idempotently | `supabase/migrations/0009_entitlements.sql`; `supabase/tests/rls/09_run_entitlement_tests.sql` |
 
 ---
 
 ## 12. Summary counts
 
-- **11 Postgres tables**, of which 9 hold user-owned rows (`exercises` and `routines` also hold
-  PRism's own library/template rows, distinguished by `profile_id is null`).
+- **13 Postgres tables**, all of which can hold rows linked to an account. `exercises` and `routines`
+  also hold PRism's own library/template rows, distinguished by `profile_id is null`, while
+  `revenuecat_event_targets` is an internal delivery ledger rather than user-facing content.
 - **Account/identity items collected: 2** actually user-supplied (email, password), plus 4
   server-generated or defaulted.
 - **Training-preference items: 6**, all defaulted, **0** currently user-editable in-app.
@@ -296,9 +336,11 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 - **Health-adjacent items: 10 columns** across `check_ins`, `body_measurements` and
   `profiles.bodyweight_kg` — of which **4 are actually collected today** (the four wellbeing scales),
   the rest are read-only or dormant.
+- **Purchase/access items: 4 groups** (store transaction, custom account UUID, entitlement row, and
+  processed event target). PRism never receives payment-card details.
 - **Device-local keys: 7** (1 Keychain-backed session, 6 AsyncStorage keys of which 4 are demo-only).
 - **Dormant schema columns: 6** (§7).
-- **Third-party processors: 1** (Supabase). **Analytics/ads/tracking SDKs: 0.**
+- **Third-party processors: 2** (Supabase and RevenueCat). **Analytics/ads/tracking SDKs: 0.**
 - **Device permissions requested: 0.**
 
 ---
@@ -311,7 +353,11 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 - `[OWNER: effective date of the policy]`
 - `[OWNER: Supabase project hosting region]`
 - `[OWNER: whether a Supabase Data Processing Addendum is executed]`
+- `[OWNER: RevenueCat data-processing terms, current store-disclosure guidance, restore behavior,
+  and webhook-capable plan]`
+- `[OWNER: create a least-privilege RevenueCat secret key with customer read/write deletion
+  permission and deploy/configure the authenticated delete-account function]`
 - `[OWNER: minimum age for the app, and the age rating declared on each store]`
 - `[OWNER: decide whether to declare body measurements on store forms before the feature ships]`
-- `[OWNER: confirm all migrations, especially 0005, are applied to the production Supabase project]`
+- `[OWNER: confirm all migrations through 0009 are applied to the production Supabase project]`
 - `[OWNER: public URL where the policy will be hosted — both stores require a reachable URL]`

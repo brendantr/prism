@@ -42,6 +42,21 @@ export interface DeeperSurface {
   /** Tint for the row's glyph tile. Tiles are deliberately untinted. */
   iconTone: 'violet' | 'cyan';
   route: '/history' | '/(tabs)/progress' | '/(tabs)/body';
+  /**
+   * Whether this surface is behind the one-time unlock
+   * (`Docs/decisions/ADR-0005-monetization.md`).
+   *
+   * **Per surface, never per list.** This array is the single source of truth
+   * for a row rendered by both Today and Insights, and `history` sits in it
+   * beside `progress` and `body` — so a blanket "this card is gated" flag on the
+   * card would have locked a lifter out of their own finished sessions. History
+   * is the record of what they did; it is free forever, and the flag being a
+   * property of each surface is what makes that structural rather than a comment.
+   *
+   * The gating decision itself is `isSurfaceLocked` in `src/domain/entitlements.ts`.
+   * This is only which surfaces it applies to.
+   */
+  requiresPro: boolean;
 }
 
 /**
@@ -66,6 +81,9 @@ export const DEEPER_SURFACES: readonly DeeperSurface[] = [
     icon: 'time',
     iconTone: 'violet',
     route: '/history',
+    // Free forever. Logging a session and reading back what you logged are the
+    // same act; charging for the second half would be charging for your own data.
+    requiresPro: false,
   },
   {
     key: 'progress',
@@ -75,6 +93,7 @@ export const DEEPER_SURFACES: readonly DeeperSurface[] = [
     icon: 'trending-up',
     iconTone: 'violet',
     route: '/(tabs)/progress',
+    requiresPro: true,
   },
   {
     key: 'body',
@@ -84,6 +103,7 @@ export const DEEPER_SURFACES: readonly DeeperSurface[] = [
     icon: 'body',
     iconTone: 'cyan',
     route: '/(tabs)/body',
+    requiresPro: true,
   },
 ] as const;
 

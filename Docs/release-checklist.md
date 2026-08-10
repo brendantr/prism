@@ -3,7 +3,7 @@
 ## Document status
 
 - **Status:** Draft for engineer/owner review.
-- **Date:** 2026-08-06
+- **Date:** 2026-08-09
 - **Purpose:** One place naming the commands that gate a release, what each actually covers, and the
   release-configuration facts a build inherits today. It records state; it does not grant approval for
   any release step.
@@ -22,7 +22,7 @@
 | `npm run verify` | `typecheck` then `test -- --ci`, in that order — the same two steps CI runs, in one command `[fact]` | Every branch, before opening a PR |
 | `npm run typecheck` | `tsc --noEmit`, `strict: true` across `app/` and `src/` `[fact]` | CI `verify` job |
 | `npm test -- --ci` | Hermetic Jest: the calc engine, `src/domain/history.ts`, both stores, the repository contract, the content modules `[fact]` | CI `verify` job |
-| `supabase/tests/rls/run.sh` | 57 cross-tenant isolation assertions against both migrations on a disposable Postgres 16 `[fact, `2026-08-04-supabase-rls-ci.md`]` | CI `rls` job |
+| `supabase/tests/rls/run.sh` | Applies migrations `0001`–`0009` and runs 191 database assertions on a disposable Postgres 16, including 17 entitlement/RLS/idempotency assertions `[fact]` | CI `rls` job |
 | `npx expo-doctor` | Expo SDK/dependency drift `[fact]` | Before a release build; not in CI |
 | `npx eas config --platform <ios\|android> --profile <profile>` | Resolves and prints the effective build config without building `[fact]` | Before a release build |
 
@@ -72,22 +72,32 @@ what PRism calls its first public version is a product decision and is not made 
 - Even without that, an unset flag would still resolve to non-demo: `DEMO_MODE` falls back to
   `__DEV__`, which is false in any EAS/release bundle (`client.ts`).
 - So a production build runs **against the real backend**, and needs `EXPO_PUBLIC_SUPABASE_URL` and
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY` to be present to function at all.
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY` to be present to function at all. A store-ready S4 build also needs
+  the matching platform's public RevenueCat SDK key: `EXPO_PUBLIC_REVENUECAT_IOS_KEY` or
+  `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY`.
 - If those are absent, `isSupabaseConfigured` is false with demo off. That state **fails loudly by
   design** — it does not fall back to demo. A silent fallback would ship a build that claims to be
   live while writing every logged session to local storage only.
 
 **Therefore the pre-submission check is a positive one, not an absence check** `[decision]`:
 
-1. Confirm the `production` profile actually resolves both Supabase variables
+1. Confirm the `production` profile actually resolves both Supabase variables and the correct
+   platform RevenueCat public SDK key
    (`npx eas config --platform ios --profile production`). Absent variables are now a release
    blocker, not a fallback into demo.
 2. Confirm the Supabase project those variables point at has had every migration in
    `supabase/migrations/` applied — including `0003_workout_write_integrity.sql`, without which
    `save_workout_graph` does not exist and **every workout save fails**.
-3. Confirm sign-in works against that project on a real build. Authentication exists now
+3. Confirm migration `0009_entitlements.sql` is applied and both `revenuecat-webhook` and
+   `delete-account` Edge Functions are deployed. Server configuration includes
+   `REVENUECAT_WEBHOOK_AUTH`, a least-privilege `REVENUECAT_SECRET_API_KEY` for customer deletion,
+   and `REVENUECAT_PROJECT_ID`, alongside Supabase's function runtime values. Never place privileged
+   values in EAS or any `EXPO_PUBLIC_*` variable.
+4. Confirm sign-in works against that project on a real build. Authentication exists now
    (`Docs/decisions/ADR-0004-authentication-and-session.md`); the older G-1 framing of this document,
    which assumed no auth path existed, no longer applies.
+5. Complete every external product, entitlement, offering, webhook and sandbox acceptance step in
+   `Docs/revenuecat-release-runbook.md`; repository tests cannot verify any of them.
 
 **Not changed by this branch** `[fact]`: no EAS environment variable was created and `eas.json` was
 not edited. Both are production configuration, gated behind explicit engineer/owner approval
@@ -119,6 +129,7 @@ open.
 | **G-4 — no observability** | **Open.** No crash reporting or analytics. Tester feedback arrives with no telemetry behind it, and "it crashed" is unactionable. **The binding gate on this list.** |
 | **G-7 — release tooling** | **Closed for `preview`.** A preview build was produced end to end on 2026-08-09 (Android, ~22 min, commit `048114b`), with all three environment variables confirmed resolving into it. The `production` profile and store submission remain unexercised. |
 | **I-1 / I-6 — RLS** | **Met, and now confirmed against a real project** — the integration lane checks isolation between two real accounts in both directions, which the unit suite had been taking on trust. |
+| **I-9 / G-11 — payment and entitlement operations** | **Open.** S4's source is fail-closed and locally tested, but no store product, dedicated RevenueCat entitlement/offering project, restore behavior, webhook, hosted `0009`/functions, public EAS key, customer-deletion secret, or sandbox purchase/restore/delete has been configured or exercised. Follow `Docs/revenuecat-release-runbook.md`; a real sandbox buy, reinstall/restore, refund/transfer, and account deletion with confirmed RevenueCat erasure are blocking. |
 
 `[fact]` Two gates outside this table now bind harder than anything in it: **no way to create a custom
 exercise** (`Repository` has no exercise write methods, so a lifter is capped at the 43 seeded
@@ -129,8 +140,17 @@ blocks a store submission; both will be reported as bugs by the first cohort.
 
 ## 5. What was verified for this document, and what was not
 
-**Verified** `[fact]`: `npm run typecheck` clean; `npm test -- --ci` green; `npx eas config` resolves
-both the ios `production` profile and `app.json` as printed above.
+**Verified** `[fact]`: `npm run verify` is green (**36 suites, 532/532 tests**); the disposable
+Postgres 16 run is green (**191/191 assertions**, including 17 entitlement assertions);
+`npx expo config --type public` resolves both platform identities; and local Expo exports produce an
+iOS bundle (6.7 MB) and an Android bundle (6.8 MB). `npm run test:integration` discovers both suites
+and skips all 19 credential-gated tests with zero failures.
+
+**Known local-tool findings** `[fact]`: `npx expo-doctor` completes **19/20 checks**; its one failed
+check is the pre-existing patch drift in five Expo packages (`expo`, `expo-asset`, `expo-constants`,
+`expo-linking`, `expo-router`). No version change was approved or made. `npm audit --omit=dev` reports
+26 transitive findings (18 high, 8 moderate); no automatic or forced fix was run. See G-10 in
+`Docs/architecture.md`.
 
 **Not verified** `[fact]`, and not claimed:
 
@@ -138,5 +158,8 @@ both the ios `production` profile and `app.json` as printed above.
   quota and produce artifacts, which is an outward-facing action outside this branch's scope. The
   profiles are therefore *syntactically resolved*, not *proven to build*.
 - **No store submission was attempted or configured**; `submit.production` is an empty object.
-- **Android was not exercised** — `eas config` was run for ios only; no platform-specific
-  configuration differs, which is a reason to expect parity, not evidence of it.
+- **No RevenueCat, App Store Connect, Play Console, hosted Supabase function/migration, or EAS
+  variable was created or changed.** No purchase, restore, refund, transfer, or charge occurred.
+- **Neither platform was exercised on a device or simulator with the native purchase SDK.** Local
+  JavaScript exports passed for both; no signed native build, store sandbox sheet, webhook delivery,
+  restore, refund, transfer, or account-deletion processor call was run.

@@ -1,0 +1,45 @@
+import { StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Button, Card, Screen, Text } from '@/components/ui';
+import { PAYWALL, PAYWALL_ROUTE } from '@/content/paywall';
+import { space } from '@/theme';
+
+export function LockedProScreen({
+  eyebrow,
+  title,
+  onBack,
+}: {
+  eyebrow: string;
+  title: string;
+  onBack: () => void;
+}) {
+  const router = useRouter();
+  return (
+    <Screen
+      scroll={false}
+      eyebrow={eyebrow}
+      title={title}
+      onBack={onBack}
+      backLabel="Back to Insights"
+    >
+      <Card variant="raised" spectral padding="xl" style={styles.card}>
+        <Text variant="title2">{PAYWALL.lockedScreenTitle}</Text>
+        <Text variant="bodySm" tone="secondary" style={styles.body}>
+          {PAYWALL.lockedScreenBody}
+        </Text>
+        <Button
+          label={PAYWALL.lockedScreenAction}
+          fullWidth
+          style={styles.action}
+          onPress={() => router.push(PAYWALL_ROUTE as never)}
+        />
+      </Card>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: { marginHorizontal: space.lg },
+  body: { marginTop: space.md },
+  action: { marginTop: space.xl },
+});

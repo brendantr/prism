@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Card, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
+import { LockedProScreen } from '@/components/paywall/LockedProScreen';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
 import { MUSCLE_META } from '@/domain/muscles';
@@ -9,6 +10,8 @@ import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore
 import { useShallow } from 'zustand/react/shallow';
 import { color, radius, recoveryScale, space } from '@/theme';
 import type { MuscleRecovery } from '@/domain/types';
+import { isSurfaceLocked } from '@/domain/entitlements';
+import { useEntitlementStore } from '@/store/entitlementStore';
 
 /**
  * BODY (Phase 3)
@@ -26,6 +29,7 @@ export default function BodyScreen() {
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
   const now = useMemo(() => new Date(), []);
 
   const recovery = useMemo(
@@ -50,6 +54,10 @@ export default function BodyScreen() {
     onBack: back,
     backLabel: 'Back to Insights',
   } as const;
+
+  if (isSurfaceLocked({ requiresPro: true, phase: entitlementPhase })) {
+    return <LockedProScreen eyebrow={header.eyebrow} title={header.title} onBack={back} />;
+  }
 
   if (status !== 'ready') {
     return (
