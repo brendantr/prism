@@ -226,12 +226,22 @@
   which closes **G-7 for `preview`**. `production` and store submission remain unexercised.
   **The binding gates are now G-4 (no crash reporting or analytics at all) and the two product gaps
   below the store bar:** no way to create a custom exercise, and check-in days bucketed in UTC.
-- **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
-  contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
-  guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five
-  sit on their own branches, unmerged, each based on the one before it. Claims in this document
-  describing auth, sign-out, reset or the demo-fallback throw are claims about that branch chain, not
-  about `main`.
+- **Delta 2026-08-09 (`fix/v1-zero-data-surfaces`, based on `main` at `6d8e4d9`):** three analysis
+  surfaces now distinguish missing evidence from a result. Insights and Progress branch on zero
+  completed workouts instead of a missing profile; Body replaces sixteen unsupported 100%/fresh rows
+  with an actionable no-history state. Progress key lifts are selected from movements actually
+  repeated in completed, non-future sessions during the last eight weeks, so hosted UUID exercise ids
+  work instead of matching only demo catalogue slugs. The same selector bounds the panel to four and
+  resolves real exercise names. Default favourites are empty rather than four demo-only ids. No
+  repository, schema/RLS, dependency, native, or hosted-project change occurred. Evidence:
+  `npm run verify` passed **529/529 tests across 31 suites** with clean TypeScript; Jest retained its
+  worker-force-exit cleanup warning. The changed render states have no component tests and still need a
+  cold-start zero-account walkthrough. Full record:
+  `Docs/sprints/2026-08-09-v1-zero-data-surfaces.md`.
+- **Branch provenance note `[fact, 2026-08-09]`:** `main` and `origin/main` were at `6d8e4d9` when
+  `fix/v1-zero-data-surfaces` was cut. The production-posture, auth, sign-out, password-reset,
+  hosted-verification, and local-training-day work named above are ancestors of that baseline. The
+  zero-data changes in the delta immediately above remain branch-only until this sprint is merged.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -529,6 +539,13 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 ---
 
 ## Quality and Operational Readiness
+
+**Current branch evidence (2026-08-09, `fix/v1-zero-data-surfaces`):** `npm run verify` passed
+**529/529 tests across 31 suites** plus a clean TypeScript check. New coverage spans UUID-backed and
+demo-backed key-lift selection, evidence windows/thresholds/order, completed/non-future session
+boundaries, recovery evidence, empty favourites/reset, and user-facing zero-data copy. App rendering
+still has no component-test framework; Jest exited successfully but reported a worker that needed
+force-exit after the green run.
 
 **Existing test suites and what they cover (original, 2026-07-25):** One suite, `src/domain/calc/__tests__/calc.test.ts` (434 lines, 40 tests), covering: Epley 1RM (including rep cap and inversion), training volume (warm-up exclusion, incomplete-set exclusion), PR detection (both `e1rm` and `weight` kinds, extrapolation guard), recovery estimate (monotonicity, clamping, status bands), all five next-load-recommendation branches (deload/hold/increase×2/establish, rounding-cancellation guard), readiness score (bounds, weight-sum, ISO-week boundaries), and the demo seed generator (determinism, 8-week coverage, no future dates). **No tests exist** for `src/data` (repository, mappers), `src/store` (Zustand stores), any file under `app/`, or any file under `src/components`.
 

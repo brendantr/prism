@@ -205,3 +205,43 @@ describe('check-in date selectors', () => {
     expect(selectTodaysCheckIn(useTrainingStore.getState(), reference)).toBeNull();
   });
 });
+
+describe('favourite exercises', () => {
+  /*
+    `favouriteExerciseIds` used to be seeded with four `exerciseLibrary` slugs --
+    ids that exist only in the bundled catalogue demo mode reads from. Against
+    Supabase the same movements carry `gen_random_uuid()` ids, so on a real
+    account the four pre-set favourites matched nothing, and tapping the
+    "Favourites" chip in the exercise list or the workout picker filtered a
+    43-movement library down to "Nothing matches those filters".
+  */
+  beforeEach(() => {
+    useTrainingStore.getState().reset();
+  });
+
+  it('starts empty rather than pre-starring ids that may not exist', () => {
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+
+  it('stars and unstars whatever id the library actually uses', () => {
+    // The half that always worked: `toggleFavourite` keys on the id it is
+    // given, so a UUID from Supabase is as good as a bundled slug.
+    const uuid = 'c4e2a9f1-8b7d-4c3e-a6f0-15d9e7b2c084';
+    const { toggleFavourite } = useTrainingStore.getState();
+
+    toggleFavourite(uuid);
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([uuid]);
+
+    toggleFavourite(uuid);
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+
+  it('is cleared by reset, which sign-out relies on (I-19)', () => {
+    // `reset()` restores the shared `INITIAL_DATA` constant, so this field is
+    // torn down on sign-out for free. Changing its default must not break that.
+    useTrainingStore.getState().toggleFavourite('ex_bench_press');
+    useTrainingStore.getState().reset();
+
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+});

@@ -133,6 +133,27 @@ export function estimateRecovery(
   });
 }
 
+/**
+ * Whether any muscle in an estimate has a real session behind it.
+ *
+ * `estimateRecovery` answers for all sixteen `MUSCLE_GROUPS` unconditionally,
+ * and a muscle it has never seen trained comes back `readiness: 1`,
+ * `status: 'fresh'`, `hoursSinceLastStimulus: null`. That is the right answer
+ * for one muscle among fifteen others with history; for an account with no
+ * history at all it produces sixteen rows reading 100%, which is a full screen
+ * of confident output derived entirely from the absence of input -- exactly what
+ * I-18 forbids. `computeReadiness` already models the correct posture by
+ * returning `score: null, confidence: 'insufficient'` instead of a stand-in.
+ *
+ * Kept as a separate predicate rather than folded into `estimateRecovery`'s
+ * return type: the per-muscle default is load-bearing for callers like
+ * `averageReadiness`, which needs a number for every muscle in a session. This
+ * only tells a renderer whether the estimate is worth showing at all.
+ */
+export function hasRecoveryEvidence(recovery: MuscleRecovery[]): boolean {
+  return recovery.some((r) => r.hoursSinceLastStimulus != null);
+}
+
 /** Mean readiness across a specific set of muscles (e.g. today's session). */
 export function averageReadiness(recovery: MuscleRecovery[], muscles: MuscleGroup[]): number {
   if (muscles.length === 0) return 1;
