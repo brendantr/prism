@@ -138,6 +138,19 @@ discriminates rather than merely runs: on an **empty** database it returns nine 
 on a database migrated to **`0007`** it returns seven `true` and the last two `false`; on one migrated
 to **`0009`** it returns nine `true`.
 
+**Before you paste anything, confirm which project you are in.** `[fact, 2026-08-10]` On the day this
+was written, the probe, a failed `0008` paste, and the full `0001`–`0009` bundle were all run against
+the wrong Supabase project — an unrelated app in the same account. The probe returned nine `false`s,
+which was true of that project and said nothing about PRism's. **Nine `false`s means "wrong project"
+at least as often as it means "empty project", and the output cannot tell you which.** The Supabase
+dashboard shows the project name in the top-left of the SQL Editor; read it, and paste the project ref
+next to any probe output you record.
+
+The consequence was not trivial: `0001` creates `on_auth_user_created`, an `after insert on auth.users`
+trigger, and `handle_new_user`/`set_updated_at` are created with `create or replace` under names that
+are standard Supabase boilerplate. Applying PRism's schema to another app's project therefore installs
+a trigger on its signups and can silently overwrite its own signup hook.
+
 Apply every file the probe reports `false`, **in numeric order**, stopping at the first error.
 
 `[fact]` **The probe is the arbiter, not this document and not any sprint record.** On 2026-08-10 the
