@@ -326,6 +326,32 @@
   `[recommendation]` The mechanism is worth more than the fixes: **a document owned by one sprint is
   wrong the moment two sprints run in parallel.** Privacy and store-form claims should be re-derived
   at integration by default, not merged.
+- **Delta 2026-08-10 — the app verified against the hosted project, and the one thing that is broken**
+  `[fact, integration lane, project ref `gyxcjmitzktffyuroucz`]`. The project ref is recorded here
+  deliberately: a probe or a lane result without the project it ran against is the ambiguity that cost
+  this repository a full schema applied to an unrelated app earlier the same day.
+
+  `npm run test:integration` against that project: **22 passed, 1 failed, 23 total.** Confirmed against
+  real PostgREST and real GoTrue rather than against a mock or local Postgres — sign-up on the real
+  `auth.users`, the whole workout graph committing through `save_workout_graph`, ownership stamped over
+  a forged payload, exact-retry idempotency, reconciliation of removed children, RLS between **two
+  genuinely separate accounts** in both directions, `save_check_in`'s omit / value / explicit-null
+  semantics through a real jsonb round trip, the `0009` entitlement read, and export completeness
+  across every table.
+
+  **The one failure is `delete_my_account`, and it is a store-submission blocker.**
+  `SupabaseRepository.deleteAccount` no longer calls the RPC directly — it invokes the `delete-account`
+  Edge Function (`repository.ts`), which also erases the RevenueCat customer so deletion does not stop
+  at Postgres. That function is not deployed, so deletion fails outright with a non-2xx. **I-10
+  requires working deletion before submission and App Review tests it**, so this would have been a
+  rejection rather than a bug report.
+
+  `[fact]` A consequence worth stating: **RevenueCat is now on the critical path for account deletion**,
+  not only for payments — the function needs `REVENUECAT_SECRET_API_KEY`, so the RevenueCat project has
+  to exist before I-10 can be met. `[fact]` A second: every failed deletion in this lane leaves its
+  disposable test accounts behind, so that project currently holds orphaned test users that should be
+  cleared before real ones arrive.
+
 - **Delta 2026-08-10 — the startup read is bounded** `[fact]`: `refresh()` loaded every session an
   account had ever logged, three levels deep (`workouts → workout_exercises → sets`), with no
   `.limit()`, `.range()` or pagination anywhere in `src/data/repository.ts`. The cost grew with
