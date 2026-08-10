@@ -9,6 +9,7 @@ import {
 } from '../trainingStore';
 import type { CheckIn } from '@/domain/types';
 import { deviceLocalDate } from '@/domain/trainingDay';
+import { WORKING_SET_WORKOUT_LIMIT } from '@/domain/workingSet';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -312,5 +313,86 @@ describe('favourite exercises', () => {
     useTrainingStore.getState().reset();
 
     expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+});
+
+/*
+  Startup loads a bounded window of sessions; History asks for the rest.
+
+  What matters here is the coverage flag being honest, because it is what
+  History consults before deciding whether it is showing a lifter their whole
+  archive or a recent slice of it. A flag that claims completeness it does not
+  have hides logged sessions, which is indistinguishable from data loss from
+  the outside.
+*/
+describe('workout working set', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+    useTrainingStore.getState().reset();
+  });
+
+  it('reports completeness honestly after a refresh', async () => {
+    await useTrainingStore.getState().refresh();
+    const { workouts, workoutsComplete } = useTrainingStore.getState();
+    // Demo seeds well under the limit, so the working set is the whole archive.
+    expect(workouts.length).toBeLessThan(WORKING_SET_WORKOUT_LIMIT);
+    expect(workoutsComplete).toBe(true);
+  });
+
+  it('loadFullHistory is a no-op once the set is already complete', async () => {
+    await useTrainingStore.getState().refresh();
+    const before = useTrainingStore.getState().workouts;
+
+    const repo = getRepository();
+    const spy = jest.spyOn(repo, 'listWorkouts');
+    await useTrainingStore.getState().loadFullHistory();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(useTrainingStore.getState().workouts).toBe(before);
+    spy.mockRestore();
+  });
+
+  it('fills in the rest of the archive when the working set was bounded', async () => {
+    await useTrainingStore.getState().refresh();
+    const full = useTrainingStore.getState().workouts;
+
+    // Simulate a startup that hit the cap: a truncated list, flagged incomplete.
+    useTrainingStore.setState({ workouts: full.slice(-2), workoutsComplete: false });
+
+    await useTrainingStore.getState().loadFullHistory();
+
+    expect(useTrainingStore.getState().workouts).toHaveLength(full.length);
+    expect(useTrainingStore.getState().workoutsComplete).toBe(true);
+  });
+
+  it('keeps the sessions already on screen when the top-up fails, and retries later', async () => {
+    await useTrainingStore.getState().refresh();
+    const full = useTrainingStore.getState().workouts;
+    const partial = full.slice(-2);
+    useTrainingStore.setState({ workouts: partial, workoutsComplete: false });
+
+    const repo = getRepository();
+    const failing = jest
+      .spyOn(repo, 'listWorkouts')
+      .mockRejectedValueOnce(new Error('offline'));
+
+    await expect(useTrainingStore.getState().loadFullHistory()).resolves.toBeUndefined();
+
+    // Partial history is strictly better than an error state here: the lifter
+    // keeps what they can already see...
+    expect(useTrainingStore.getState().workouts).toBe(partial);
+    expect(useTrainingStore.getState().status).toBe('ready');
+    // ...and it stays incomplete, so the next mount tries again.
+    expect(useTrainingStore.getState().workoutsComplete).toBe(false);
+    failing.mockRestore();
+
+    await useTrainingStore.getState().loadFullHistory();
+    expect(useTrainingStore.getState().workouts).toHaveLength(full.length);
+  });
+
+  it('is cleared by reset, which sign-out relies on (I-19)', () => {
+    useTrainingStore.setState({ workoutsComplete: false });
+    useTrainingStore.getState().reset();
+    expect(useTrainingStore.getState().workoutsComplete).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,11 +35,28 @@ export default function SessionDetailScreen() {
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
+  const workoutsComplete = useTrainingStore((s) => s.workoutsComplete);
+  const loadFullHistory = useTrainingStore((s) => s.loadFullHistory);
 
   const workout = useMemo(
     () => workouts.find((w) => w.id === id && w.status === 'completed') ?? null,
     [workouts, id],
   );
+
+  /*
+    Reached from the History list this is already loaded, because that screen
+    loads the full archive on entry. A deep link is the case this exists for:
+    startup holds a bounded window (`src/domain/workingSet.ts`), so a link
+    straight to a session older than that window would find nothing in the store
+    and render "not found" for a session that exists.
+
+    Asking only when the lookup actually missed keeps the common path free --
+    and `loadFullHistory` is itself a no-op once the set is complete, so a
+    genuinely deleted or foreign id costs one fetch, not one per render.
+  */
+  useEffect(() => {
+    if (!workout && !workoutsComplete) void loadFullHistory();
+  }, [workout, workoutsComplete, loadFullHistory]);
 
   const detail = useMemo(
     () => (workout ? buildSessionDetail(workout, exerciseById, personalRecords) : null),

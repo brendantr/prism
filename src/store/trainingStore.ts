@@ -5,6 +5,7 @@ import { useSessionStore } from './sessionStore';
 import type { CustomExerciseInput } from '@/domain/customExercise';
 import { planSelectionWrite, selectActiveRoutine } from '@/domain/settings';
 import { deviceLocalDate } from '@/domain/trainingDay';
+import { isCompleteWorkingSet, WORKING_SET_WORKOUT_LIMIT } from '@/domain/workingSet';
 import type {
   BodyMeasurement,
   CheckIn,
@@ -33,6 +34,16 @@ interface TrainingState {
   routines: Routine[];
   activeRoutine: Routine | null;
   workouts: Workout[];
+  /**
+   * Whether `workouts` holds every session this account has, or the most recent
+   * `WORKING_SET_WORKOUT_LIMIT` of them (`src/domain/workingSet.ts`).
+   *
+   * Startup loads a bounded window, so any surface that shows a lifter "all"
+   * of something must consult this rather than assuming the array is the whole
+   * archive. History is the one that does; every analysis surface works inside
+   * a window shorter than the bound and is unaffected.
+   */
+  workoutsComplete: boolean;
   checkIns: CheckIn[];
   measurements: BodyMeasurement[];
   personalRecords: PersonalRecord[];
@@ -40,6 +51,14 @@ interface TrainingState {
 
   load: () => Promise<void>;
   refresh: () => Promise<void>;
+  /**
+   * Replace the bounded working set with the account's complete history.
+   *
+   * Called by History, the only surface that browses further back than the
+   * startup window. Idempotent and cheap to call on every mount: it returns
+   * immediately once `workoutsComplete` is true.
+   */
+  loadFullHistory: () => Promise<void>;
   /** Returns the store to its pre-load state. Part of sign-out teardown. */
   reset: () => void;
   upsertWorkout: (workout: Workout) => Promise<void>;
@@ -84,6 +103,10 @@ const INITIAL_DATA = {
   routines: [],
   activeRoutine: null,
   workouts: [],
+  // Vacuously true: an empty store has no session it is hiding. Set honestly by
+  // `refresh()`, and restored here on sign-out so the next account does not
+  // inherit the previous one's coverage claim (I-19).
+  workoutsComplete: true,
   checkIns: [],
   measurements: [],
   personalRecords: [],
@@ -110,17 +133,50 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     await get().refresh();
   },
 
+  loadFullHistory: async () => {
+    if (get().workoutsComplete) return;
+    /*
+      Deliberately does not touch `status`. History already has its rows -- the
+      bounded window is a prefix of the full list, not a different list -- so
+      flipping the shared status to 'loading' would blank every screen bound to
+      this store in order to extend one of them. A failure is swallowed for the
+      same reason: the user keeps the sessions they can already see, and the
+      next mount tries again, which is strictly better than replacing a partial
+      history with an error state.
+    */
+    try {
+      const workouts = await getRepository().listWorkouts();
+      set({ workouts, workoutsComplete: true });
+    } catch {
+      // Left partial and still marked incomplete, so this retries on re-entry.
+    }
+  },
+
   refresh: async () => {
     set({ status: 'loading', error: null });
     try {
       const repo = getRepository();
-      const [profile, exercises, routines, activeRoutine, workouts, checkIns, measurements, personalRecords] =
+
+      /*
+        Eight reads, not ten. `getActiveRoutine()` is deliberately absent: both
+        implementations define it as `selectActiveRoutine(routines, profile)`,
+        and both of those are already in this Promise.all -- so calling it here
+        fetched the profile and the routine list a second time on every cold
+        start. The active routine is derived below from the values already in
+        hand, through the same pure function the repository uses, so the result
+        is identical by construction rather than by coincidence.
+
+        `listWorkouts` is bounded (`src/domain/workingSet.ts`). It used to be
+        unbounded, and the read selects workouts -> exercise blocks -> sets, so
+        a lifter two years in was fetching and parsing on the order of ten
+        thousand nested rows before the first frame.
+      */
+      const [profile, exercises, routines, workouts, checkIns, measurements, personalRecords] =
         await Promise.all([
           repo.getProfile(),
           repo.listExercises(),
           repo.listRoutines(),
-          repo.getActiveRoutine(),
-          repo.listWorkouts(),
+          repo.listWorkouts({ limit: WORKING_SET_WORKOUT_LIMIT }),
           repo.listCheckIns(),
           repo.listMeasurements(),
           repo.listPersonalRecords(),
@@ -132,8 +188,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         exercises,
         exerciseById: new Map(exercises.map((e) => [e.id, e])),
         routines,
-        activeRoutine,
+        activeRoutine: selectActiveRoutine(routines, profile),
         workouts,
+        workoutsComplete: isCompleteWorkingSet(workouts.length),
         checkIns,
         measurements,
         personalRecords,

@@ -326,6 +326,30 @@
   `[recommendation]` The mechanism is worth more than the fixes: **a document owned by one sprint is
   wrong the moment two sprints run in parallel.** Privacy and store-form claims should be re-derived
   at integration by default, not merged.
+- **Delta 2026-08-10 — the startup read is bounded** `[fact]`: `refresh()` loaded every session an
+  account had ever logged, three levels deep (`workouts → workout_exercises → sets`), with no
+  `.limit()`, `.range()` or pagination anywhere in `src/data/repository.ts`. The cost grew with
+  tenure, so the longest-standing users had the slowest cold start. `listWorkouts` now takes an
+  optional `{ limit }` and the store asks for the most recent `WORKING_SET_WORKOUT_LIMIT` (120)
+  sessions; startup also drops from **ten reads to eight**, because `getActiveRoutine()` re-fetched
+  the profile and routine list that `refresh()` already had.
+
+  Three properties worth carrying forward, all covered by tests:
+  **(1)** the bound is **opt-in** — `listWorkouts()` still returns everything, because
+  `exportAccountData` (I-10, "export everything") and `DemoRepository.deleteExercise` (a movement is
+  undeletable while any logged session references it, however old) would both have broken *silently*
+  under a bounded default. **(2)** A bounded read returns the **newest** sessions: adding `.limit()`
+  to the existing ascending query returns the *oldest* N, which typechecks, satisfies a row-count
+  assertion, and shows a lifter their first month in place of their last. **(3)** History is the only
+  surface that browses past the window and tops up on entry; every analysis window (Insights 84 days,
+  key lifts 56, readiness 28) fits inside the bound, and `coversLongestAnalysisWindow` fails a test if
+  that stops being true.
+
+  Evidence: `npx tsc --noEmit` clean, **661/661 tests across 48 suites**. **Not** measured against a
+  real account and not run on a device — the improvement is argued from the query shape, not
+  benchmarked. `listCheckIns`, `listPersonalRecords` and `listMeasurements` remain unbounded; they are
+  one row per day or per record rather than a graph, so they grow far more slowly, but they do grow.
+  Full record: `Docs/sprints/2026-08-10-workout-read-window.md`.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 

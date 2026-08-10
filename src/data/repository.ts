@@ -106,7 +106,27 @@ export interface Repository {
    */
   setActiveRoutine(routineId: string): Promise<void>;
 
-  listWorkouts(): Promise<Workout[]>;
+  /**
+   * Completed and in-progress sessions, oldest first.
+   *
+   * `limit` caps the result to the **most recent** N sessions. Omitting it
+   * returns everything, and that default is deliberate: the two callers that
+   * must not be bounded are `exportAccountData` (I-10 promises the export is
+   * complete, and the privacy policy says "export everything") and
+   * `DemoRepository.deleteExercise`, which refuses to delete a movement any
+   * logged session references — a session from three years ago still counts.
+   * A bounded default would have broken both silently rather than loudly.
+   *
+   * The bound exists because the app used to load every session, every
+   * exercise block and every set on every cold start, three levels deep with
+   * no limit. That cost grows linearly with how long someone has trained, so
+   * the most committed lifters got the slowest app.
+   *
+   * Ordering is unchanged (oldest first) so callers that scan forward are
+   * unaffected; the limit is applied to the newest rows and the window is then
+   * returned in the usual order.
+   */
+  listWorkouts(options?: { limit?: number }): Promise<Workout[]>;
   saveWorkout(workout: Workout): Promise<void>;
   /**
    * Finish a session: the workout graph and the records it set, as ONE
@@ -400,11 +420,17 @@ class DemoRepository implements Repository {
     if (!routine || routine.profileId == null) throw new RoutineNotSelectableError(routineId);
   }
 
-  async listWorkouts(): Promise<Workout[]> {
+  async listWorkouts(options?: { limit?: number }): Promise<Workout[]> {
     await this.hydrate();
-    return [...this.dataset.workouts, ...this.userWorkouts].sort((a, b) =>
+    const all = [...this.dataset.workouts, ...this.userWorkouts].sort((a, b) =>
       a.startedAt.localeCompare(b.startedAt),
     );
+    // Same contract as Postgres: the newest N, still oldest-first. Demo/Supabase
+    // parity on this is asserted in `src/data/__tests__/repository.test.ts`,
+    // because a bound that behaves differently in the two modes is a bug that
+    // only ever appears in production.
+    const limit = options?.limit;
+    return limit === undefined ? all : all.slice(Math.max(0, all.length - limit));
   }
 
   async saveWorkout(workout: Workout): Promise<void> {
@@ -814,15 +840,33 @@ class SupabaseRepository implements Repository {
     if (setError) throw setError;
   }
 
-  async listWorkouts(): Promise<Workout[]> {
+  async listWorkouts(options?: { limit?: number }): Promise<Workout[]> {
     const id = await this.uid();
-    const { data, error } = await getSupabase()
+    const limit = options?.limit;
+
+    /*
+      The limit has to be applied to the NEWEST rows, and the method's contract
+      is oldest-first — so a bounded read cannot simply add `.limit()` to the
+      ascending query. That would return the oldest N sessions and quietly show
+      a returning lifter their first month of training as though it were their
+      last.
+
+      So the sort is inverted for the bounded read and the window is reversed
+      back afterwards. `workouts_profile_started_idx` is
+      `(profile_id, started_at desc)`, so descending is the index's own
+      direction and this is the cheaper scan of the two.
+    */
+    const query = getSupabase()
       .from('workouts')
       .select(WORKOUT_SELECT)
       .eq('profile_id', id)
-      .order('started_at', { ascending: true });
+      .order('started_at', { ascending: limit === undefined });
+
+    const { data, error } = limit === undefined ? await query : await query.limit(limit);
     if (error) throw error;
-    return (data ?? []).map(toWorkout);
+
+    const rows = (data ?? []).map(toWorkout);
+    return limit === undefined ? rows : rows.reverse();
   }
 
   /**

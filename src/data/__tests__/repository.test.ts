@@ -474,3 +474,50 @@ describe('DemoRepository user-owned writes', () => {
     expect((await getRepository().listMeasurements()).some((m) => m.id === seeded.id)).toBe(false);
   });
 });
+
+/*
+  The bounded startup read, against the real demo implementation.
+
+  Parity with Postgres is the property under test, not the number: demo mode is
+  what every developer and every screenshot runs on, so a bound that behaves
+  differently in the two implementations is a bug that only ever appears in
+  production. The Supabase side of the same contract is pinned in
+  `src/data/__tests__/workoutWindow.test.ts`.
+*/
+describe('DemoRepository.listWorkouts windowing', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+  });
+
+  it('returns every session, oldest first, when unbounded', async () => {
+    const all = await getRepository().listWorkouts();
+    expect(all.length).toBeGreaterThan(3);
+    for (let i = 1; i < all.length; i++) {
+      expect(all[i - 1].startedAt <= all[i].startedAt).toBe(true);
+    }
+  });
+
+  it('returns the newest sessions when bounded, still oldest first', async () => {
+    const repo = getRepository();
+    const all = await repo.listWorkouts();
+    const window = await repo.listWorkouts({ limit: 3 });
+
+    expect(window).toHaveLength(3);
+    // The newest three, in the same order they appear at the end of the full list.
+    expect(window.map((w) => w.id)).toEqual(all.slice(-3).map((w) => w.id));
+  });
+
+  it('is a no-op when the account has fewer sessions than the limit', async () => {
+    const repo = getRepository();
+    const all = await repo.listWorkouts();
+    const window = await repo.listWorkouts({ limit: all.length + 50 });
+    expect(window.map((w) => w.id)).toEqual(all.map((w) => w.id));
+  });
+
+  it('keeps the export complete, which is what I-10 promises', async () => {
+    const repo = getRepository();
+    const all = await repo.listWorkouts();
+    const exported = await repo.exportAccountData();
+    expect(exported.workouts).toHaveLength(all.length);
+  });
+});
