@@ -153,11 +153,40 @@ describe('SupabaseRepository.listWorkouts', () => {
     expect(selects[0].limit).toBe(3);
   });
 
+  it('bounds check-ins and records by the same newest-first rule', async () => {
+    await getRepository().listCheckIns({ limit: 5 });
+    await getRepository().listPersonalRecords({ limit: 5 });
+
+    const checkIns = selects.find((c) => c.table === 'check_ins');
+    const records = selects.find((c) => c.table === 'personal_records');
+
+    // The inversion is the whole subtlety, and it is shared by all three reads
+    // through `readWindow` -- so all three have to show it at the query.
+    expect(checkIns?.ascending).toBe(false);
+    expect(checkIns?.limit).toBe(5);
+    expect(records?.ascending).toBe(false);
+    expect(records?.limit).toBe(5);
+  });
+
+  it('leaves check-ins and records unbounded when no limit is given', async () => {
+    await getRepository().listCheckIns();
+    await getRepository().listPersonalRecords();
+
+    expect(selects.find((c) => c.table === 'check_ins')?.limit).toBeUndefined();
+    expect(selects.find((c) => c.table === 'check_ins')?.ascending).toBe(true);
+    expect(selects.find((c) => c.table === 'personal_records')?.limit).toBeUndefined();
+    expect(selects.find((c) => c.table === 'personal_records')?.ascending).toBe(true);
+  });
+
   it('does not bound the export, because I-10 promises it is complete', async () => {
     await getRepository().exportAccountData();
 
-    const workoutSelect = selects.find((c) => c.table === 'workouts');
-    expect(workoutSelect).toBeDefined();
-    expect(workoutSelect?.limit).toBeUndefined();
+    // Every table the export names, not just workouts: I-10's guarantee is
+    // completeness across all of them, and a bound on any one truncates it.
+    for (const table of ['workouts', 'check_ins', 'personal_records']) {
+      const call = selects.find((c) => c.table === table);
+      expect(call).toBeDefined();
+      expect(call?.limit).toBeUndefined();
+    }
   });
 });

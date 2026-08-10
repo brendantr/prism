@@ -1,4 +1,4 @@
-# Sprint: bound the startup workout read
+# Sprint: bound the startup reads
 
 ## Document status
 
@@ -25,6 +25,10 @@ was true of `listCheckIns`, `listPersonalRecords` and `listMeasurements`.
 movements, four sets each — an account accumulates on the order of a hundred set rows a week, so two
 years in, a cold start fetched, transferred and JSON-parsed something like ten thousand nested rows
 before the first frame. **The most committed users got the slowest app**, which is the wrong way round.
+
+`[fact]` **All three of the unbounded reads are now bounded.** The first pass covered `listWorkouts`
+alone and left `listCheckIns` and `listPersonalRecords` open as a stated follow-up; this record covers
+both passes. `listMeasurements` is still unbounded — see §5.
 
 `[fact]` A second, smaller waste sat next to it: `refresh()` ran **ten** reads, two of them redundant.
 `getActiveRoutine()` is defined in both implementations as `selectActiveRoutine(routines, profile)`,
@@ -74,6 +78,37 @@ replacing a partial history with an error state.
 have exactly that many or more — and is treated as incomplete. One unnecessary query is cheap; silently
 hiding a logged session is not.
 
+### 2.5 Records and sessions are one coverage concept, not two `[decision]`
+
+`CHECK_IN_LIMIT = 120` and `PERSONAL_RECORD_LIMIT = 400`, and the two are bounded for different reasons.
+
+**Check-ins are the easy case.** One row per device-local day, and nothing in the app browses their
+history — Today reads the latest and today's, and that is all. 120 rows is roughly four months, well
+past both readiness's 36-hour staleness cutoff and the 84-day analysis window. The headroom is
+deliberate: a bound sized to exactly today's callers is the one that silently truncates the first
+readiness-trend surface anyone builds.
+
+**Records are the dangerous case, and the number is not what makes them safe.** History matches records
+to sessions — a count on each row, and which sets are marked on a session's detail. So a record window
+narrower than the loaded session window does not hide a row; it prints **"0 PRs" on a session that set
+three**. A wrong number is a worse failure than a missing one, because nothing about it looks broken.
+
+What prevents it is the *coupling*, not the constant:
+
+- `historyComplete` is **one flag for both**. Two independent flags would have made the broken state
+  representable. It is also false when *either* window hit its cap, so a capped record set forces a
+  top-up even when the session list came back short.
+- `loadFullHistory()` loads the full session archive and the full record set **together**, in one step.
+
+`historyComplete` replaced `workoutsComplete` in the same change, because a name claiming to describe
+sessions while governing records too is the kind of drift that gets one of them dropped later.
+
+### 2.6 The sort inversion lives in one place `[decision]`
+
+All three bounded reads need the same subtle trick, so `readWindow` in `src/data/repository.ts` holds
+it once rather than three call sites re-deriving — and eventually mis-deriving — it. `newestWindow` is
+its trivial demo-side counterpart, named so the parity test has something to point at.
+
 ---
 
 ## 3. The bug this was written to avoid
@@ -97,12 +132,13 @@ every behavioural assertion and none of the cost ones.
 
 - `src/domain/workingSet.ts` (new) — the limit, its justification, and the coverage predicates
 - `src/domain/__tests__/workingSet.test.ts` (new)
-- `src/data/repository.ts` — `listWorkouts(options?: { limit?: number })` on the interface and both
-  implementations
+- `src/data/repository.ts` — `{ limit }` on `listWorkouts`, `listCheckIns` and `listPersonalRecords`
+  across the interface and both implementations, plus the shared `readWindow` / `newestWindow` helpers
 - `src/data/__tests__/workoutWindow.test.ts` (new) — Supabase query shape and export completeness
 - `src/data/__tests__/repository.test.ts` — demo/Supabase parity for the window
-- `src/store/trainingStore.ts` — bounded startup read, `workoutsComplete`, `loadFullHistory`, and the
-  two redundant reads removed
+- `src/store/trainingStore.ts` — three bounded startup reads, `historyComplete` (was
+  `workoutsComplete`), `loadFullHistory` loading sessions and records together, and the two redundant
+  reads removed
 - `src/store/__tests__/trainingStore.test.ts`
 - `app/history/index.tsx`, `app/history/[id].tsx` — top-up on entry / on a missed lookup
 
@@ -113,8 +149,10 @@ every behavioural assertion and none of the cost ones.
 `[fact]` Commands run and their actual results:
 
 - `npx tsc --noEmit` — clean.
-- `npm run verify` — **661/661 tests across 48 suites** (from 642/46).
-- Reads at startup: **10 → 8**, and the workout read is bounded.
+- `npm run verify` — **665/665 tests across 48 suites** (from 642/46 before this work).
+- Reads at startup: **10 → 8**, and three of them are now bounded (sessions, check-ins, records).
+- Jest still reports its pre-existing worker-force-exit warning after a green run; unchanged by this
+  sprint and noted so it is not read as new.
 
 `[fact]` **Not** done, and not claimed:
 
@@ -122,10 +160,14 @@ every behavioural assertion and none of the cost ones.
   argued from the query shape, not from a benchmark against a large real account.
 - No device run. The two History screens changed and there is no component-test tooling, so their
   behaviour is covered only through the store and the pure predicates beneath them.
-- `listCheckIns`, `listPersonalRecords` and `listMeasurements` are **still unbounded**. They are one
-  row per day / per record rather than a three-level graph, so they grow far more slowly — but they do
-  grow, and this sprint did not address them. `[open question]` Worth revisiting once there is a real
-  account large enough to measure.
+- **`listMeasurements` is still unbounded**, and is now the only one. It was left out because the
+  request was for the check-in and record reads specifically, and widening scope unasked is how a
+  bounded change stops being reviewable. It is the same one-line change as the other two.
+  `[open question]` Worth doing, and cheap.
+- The record limit is **headroom, not a derived ceiling**. The schema permits four `pr_kind` values
+  per exercise per session, so a bound derived from it would be enormous and useless. Correctness does
+  not rest on the number — it rests on §2.5's coupling — but the number has not been checked against a
+  real long-tenured account.
 
 ---
 

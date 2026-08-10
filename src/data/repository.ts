@@ -144,7 +144,12 @@ export interface Repository {
    */
   completeWorkout(workout: Workout, records: PersonalRecord[]): Promise<void>;
   deleteWorkout(id: string): Promise<void>;
-  listCheckIns(): Promise<CheckIn[]>;
+  /**
+   * Check-ins, oldest first. `limit` caps to the most recent N — same contract
+   * and same default as `listWorkouts`: omitting it returns everything, because
+   * `exportAccountData` promises completeness (I-10).
+   */
+  listCheckIns(options?: { limit?: number }): Promise<CheckIn[]>;
   /** Accepts a partial submission; see `CheckInPatch` for omit/clear semantics. */
   saveCheckIn(patch: CheckInPatch): Promise<void>;
   listMeasurements(): Promise<BodyMeasurement[]>;
@@ -162,7 +167,16 @@ export interface Repository {
   saveMeasurement(measurement: BodyMeasurement): Promise<void>;
   deleteMeasurement(id: string): Promise<void>;
 
-  listPersonalRecords(): Promise<PersonalRecord[]>;
+  /**
+   * Records, oldest first. `limit` caps to the most recent N.
+   *
+   * Coverage here is coupled to `listWorkouts`, not independent: History
+   * matches records to sessions, so a record window narrower than the loaded
+   * sessions renders a **wrong count** ("0 PRs" on a session that set three)
+   * rather than an obviously missing row. `trainingStore.loadFullHistory`
+   * loads both in full together for that reason.
+   */
+  listPersonalRecords(options?: { limit?: number }): Promise<PersonalRecord[]>;
   savePersonalRecords(records: PersonalRecord[]): Promise<void>;
 
   /**
@@ -425,12 +439,7 @@ class DemoRepository implements Repository {
     const all = [...this.dataset.workouts, ...this.userWorkouts].sort((a, b) =>
       a.startedAt.localeCompare(b.startedAt),
     );
-    // Same contract as Postgres: the newest N, still oldest-first. Demo/Supabase
-    // parity on this is asserted in `src/data/__tests__/repository.test.ts`,
-    // because a bound that behaves differently in the two modes is a bug that
-    // only ever appears in production.
-    const limit = options?.limit;
-    return limit === undefined ? all : all.slice(Math.max(0, all.length - limit));
+    return newestWindow(all, options?.limit);
   }
 
   async saveWorkout(workout: Workout): Promise<void> {
@@ -482,11 +491,12 @@ class DemoRepository implements Repository {
     await AsyncStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(this.userWorkouts));
   }
 
-  async listCheckIns(): Promise<CheckIn[]> {
+  async listCheckIns(options?: { limit?: number }): Promise<CheckIn[]> {
     await this.hydrate();
     const byId = new Map(this.dataset.checkIns.map((c) => [c.id, c]));
     for (const c of this.userCheckIns) byId.set(c.id, c);
-    return [...byId.values()].sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
+    const all = [...byId.values()].sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
+    return newestWindow(all, options?.limit);
   }
 
   /**
@@ -553,11 +563,12 @@ class DemoRepository implements Repository {
     this.measurementState = next;
   }
 
-  async listPersonalRecords(): Promise<PersonalRecord[]> {
+  async listPersonalRecords(options?: { limit?: number }): Promise<PersonalRecord[]> {
     await this.hydrate();
-    return [...this.dataset.personalRecords, ...this.userRecords].sort((a, b) =>
+    const all = [...this.dataset.personalRecords, ...this.userRecords].sort((a, b) =>
       a.achievedAt.localeCompare(b.achievedAt),
     );
+    return newestWindow(all, options?.limit);
   }
 
   async savePersonalRecords(records: PersonalRecord[]): Promise<void> {
@@ -627,6 +638,63 @@ class DemoRepository implements Repository {
 // ---------------------------------------------------------------------------
 // Supabase
 // ---------------------------------------------------------------------------
+
+/**
+ * The demo half of the bounded read: the newest `limit` rows of an
+ * already-oldest-first list, still oldest-first.
+ *
+ * Trivial, and worth naming anyway. Demo/Supabase parity on the window is the
+ * property under test in `src/data/__tests__/repository.test.ts`, because demo
+ * mode is what every developer and every screenshot runs on — a bound that
+ * behaves differently in the two implementations is a bug that can only ever
+ * appear in production.
+ */
+function newestWindow<T>(all: T[], limit: number | undefined): T[] {
+  return limit === undefined ? all : all.slice(Math.max(0, all.length - limit));
+}
+
+/**
+ * A PostgREST list query that has had `.order()` applied and can still be
+ * bounded. Structural rather than imported, so this file does not depend on the
+ * shape of supabase-js's builder generics.
+ */
+type WindowQuery<Row> = PromiseLike<{ data: Row[] | null; error: unknown }> & {
+  limit(count: number): PromiseLike<{ data: Row[] | null; error: unknown }>;
+};
+
+/**
+ * Run an owner-scoped list read, bounded to the most recent `limit` rows and
+ * returned oldest-first.
+ *
+ * THE MISTAKE THIS EXISTS TO PREVENT
+ * ----------------------------------
+ * Every one of these reads is contractually oldest-first, so the obvious
+ * bounded implementation is to add `.limit()` to the existing ascending query.
+ * That returns the **oldest** N rows. It typechecks, it satisfies a row-count
+ * assertion, and it shows a lifter their earliest training in place of their
+ * most recent — and it stays invisible until someone has more history than the
+ * limit, which is precisely the population the bound exists for.
+ *
+ * So a bounded read inverts the sort, lets Postgres take the newest rows, and
+ * reverses the window back. Three tables need that and it is subtle in the same
+ * way in all three, which is why it is written once here rather than three
+ * times at the call sites.
+ *
+ * Inverting is also the cheaper scan: the covering indexes
+ * (`workouts_profile_started_idx`, `check_ins_profile_idx`) are both declared
+ * `desc`, so descending is the index's own direction.
+ */
+async function readWindow<Row>(
+  build: (ascending: boolean) => WindowQuery<Row>,
+  limit: number | undefined,
+): Promise<Row[]> {
+  const ascending = limit === undefined;
+  const query = build(ascending);
+  const { data, error } = await (limit === undefined ? query : query.limit(limit));
+  if (error) throw error;
+  const rows = data ?? [];
+  return ascending ? rows : rows.reverse();
+}
 
 const WORKOUT_SELECT = `
   id, profile_id, routine_day_id, title, status, started_at, ended_at, reflection, session_rating,
@@ -842,31 +910,16 @@ class SupabaseRepository implements Repository {
 
   async listWorkouts(options?: { limit?: number }): Promise<Workout[]> {
     const id = await this.uid();
-    const limit = options?.limit;
-
-    /*
-      The limit has to be applied to the NEWEST rows, and the method's contract
-      is oldest-first — so a bounded read cannot simply add `.limit()` to the
-      ascending query. That would return the oldest N sessions and quietly show
-      a returning lifter their first month of training as though it were their
-      last.
-
-      So the sort is inverted for the bounded read and the window is reversed
-      back afterwards. `workouts_profile_started_idx` is
-      `(profile_id, started_at desc)`, so descending is the index's own
-      direction and this is the cheaper scan of the two.
-    */
-    const query = getSupabase()
-      .from('workouts')
-      .select(WORKOUT_SELECT)
-      .eq('profile_id', id)
-      .order('started_at', { ascending: limit === undefined });
-
-    const { data, error } = limit === undefined ? await query : await query.limit(limit);
-    if (error) throw error;
-
-    const rows = (data ?? []).map(toWorkout);
-    return limit === undefined ? rows : rows.reverse();
+    const rows = await readWindow(
+      (ascending) =>
+        getSupabase()
+          .from('workouts')
+          .select(WORKOUT_SELECT)
+          .eq('profile_id', id)
+          .order('started_at', { ascending }) as unknown as WindowQuery<unknown>,
+      options?.limit,
+    );
+    return rows.map(toWorkout);
   }
 
   /**
@@ -930,15 +983,18 @@ class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
-  async listCheckIns(): Promise<CheckIn[]> {
+  async listCheckIns(options?: { limit?: number }): Promise<CheckIn[]> {
     const id = await this.uid();
-    const { data, error } = await getSupabase()
-      .from('check_ins')
-      .select('*')
-      .eq('profile_id', id)
-      .order('checked_in_at', { ascending: true });
-    if (error) throw error;
-    return (data ?? []).map(toCheckIn);
+    const rows = await readWindow(
+      (ascending) =>
+        getSupabase()
+          .from('check_ins')
+          .select('*')
+          .eq('profile_id', id)
+          .order('checked_in_at', { ascending }) as unknown as WindowQuery<unknown>,
+      options?.limit,
+    );
+    return rows.map(toCheckIn);
   }
 
   /**
@@ -1021,15 +1077,18 @@ class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
-  async listPersonalRecords(): Promise<PersonalRecord[]> {
+  async listPersonalRecords(options?: { limit?: number }): Promise<PersonalRecord[]> {
     const id = await this.uid();
-    const { data, error } = await getSupabase()
-      .from('personal_records')
-      .select('*')
-      .eq('profile_id', id)
-      .order('achieved_at', { ascending: true });
-    if (error) throw error;
-    return (data ?? []).map(toPersonalRecord);
+    const rows = await readWindow(
+      (ascending) =>
+        getSupabase()
+          .from('personal_records')
+          .select('*')
+          .eq('profile_id', id)
+          .order('achieved_at', { ascending }) as unknown as WindowQuery<unknown>,
+      options?.limit,
+    );
+    return rows.map(toPersonalRecord);
   }
 
   async savePersonalRecords(records: PersonalRecord[]): Promise<void> {

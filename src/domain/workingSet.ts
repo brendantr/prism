@@ -48,6 +48,44 @@ export const LONGEST_ANALYSIS_WINDOW_DAYS = 84;
 export const WORKING_SET_WORKOUT_LIMIT = 120;
 
 /**
+ * Daily check-ins loaded at startup.
+ *
+ * One row per device-local day, so this is a day count in disguise: 120 rows is
+ * roughly four months of unbroken check-ins, comfortably past both the 36-hour
+ * staleness cutoff readiness applies and the longest analysis window.
+ *
+ * It is generous on purpose. Nothing in the app browses check-in history today
+ * — Today reads the latest and today's, and that is the whole of it — so the
+ * honest bound would be far smaller. The headroom is for the readiness-trend
+ * surface that ADR-0002 anticipates: a bound sized to exactly today's callers
+ * is one that silently truncates the first feature to look further back.
+ */
+export const CHECK_IN_LIMIT = 120;
+
+/**
+ * Personal records loaded at startup.
+ *
+ * **The number is headroom; the correctness is the coupling.** Records are
+ * matched to sessions by History — the count on each row, and which sets are
+ * marked on a session's detail — so a record bound that falls short of the
+ * loaded sessions does not hide a row, it prints a **wrong number**: a session
+ * that set three records renders "0 PRs". That is a worse failure than absence,
+ * because nothing about it looks broken.
+ *
+ * What prevents it is not this constant but `loadFullHistory`, which loads the
+ * full session archive and the full record set **together**, as one coverage
+ * concept. This value only has to be large enough that the startup window is
+ * already right for the recent sessions Today and Social show, and that History
+ * is rarely mid-top-up when first rendered.
+ *
+ * 400 is deliberately loose. The schema permits four `pr_kind` values per
+ * exercise per session, so a ceiling derived from it would be enormous and
+ * useless; in practice records thin out sharply as a lifter advances, which is
+ * the opposite of the shape that would make a tight bound safe.
+ */
+export const PERSONAL_RECORD_LIMIT = 400;
+
+/**
  * Whether a loaded working set is known to contain every session.
  *
  * Fewer rows than the limit means the account simply has fewer sessions than

@@ -35,7 +35,7 @@ export default function SessionDetailScreen() {
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
-  const workoutsComplete = useTrainingStore((s) => s.workoutsComplete);
+  const historyComplete = useTrainingStore((s) => s.historyComplete);
   const loadFullHistory = useTrainingStore((s) => s.loadFullHistory);
 
   const workout = useMemo(
@@ -55,8 +55,8 @@ export default function SessionDetailScreen() {
     genuinely deleted or foreign id costs one fetch, not one per render.
   */
   useEffect(() => {
-    if (!workout && !workoutsComplete) void loadFullHistory();
-  }, [workout, workoutsComplete, loadFullHistory]);
+    if (!workout && !historyComplete) void loadFullHistory();
+  }, [workout, historyComplete, loadFullHistory]);
 
   const detail = useMemo(
     () => (workout ? buildSessionDetail(workout, exerciseById, personalRecords) : null),

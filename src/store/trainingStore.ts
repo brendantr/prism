@@ -5,7 +5,12 @@ import { useSessionStore } from './sessionStore';
 import type { CustomExerciseInput } from '@/domain/customExercise';
 import { planSelectionWrite, selectActiveRoutine } from '@/domain/settings';
 import { deviceLocalDate } from '@/domain/trainingDay';
-import { isCompleteWorkingSet, WORKING_SET_WORKOUT_LIMIT } from '@/domain/workingSet';
+import {
+  CHECK_IN_LIMIT,
+  isCompleteWorkingSet,
+  PERSONAL_RECORD_LIMIT,
+  WORKING_SET_WORKOUT_LIMIT,
+} from '@/domain/workingSet';
 import type {
   BodyMeasurement,
   CheckIn,
@@ -35,15 +40,20 @@ interface TrainingState {
   activeRoutine: Routine | null;
   workouts: Workout[];
   /**
-   * Whether `workouts` holds every session this account has, or the most recent
-   * `WORKING_SET_WORKOUT_LIMIT` of them (`src/domain/workingSet.ts`).
+   * Whether `workouts` **and** `personalRecords` hold everything this account
+   * has, or the bounded startup windows of each (`src/domain/workingSet.ts`).
    *
-   * Startup loads a bounded window, so any surface that shows a lifter "all"
-   * of something must consult this rather than assuming the array is the whole
-   * archive. History is the one that does; every analysis surface works inside
-   * a window shorter than the bound and is unaffected.
+   * One flag for both, because they are one coverage concept rather than two:
+   * History renders a record count per session, so a full session list beside a
+   * bounded record list prints "0 PRs" on a session that set three. A wrong
+   * number is a worse failure than a missing row, and two independent flags
+   * would have made that state representable.
+   *
+   * Check-ins are deliberately not part of it. Nothing browses check-in
+   * history — Today reads the latest and today's — so no surface can observe
+   * their window.
    */
-  workoutsComplete: boolean;
+  historyComplete: boolean;
   checkIns: CheckIn[];
   measurements: BodyMeasurement[];
   personalRecords: PersonalRecord[];
@@ -52,11 +62,12 @@ interface TrainingState {
   load: () => Promise<void>;
   refresh: () => Promise<void>;
   /**
-   * Replace the bounded working set with the account's complete history.
+   * Replace the bounded working set with the account's complete session archive
+   * and the complete set of records those sessions produced.
    *
    * Called by History, the only surface that browses further back than the
    * startup window. Idempotent and cheap to call on every mount: it returns
-   * immediately once `workoutsComplete` is true.
+   * immediately once `historyComplete` is true.
    */
   loadFullHistory: () => Promise<void>;
   /** Returns the store to its pre-load state. Part of sign-out teardown. */
@@ -106,7 +117,7 @@ const INITIAL_DATA = {
   // Vacuously true: an empty store has no session it is hiding. Set honestly by
   // `refresh()`, and restored here on sign-out so the next account does not
   // inherit the previous one's coverage claim (I-19).
-  workoutsComplete: true,
+  historyComplete: true,
   checkIns: [],
   measurements: [],
   personalRecords: [],
@@ -134,7 +145,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   },
 
   loadFullHistory: async () => {
-    if (get().workoutsComplete) return;
+    if (get().historyComplete) return;
     /*
       Deliberately does not touch `status`. History already has its rows -- the
       bounded window is a prefix of the full list, not a different list -- so
@@ -145,8 +156,14 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       history with an error state.
     */
     try {
-      const workouts = await getRepository().listWorkouts();
-      set({ workouts, workoutsComplete: true });
+      const repo = getRepository();
+      // Both, in one step. Loading the sessions without the records they set is
+      // exactly the state that renders a wrong count rather than a missing row.
+      const [workouts, personalRecords] = await Promise.all([
+        repo.listWorkouts(),
+        repo.listPersonalRecords(),
+      ]);
+      set({ workouts, personalRecords, historyComplete: true });
     } catch {
       // Left partial and still marked incomplete, so this retries on re-entry.
     }
@@ -177,9 +194,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
           repo.listExercises(),
           repo.listRoutines(),
           repo.listWorkouts({ limit: WORKING_SET_WORKOUT_LIMIT }),
-          repo.listCheckIns(),
+          repo.listCheckIns({ limit: CHECK_IN_LIMIT }),
           repo.listMeasurements(),
-          repo.listPersonalRecords(),
+          repo.listPersonalRecords({ limit: PERSONAL_RECORD_LIMIT }),
         ]);
 
       set({
@@ -190,7 +207,15 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         routines,
         activeRoutine: selectActiveRoutine(routines, profile),
         workouts,
-        workoutsComplete: isCompleteWorkingSet(workouts.length),
+        /*
+          Complete only when BOTH windows came back short of their caps. Either
+          one hitting its cap means History has more to fetch -- and since the
+          two are matched against each other there, a partial record set is just
+          as much a reason to top up as a partial session list.
+        */
+        historyComplete:
+          isCompleteWorkingSet(workouts.length, WORKING_SET_WORKOUT_LIMIT) &&
+          isCompleteWorkingSet(personalRecords.length, PERSONAL_RECORD_LIMIT),
         checkIns,
         measurements,
         personalRecords,

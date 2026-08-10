@@ -9,7 +9,7 @@ import {
 } from '../trainingStore';
 import type { CheckIn } from '@/domain/types';
 import { deviceLocalDate } from '@/domain/trainingDay';
-import { WORKING_SET_WORKOUT_LIMIT } from '@/domain/workingSet';
+import { PERSONAL_RECORD_LIMIT, WORKING_SET_WORKOUT_LIMIT } from '@/domain/workingSet';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -333,10 +333,10 @@ describe('workout working set', () => {
 
   it('reports completeness honestly after a refresh', async () => {
     await useTrainingStore.getState().refresh();
-    const { workouts, workoutsComplete } = useTrainingStore.getState();
+    const { workouts, historyComplete } = useTrainingStore.getState();
     // Demo seeds well under the limit, so the working set is the whole archive.
     expect(workouts.length).toBeLessThan(WORKING_SET_WORKOUT_LIMIT);
-    expect(workoutsComplete).toBe(true);
+    expect(historyComplete).toBe(true);
   });
 
   it('loadFullHistory is a no-op once the set is already complete', async () => {
@@ -357,19 +357,19 @@ describe('workout working set', () => {
     const full = useTrainingStore.getState().workouts;
 
     // Simulate a startup that hit the cap: a truncated list, flagged incomplete.
-    useTrainingStore.setState({ workouts: full.slice(-2), workoutsComplete: false });
+    useTrainingStore.setState({ workouts: full.slice(-2), historyComplete: false });
 
     await useTrainingStore.getState().loadFullHistory();
 
     expect(useTrainingStore.getState().workouts).toHaveLength(full.length);
-    expect(useTrainingStore.getState().workoutsComplete).toBe(true);
+    expect(useTrainingStore.getState().historyComplete).toBe(true);
   });
 
   it('keeps the sessions already on screen when the top-up fails, and retries later', async () => {
     await useTrainingStore.getState().refresh();
     const full = useTrainingStore.getState().workouts;
     const partial = full.slice(-2);
-    useTrainingStore.setState({ workouts: partial, workoutsComplete: false });
+    useTrainingStore.setState({ workouts: partial, historyComplete: false });
 
     const repo = getRepository();
     const failing = jest
@@ -383,16 +383,64 @@ describe('workout working set', () => {
     expect(useTrainingStore.getState().workouts).toBe(partial);
     expect(useTrainingStore.getState().status).toBe('ready');
     // ...and it stays incomplete, so the next mount tries again.
-    expect(useTrainingStore.getState().workoutsComplete).toBe(false);
+    expect(useTrainingStore.getState().historyComplete).toBe(false);
     failing.mockRestore();
 
     await useTrainingStore.getState().loadFullHistory();
     expect(useTrainingStore.getState().workouts).toHaveLength(full.length);
   });
 
+  it('fills in the records alongside the sessions, never one without the other', async () => {
+    await useTrainingStore.getState().refresh();
+    const fullWorkouts = useTrainingStore.getState().workouts;
+    const fullRecords = useTrainingStore.getState().personalRecords;
+    expect(fullRecords.length).toBeGreaterThan(0);
+
+    /*
+      The state this guards against: a full session list beside a bounded record
+      list. History matches records to sessions, so that combination does not
+      hide a row -- it prints "0 PRs" on a session that set three, which is a
+      wrong number rather than a missing one and looks like nothing is broken.
+    */
+    useTrainingStore.setState({
+      workouts: fullWorkouts.slice(-2),
+      personalRecords: fullRecords.slice(-1),
+      historyComplete: false,
+    });
+
+    await useTrainingStore.getState().loadFullHistory();
+
+    expect(useTrainingStore.getState().workouts).toHaveLength(fullWorkouts.length);
+    expect(useTrainingStore.getState().personalRecords).toHaveLength(fullRecords.length);
+    expect(useTrainingStore.getState().historyComplete).toBe(true);
+  });
+
+  it('is incomplete when the record window hit its cap even if the session window did not', async () => {
+    const repo = getRepository();
+    const records = await repo.listPersonalRecords();
+    // A record set exactly at the cap is indistinguishable from a larger one.
+    const capped = jest
+      .spyOn(repo, 'listPersonalRecords')
+      .mockResolvedValueOnce(
+        Array.from({ length: PERSONAL_RECORD_LIMIT }, (_, i) => ({
+          ...records[0],
+          id: `pr_${i}`,
+        })),
+      );
+
+    useTrainingStore.setState({ status: 'idle' });
+    await useTrainingStore.getState().refresh();
+
+    // Sessions are well under their cap, so only the records force a top-up --
+    // and that alone has to be enough, or History matches against a short list.
+    expect(useTrainingStore.getState().workouts.length).toBeLessThan(WORKING_SET_WORKOUT_LIMIT);
+    expect(useTrainingStore.getState().historyComplete).toBe(false);
+    capped.mockRestore();
+  });
+
   it('is cleared by reset, which sign-out relies on (I-19)', () => {
-    useTrainingStore.setState({ workoutsComplete: false });
+    useTrainingStore.setState({ historyComplete: false });
     useTrainingStore.getState().reset();
-    expect(useTrainingStore.getState().workoutsComplete).toBe(true);
+    expect(useTrainingStore.getState().historyComplete).toBe(true);
   });
 });

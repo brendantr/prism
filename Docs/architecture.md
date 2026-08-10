@@ -345,11 +345,20 @@
   key lifts 56, readiness 28) fits inside the bound, and `coversLongestAnalysisWindow` fails a test if
   that stops being true.
 
-  Evidence: `npx tsc --noEmit` clean, **661/661 tests across 48 suites**. **Not** measured against a
+  **Extended the same day to the check-in and record reads.** `listCheckIns` and
+  `listPersonalRecords` take the same optional `{ limit }`, bounded at startup to 120 and 400 rows;
+  the sort inversion the three share lives once in `readWindow`. Records carry a hazard the other two
+  do not: History matches them to sessions, so a record window narrower than the session window prints
+  **"0 PRs" on a session that set three** — a wrong number rather than a missing row. What prevents
+  that is not the constant but the coupling: `historyComplete` (renamed from `workoutsComplete`) is one
+  flag for both, false when *either* window hit its cap, and `loadFullHistory` loads sessions and
+  records together in one step.
+
+  Evidence: `npx tsc --noEmit` clean, **665/665 tests across 48 suites**. **Not** measured against a
   real account and not run on a device — the improvement is argued from the query shape, not
-  benchmarked. `listCheckIns`, `listPersonalRecords` and `listMeasurements` remain unbounded; they are
-  one row per day or per record rather than a graph, so they grow far more slowly, but they do grow.
-  Full record: `Docs/sprints/2026-08-10-workout-read-window.md`.
+  benchmarked, and the 400-record bound is headroom rather than a derived ceiling. `listMeasurements`
+  is now the only unbounded list read. Full record:
+  `Docs/sprints/2026-08-10-workout-read-window.md`.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
