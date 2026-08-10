@@ -63,8 +63,9 @@ Current posture after the staging follow-up `[fact]`:
   custom-exercise FK case the first live run exposed.
 - ~~**I-2 / G-2 — `saveWorkout` was non-atomic.**~~ **Closed.** `save_workout_graph` is one transaction
   with reconciliation and retry idempotency, covered locally and through staging.
-- **G-4** — no crash reporting or analytics. Explicitly untouched, so a failed sign-in in the field
-  would be invisible.
+- **G-4** — the crash-reporting half is implemented on `feature/v1-observability`, but remains
+  unverified against an owner-configured release project; product analytics remains deliberately
+  absent.
 - **No deep-link session capture** `[fact]`. `detectSessionInUrl` is false and no `Linking` handler
   exists, so email confirmation still ends in a manual sign-in — and password reset is code-based for
   the same reason. See §4.1.
@@ -258,7 +259,7 @@ production:
 2. **Production email confirmation:** does it stay on? Staging's test setting does not decide this.
 3. **Deep-link capture:** still deferred and non-blocking; confirmation is manual and reset is
    code-based until a handler, allow-listed redirect and client setting land together.
-4. **Privacy policy and observability:** both remain release concerns outside this document's auth and
-   environment posture.
+4. **Privacy policy and observability:** the branch-level implementation and disclosure draft exist;
+   owner configuration, a release test event/source-map check, and legal review remain release work.
 
 No production build or submission is authorized by staging verification alone.

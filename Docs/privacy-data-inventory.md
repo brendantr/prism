@@ -7,8 +7,9 @@
 > filled in from verified fact rather than from memory. The owner is responsible for the legal
 > sufficiency of anything derived from it.
 >
-> **Scope of evidence:** the repository at branch `claude/reconciliation-cherry-pick`, HEAD `d5c44ef`.
-> Line numbers are correct as of that commit and will drift. Re-verify before submitting store forms.
+> **Scope of evidence:** branch `feature/v1-observability`, based on `main` at `6d8e4d9`, including
+> the unmerged observability changes recorded in `Docs/sprints/2026-08-09-v1-observability.md`.
+> Line numbers will drift. Re-verify after integration and before submitting store forms.
 >
 > **Status placeholders the owner must fill:** `[OWNER: ...]` markers below.
 
@@ -135,10 +136,10 @@ something the app does today.]`
 
 ---
 
-## 6. Device-local state
+## 6. Device-local state and crash diagnostics
 
-Nothing in this section is transmitted anywhere. It is listed because it is data about the user held
-on their device, which both store forms and a complete policy have to account for.
+The first table is device-local and is not transmitted. The subsection after it records the narrow
+diagnostic payload that can leave an eligible release build.
 
 | Data item | Stored where | Purpose | Cleared when? | Evidence |
 | --- | --- | --- | --- | --- |
@@ -150,7 +151,31 @@ on their device, which both store forms and a complete policy have to account fo
 | Demo-mode data (demo builds only) | AsyncStorage, keys `prism.demo.workouts.v1`, `prism.demo.profile.v1`, `prism.demo.records.v1`, `prism.demo.checkins.v1` | Makes demo mode survive a restart | `resetDemo()` | `src/data/repository.ts:107-112`, `:302-314` |
 | Signed-in user id and email | **In memory only**, never written to disk by app code | Display and routing; never used to scope a query | Process exit; sign-out | `src/store/sessionStore.ts:39-55`, `:166-172` |
 | Favourite exercise ids | **In memory only**, never persisted | UI convenience | Sign-out (`reset()`) | `src/store/trainingStore.ts:37`, `:65-68` |
-| Error diagnostics | `console.warn` on the device only. Six call sites across `src/` and `app/`. **No remote log sink** | Local debugging | Process exit | e.g. `app/account.tsx:141`, `:167`, `:205`; `app/workout/summary.tsx:113` |
+| Local error diagnostics | Six handled-error sites and the root render boundary retain a device console warning | Development debugging | Process exit | `src/observability/telemetry.ts`; e.g. `app/account.tsx`, `app/workout/summary.tsx` |
+
+### Crash diagnostics in an eligible release build
+
+`@sentry/react-native` is initialised only when all three conditions hold: the bundle is a release
+bundle, demo mode is off, and `EXPO_PUBLIC_SENTRY_DSN` is non-empty. Development, Jest, demo, and an
+unconfigured release initialise no Sentry client. A qualifying failure can transmit:
+
+- event time/id, platform, release/build metadata, and the fixed failure surface;
+- app version, OS version, and a restricted device context (model/family, architecture, memory and
+  battery/charging state — never the device name);
+- code stack frames and, for a render failure, React component names;
+- a restricted breadcrumb tail: request method/path/status only.
+
+The outbound event is rebuilt from an allowlist in `src/domain/telemetry.ts`. Account identity,
+email, IP address, request/response bodies, state, arbitrary tags/contexts, exception text, local
+variables, console/navigation/click breadcrumbs, URL query/fragment values, and all unknown future
+SDK fields are excluded. Screenshots, view hierarchy, session replay, performance tracing, automatic sessions,
+failed-request capture, product analytics, and user attachment are disabled in
+`src/observability/telemetry.ts`. The SDK receives neither training/health values nor reflections.
+`beforeBreadcrumb` applies the breadcrumb restriction before either JavaScript or native crash state
+can retain it; `beforeSend` applies the event allowlist to JavaScript events.
+
+Retention and hosted-region settings live in the Sentry project, not this repository:
+`[OWNER: record Sentry retention, hosting region, and data-processing terms before publication.]`
 
 ---
 
@@ -174,14 +199,14 @@ future sprint could start writing them without anyone revisiting the store forms
 
 ## 8. What is NOT collected — verified
 
-Each of these was checked, not assumed. All are true of the code at HEAD `d5c44ef`.
+Each of these was checked, not assumed. They describe this observability branch.
 
 | Claim | How it was verified |
 | --- | --- |
-| **No analytics or product-analytics SDK** | Full dependency list is `package.json:17-51` — Expo modules, `@supabase/supabase-js`, `zustand`, React Native, `react-native-svg`, `@expo/vector-icons`. A case-insensitive repo search for `sentry\|bugsnag\|crashlytics\|firebase\|amplitude\|segment\|posthog\|mixpanel\|appsflyer\|adjust\|onesignal\|datadog\|newrelic\|logrocket\|smartlook\|admob` returns **nothing** in `package.json` and nothing in `src/` or `app/` (only false positives: `SegmentedControl`, `useSegments`, and comments describing Insights as an "analytics hub") |
-| **No crash reporting** | Same search. Corroborated independently by `Docs/architecture.md:260` and gap **G-4** at `Docs/architecture.md:650` — "No crash reporting, analytics, or logging framework found in dependencies" |
+| **No analytics or product-analytics SDK** | Sentry is configured for failures only: automatic sessions, performance tracing, failed-request capture and client reports are off; replay sample rates are zero. There are no analytics, attribution or advertising dependencies (`src/observability/telemetry.ts`) |
+| **Crash diagnostics contain no account or training payload** | `src/domain/telemetry.ts` rebuilds events/contexts/breadcrumbs from allowlists and replaces exception text; the realistic-event test asserts identity, free text and training numbers do not survive (`src/domain/__tests__/telemetry.test.ts`) |
 | **No advertising SDK, no ad identifiers (IDFA / AAID), no ATT prompt** | No ad or attribution dependency; no `expo-tracking-transparency`; no `NSUserTrackingUsageDescription` in `app.json:11-25` |
-| **No third-party trackers of any kind** | The only network destination reachable from app code is the configured Supabase project URL (`src/data/supabase/client.ts:9-10`, `:62`). A repo-wide search for `fetch(`, `axios`, `XMLHttpRequest` and `WebSocket` outside `supabase-js` returns **nothing** in `src/` or `app/` |
+| **No advertising, attribution, or behavioural tracker** | Runtime network processors are Supabase for account/training functionality and Sentry for failure-only diagnostics. There is no screen/tap/session tracking, ad identifier or marketing integration |
 | **No device permissions requested** | `app.json:11-25` declares **no** iOS usage-description strings and **no** Android permissions. No `expo-notifications`, `expo-location`, `expo-camera`, `expo-image-picker`, `expo-contacts`, `expo-calendar`, `expo-media-library`, `expo-av` or `expo-sensors` in `package.json` |
 | **No health-platform integration** | No HealthKit, Google Fit, Health Connect or `react-native-health` dependency. All body/wellbeing data is typed by the user |
 | **No photos, camera, microphone, contacts, calendar** | Same — no such module is a dependency |
@@ -189,12 +214,11 @@ Each of these was checked, not assumed. All are true of the code at HEAD `d5c44e
 | **No over-the-air update service** | No `expo-updates` dependency; no `updates` block in `app.json` |
 | **No social graph, no feed, no sharing backend** | The Social tab is an explicit shell: "there is no account, no network call, and no persisted state behind this screen" (`app/(tabs)/social.tsx:11-30`) |
 | **No push notifications** | No `expo-notifications` dependency; no push token is ever obtained |
-| **No service-role or other privileged credential in the client** | Only `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are read (`src/data/supabase/client.ts:9-10`); `.env.example:24-28` states the rule explicitly |
+| **No service-role or other privileged credential in the client** | Client code reads only the public Supabase URL/anon key and public Sentry DSN. Sentry source-map upload credentials are build secrets and are neither read by app code nor present in `.env.example` |
 
-**One honest caveat to keep in the policy.** Apple and Google collect their own crash and usage
-diagnostics at the OS and store level, governed by the device owner's own settings and by each
-store's terms. PRism's code adds nothing to that and receives nothing from it. Similarly, the EAS
-build service processes **source code** at build time; it does not process user data at runtime.
+**One honest caveat to keep in the policy.** Apple and Google also collect diagnostics at the OS and
+store level under their terms and device settings; that is separate from PRism's Sentry reporting.
+The EAS build service processes source code at build time, not user data at runtime.
 
 ---
 
@@ -203,10 +227,12 @@ build service processes **source code** at build time; it does not process user 
 | Party | Role | What they hold |
 | --- | --- | --- |
 | **Supabase** | Hosting and processing — the database, the auth service, and the API the app talks to | Everything in §2–§5: `auth.users` (email, password hash) plus the eleven application tables |
+| **Sentry** | Failure-only crash diagnostics processor | The restricted diagnostics described in §6; no account identity, training/health payload, screenshot, replay, or analytics |
 | **Apple / Google** | App distribution | Whatever their own store terms cover — purchase/download records, OS-level diagnostics. Nothing sent by PRism |
 | **The OS share sheet** | Export delivery only | The export JSON is handed to the OS share sheet; **the destination is chosen by the user**, not by the app (`app/account.tsx:134-137`) |
 
-**No other party.** No data broker, no advertiser, no analytics vendor, no partner integration.
+**No other runtime party.** No data broker, advertiser, product-analytics vendor, or partner
+integration receives PRism data.
 
 `[OWNER: confirm the Supabase project's hosting region and record it here — it is required by the
 policy and by some store questionnaires. Read it from the Supabase dashboard; it cannot be
@@ -298,7 +324,7 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
   the rest are read-only or dormant.
 - **Device-local keys: 7** (1 Keychain-backed session, 6 AsyncStorage keys of which 4 are demo-only).
 - **Dormant schema columns: 6** (§7).
-- **Third-party processors: 1** (Supabase). **Analytics/ads/tracking SDKs: 0.**
+- **Third-party runtime processors: 2** (Supabase and Sentry). **Analytics/ads/tracking SDKs: 0.**
 - **Device permissions requested: 0.**
 
 ---
@@ -311,7 +337,10 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 - `[OWNER: effective date of the policy]`
 - `[OWNER: Supabase project hosting region]`
 - `[OWNER: whether a Supabase Data Processing Addendum is executed]`
+- `[OWNER: Sentry hosting region, retention period, and data-processing terms]`
 - `[OWNER: minimum age for the app, and the age rating declared on each store]`
 - `[OWNER: decide whether to declare body measurements on store forms before the feature ships]`
 - `[OWNER: confirm all migrations, especially 0005, are applied to the production Supabase project]`
 - `[OWNER: public URL where the policy will be hosted — both stores require a reachable URL]`
+- `[OWNER: confirm Apple Diagnostics and Google App info and performance disclosures against the
+  current store forms after the integrated release build is final]`

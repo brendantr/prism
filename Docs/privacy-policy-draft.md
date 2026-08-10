@@ -42,11 +42,12 @@ PRism is provided by `[OWNER: legal entity name and registered address]` ("we", 
   you type in** so the app can show it back to you.
 - Some of what you enter is **health-adjacent**: your bodyweight, your body measurements, and your
   daily ratings for sleep, energy, soreness and stress. We treat it as sensitive. See §3.
-- **We run no analytics, no advertising, and no third-party trackers.** There is no advertising
-  identifier, no attribution SDK, no session recording and no crash-reporting service in the app.
+- **We run no product analytics, advertising, attribution, or session recording.** A narrowly scoped
+  crash-reporting service may receive privacy-filtered diagnostics when the app fails; it receives no
+  account identity or training data. See §2.5.
 - **We ask for no device permissions.** No camera, no photos, no microphone, no location, no
   contacts, no notifications, no Apple Health or Google Fit connection.
-- **We do not sell or share your data**, and we do not use it for advertising or profiling.
+- **We do not sell your data or share it for advertising or profiling.**
 - You can **export everything** and **delete your account and all its data** from inside the app, in
   a few taps. No email, no support ticket, no waiting.
 
@@ -108,11 +109,10 @@ Some things never leave your device and are never sent to us:
 
 To be specific, because these are the things people reasonably assume an app is doing:
 
-- **No analytics.** There is no analytics SDK in the app. We do not know which screens you open, how
-  long you use the app, or when you last opened it — beyond what is implied by the timestamps on the
-  training data you deliberately save.
-- **No crash reporting.** We do not receive crash or error reports. Errors are written to the
-  device's own developer log and go nowhere.
+- **No analytics.** There is no analytics SDK in the app. We do not record a screen-usage history,
+  how long you use the app, or when you last opened it — beyond what is implied by timestamps on the
+  training data you deliberately save. A failure report can identify the code surface that failed,
+  as described in §2.5; it does not retain navigation breadcrumbs.
 - **No advertising.** No ads, no ad SDK, no advertising identifier (IDFA or Android Advertising ID),
   no App Tracking Transparency prompt, because there is nothing to track.
 - **No third-party trackers, pixels, or session replay.**
@@ -128,6 +128,24 @@ To be specific, because these are the things people reasonably assume an app is 
 
 Apple and Google collect their own diagnostics at the operating-system and app-store level, under
 their own terms and your own device settings. That is outside PRism and we receive nothing from it.
+
+### 2.5 Crash diagnostics
+
+In a production, non-demo build configured for crash reporting, an app failure may send Sentry a
+privacy-filtered diagnostic report. It can include the app/build version, time, platform, OS and
+device model/family, code stack frames, a fixed failure category, React component names, and the
+method/path/status of a failed network request.
+
+Before a JavaScript report leaves the device, PRism rebuilds it from an allowlist and replaces the
+exception text. Reports exclude your account id, email address, IP address, device name, training or
+health values, reflections, request/response bodies, screen contents, local runtime values, and URL
+query values. PRism does not attach a Sentry user. Screenshots, view hierarchy, session replay,
+automatic sessions, performance tracing, failed-request capture and product analytics are disabled.
+Development and demo builds do not initialise Sentry at all.
+
+Sentry processes these diagnostics so we can identify and fix failures. Retention and processing
+details: `[OWNER: insert the configured Sentry retention period, hosting region, and applicable
+data-processing terms before publication.]`
 
 ---
 
@@ -167,8 +185,9 @@ order to run the service, and for no purpose of their own.
 - **Data processing terms with Supabase:** `[OWNER: state whether a data processing addendum is in
   place]`
 
-**Supabase is the only third party that holds your data.** We use no analytics vendor, no advertising
-network, no data broker, no marketing platform and no support tool that receives your training data.
+**Supabase processes account and training data. Sentry processes restricted crash diagnostics.**
+Sentry receives no account identity or training/health payload under the controls in §2.5. We use no
+product-analytics vendor, advertising network, data broker or marketing platform.
 
 If you export your data, PRism hands the file to your phone's own share sheet and **you** choose
 where it goes — Files, email, a cloud drive, whatever you pick. Once it leaves the app it is covered
@@ -325,7 +344,7 @@ the answers to hand.
 | User Content → Other User Content | **Yes** (session reflections — free text you type) | Yes | No |
 | Identifiers → User ID | **Yes** (the account identifier) | Yes | No |
 | Usage Data | **No** | — | — |
-| Diagnostics | **No** | — | — |
+| Diagnostics → Crash Data / Other Diagnostic Data | **Yes** (restricted crash reports described in §2.5) | No | No |
 | Location, Contacts, Browsing History, Search History, Purchases, Financial Info, Sensitive Info, Identifiers → Device ID | **No** | — | — |
 
 Purpose for every collected item: **App Functionality** only. Not Analytics, not Product
@@ -336,10 +355,10 @@ Advertising. **Nothing is used for tracking** as Apple defines it.
 
 - Data collected: **Personal info → Email address**; **Health and fitness → Fitness info** (and
   **Health info** if body measurements ship); **App activity → Other user-generated content**
-  (session reflections).
-- Data shared with third parties: **None.** Supabase is a processor operating on our behalf, which
-  Google's form treats as not "sharing" — `[OWNER: confirm this against the current Data Safety
-  guidance before submitting.]`
+  (session reflections); **App info and performance → Crash logs / Diagnostics**.
+- Data shared with third parties: **None, if the current form continues to exclude service providers
+  acting on the developer's behalf.** Supabase and Sentry are processors — `[OWNER: confirm this
+  against the current Data Safety guidance and contracts before submitting.]`
 - Encrypted in transit: **Yes.**
 - Users can request data deletion: **Yes — in-app, Account → Delete account.** Provide the in-app
   path in the form, plus `[OWNER: the web deletion-request URL, which Google also requires.]`

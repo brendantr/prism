@@ -14,6 +14,7 @@ import {
   setsVolume,
 } from '@/domain/calc';
 import { previousSetsForExercise } from '@/domain/schedule';
+import { reportHandledError } from '@/observability/telemetry';
 import {
   selectCompletedSetCount,
   selectTotalSetCount,
@@ -266,7 +267,7 @@ export default function ActiveWorkoutScreen() {
             // refusing it, an expired session, no signal in the gym. Whatever the
             // cause, the sets stay on screen and stay theirs to retry. Silently
             // dropping them here is how a session gets lost for good.
-            console.warn('[workout] save failed', e);
+            reportHandledError('workout', 'save failed', e);
             if (mounted.current) setSaveFailed(true);
           } finally {
             if (mounted.current) setSaving(false);

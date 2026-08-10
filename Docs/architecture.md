@@ -242,10 +242,6 @@
   as validation. The prior device walkthrough is superseded for the changed onboarding/routes/data
   contracts: a new cold-start walkthrough is still required. Full record:
   `Docs/sprints/2026-08-09-v1-user-data-writes.md`.
-- **Branch provenance note `[fact, 2026-08-09]`:** `main` and `origin/main` were at `6d8e4d9` when
-  `feature/v1-user-data-writes` was cut. The production-posture, auth, sign-out, password-reset,
-  hosted-verification, and local-training-day work named above are ancestors of that baseline. The
-  user-data writes in the delta immediately above remain branch-only until this sprint is merged.
 - **Delta 2026-08-09 (`fix/v1-zero-data-surfaces`, based on `main` at `6d8e4d9`):** three analysis
   surfaces now distinguish missing evidence from a result. Insights and Progress branch on zero
   completed workouts instead of a missing profile; Body replaces sixteen unsupported 100%/fresh rows
@@ -258,10 +254,30 @@
   worker-force-exit cleanup warning. The changed render states have no component tests and still need a
   cold-start zero-account walkthrough. Full record:
   `Docs/sprints/2026-08-09-v1-zero-data-surfaces.md`.
-- **Branch provenance note `[fact, 2026-08-09]`:** `main` and `origin/main` were at `6d8e4d9` when
-  `fix/v1-zero-data-surfaces` was cut. The production-posture, auth, sign-out, password-reset,
-  hosted-verification, and local-training-day work named above are ancestors of that baseline. The
-  zero-data changes in the delta immediately above remain branch-only until this sprint is merged.
+- **Delta 2026-08-09 (`feature/v1-observability`, based on `main` at `6d8e4d9`):** the
+  crash-reporting half of **G-4 is implemented on this branch**. `@sentry/react-native` is wired
+  through its Expo config plugin and Metro serializer; `app/_layout.tsx` initialises it before render
+  and wraps the app in `AppErrorBoundary`; six existing handled-error sites report through one
+  boundary while preserving their console warnings. Reporting is inert in development, Jest, demo,
+  and releases without a DSN. Eligible release failures are rebuilt from a privacy allowlist:
+  identity, request/response bodies, state, exception text, free-form/unknown fields, console/click
+  breadcrumbs, screenshots, replay, performance tracing, sessions and product analytics do not
+  leave the device. **G-4 is only partially closed until a release test event proves the external
+  project and source maps; analytics remains deliberately absent, not an open implementation item.**
+  Full record: `Docs/sprints/2026-08-09-v1-observability.md`.
+- **Branch provenance note `[fact, 2026-08-09]` — supersedes the per-branch notes the four sprints
+  above each wrote for themselves.** All four were cut independently from `main` at `6d8e4d9` and
+  developed in parallel, so each recorded its own work as "branch-only until merged". That is no
+  longer true: they are integrated on the app-store-submission branch, and the three earlier notes
+  were removed rather than left contradicting each other. The production-posture, auth, sign-out,
+  password-reset, hosted-verification and local-training-day work named above are ancestors of that
+  baseline.
+
+  **What integration does and does not establish** `[fact]`: each branch was green on its own
+  (543/529/502/532 tests respectively), and that is *not* evidence the merge is green — the merged
+  figure is recorded below and is the only one that describes what exists now. Nothing here has been
+  applied to a hosted project, no build has been cut, and no screen has been exercised on a device
+  since these landed.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -287,9 +303,13 @@
 **Five most material architecture / launch risks (updated 2026-08-01):**
 1. **No authentication path exists**, so the Supabase (production) backend is currently unreachable by any UI in this repository — demo mode is the only mode a user can actually run. **Unchanged** — this is now the single most material gap, since the RLS blocker beneath it (below) is resolved.
 2. ~~**Multi-record workout writes are still not atomic**~~ — **Resolved 2026-08-06** (`feature/v1-workout-write-integrity`). The three sequential, non-transactional upserts are replaced by `save_workout_graph`, a single-transaction `security invoker` Postgres function that also reconciles removed children and makes personal-record persistence idempotent (see G-2 below, and migration `0003`). Verified by 31 assertions against a live Postgres 16.14, including the mid-sequence-failure case. **Residual risk:** the migration has been applied to a disposable local database only — applying it to the real Supabase project is a manual, un-automated step (see G-4), and until it is applied there, every workout save against that project fails outright rather than partially.
-3. **No observability** — no crash reporting, analytics, or logging pipeline was found in dependencies or source. **Unchanged.**
+3. **Observability was absent at this baseline. Partially resolved 2026-08-09** on
+   `feature/v1-observability`: crash reporting exists in code; release delivery and source-map
+   symbolication remain unverified. Product analytics remains deliberately absent.
 4. **No CD/release pipeline** — CI covers typecheck and test only; there is no `eas.json`, no EAS build/submit workflow, and no App Store/Play release automation in this repository. **Unchanged.**
-5. **Residual dependency vulnerabilities** — `npm audit` reports 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling, not shipped in the app bundle). Confirmed unfixable without a major, breaking Expo downgrade; tracked as accepted risk pending an upstream fix (`Docs/sprints/2026-08-01-dependency-hygiene.md`).
+5. **Residual dependency vulnerabilities** — this baseline recorded 11 moderate findings. The
+   2026-08-09 audit supersedes the count with 17 high / 8 moderate / 0 critical across Expo/React
+   Native/Metro tool chains; see G-10 and the observability sprint record.
 
 ~~Previously listed here, now resolved:~~ *RLS policies and the schema are unexercised* — **resolved 2026-08-01**, see above. *Unused dependencies present* (`react-hook-form`, `zod`, `@hookform/resolvers`) — **resolved 2026-08-01**, all three removed (confirmed zero imports before removal).
 
@@ -682,9 +702,12 @@ routing decision and the sign-out visibility rule were extracted into pure funct
 **CI coverage:** `.github/workflows/ci.yml` runs on push/PR to `main` as two parallel jobs: `verify` (checkout → Node 20 setup → `npm ci` → `npm run typecheck` → `npm test -- --ci`) and, **added 2026-08-04** (PR #31, `Docs/sprints/2026-08-04-supabase-rls-ci.md`), `rls` (checkout → install `postgresql-client-16` → run `supabase/tests/rls/run.sh` against a disposable `postgres:16` GitHub Actions service container). Both were observed green on the merging PR. Still no build step, no lint step (matching the absence noted above), no E2E test, no artifact publishing, and no real Supabase project is touched by either job — the `rls` job is a plain, ephemeral Postgres instance, not a linked hosted project.
 
 **Observability, analytics, crash reporting, backups, release tooling, EAS status:**
-- **Crash reporting:** Absent — no Sentry, Bugsnag, or equivalent found in dependencies or source.
+- **Crash reporting:** Implemented on `feature/v1-observability` with Sentry, a root render boundary,
+  six handled-error call sites, Expo/Metro integration, and deterministic privacy-policy tests.
+  External release delivery and source-map symbolication are not yet verified.
 - **Analytics:** Absent — no analytics SDK found.
-- **Logging:** Absent — no structured logging library found; ad hoc `console`/`Alert.alert` usage only (verified in `app/workout/active.tsx`).
+- **Logging:** Local console warnings remain; handled failures route through one crash-reporting
+  boundary. No general remote logging pipeline exists.
 - **Backups:** Not applicable to this repository — Supabase-managed Postgres backup policy would be a Supabase-project-level configuration, not something this repo controls or documents.
 - **Release tooling:** Absent — no `eas.json`, no `eas-cli` in dependencies, no release/versioning script beyond the plain `version` field in `app.json`/`package.json` (both `0.1.0`).
 - **EAS status:** Not configured. `ios/` and `android/` directories exist locally but are git-ignored, generated via `expo prebuild`, and the `package.json` scripts (`expo run:ios`, `expo run:android`) target local device/simulator builds, not EAS cloud builds.
@@ -701,13 +724,13 @@ per `Docs/invariants.md` I-15, a document's history of what was found and fixed 
 | ~~G-1~~ | ~~High~~ | ~~Auth~~ | **Resolved in the client 2026-08-06** (`feature/v1-auth-and-session`). A full auth path exists: `src/store/sessionStore.ts` (four-phase machine, `onAuthStateChange` subscription), `src/store/authActions.ts` (ordered sign-out teardown), `src/data/authRequired.ts` (`AuthRequiredError`), `src/data/supabase/auth.ts` (the sole caller of Supabase's auth API), `src/domain/routing.ts` (the pure route gate), and `app/auth/index.tsx` (the real sign-in/sign-up surface). `uid()` now reads `getSession()` and throws `AuthRequiredError`, which `trainingStore.refresh()` routes to sign-in instead of to `ScreenState`. **Sign-out made reachable 2026-08-08** (`feature/v1-signout-surface`): `src/domain/account.ts` (`canOfferSignOut`, `shouldConfirmSignOut`), `src/content/account.ts`, `app/account.tsx`, and Today's `headerRight` control. **Password reset added 2026-08-09** (`feature/v1-password-reset`): `src/domain/authReset.ts`, `requestPasswordReset`/`confirmPasswordReset` in `src/data/supabase/auth.ts`, and a reset mode inside `app/auth/index.tsx` — code-based, since deep-link capture does not exist. The client-side account lifecycle is now complete: sign up, sign in, sign out, recover. Evidence: 367/367 across 24 suites. **One limit remains, stated rather than implied:** nothing here has run against a live Supabase project — the integration lane is credential-gated and skipped — and reset additionally depends on an owner-side recovery-template edit. | Production mode is now reachable by a real user in code, and a real user can sign in, sign out and recover a lost password; whether any of it works end to end against a real project is unverified | Exercise the `preview` profile against a real project once the owner creates its EAS variables, applies the migrations, and adds `{{ .Token }}` to the recovery template | No |
 | G-2 | ~~High~~ **Closed** | Data integrity | **Resolved 2026-08-06** (`feature/v1-workout-write-integrity`). The three sequential non-transactional upserts are gone; `SupabaseRepository.saveWorkout`/`completeWorkout` call `save_workout_graph` (migration `0003`), one `security invoker` transaction. Three defects were closed, not one: non-atomicity, additive-only writes that never deleted removed children, and duplicate personal records on retry. | Was: a failure mid-save could leave a workout with missing exercises/sets, against a real account's training history. Now: the save either lands whole or not at all, a retry is a no-op, and a cross-tenant id is rejected with `42501` rather than silently doing nothing. | Done — verified by `supabase/tests/rls/03_run_write_integrity_tests.sql`, 31/31 against local Postgres 16.14. **Not yet applied to the real Supabase project** (see G-4). | No |
 | ~~G-3~~ | ~~High~~ | ~~Verification gap~~ | **Resolved 2026-08-01, CI-wiring closed 2026-08-04.** `supabase/tests/rls/` (57 assertions) runs against the actual, corrected `0001_init.sql`/`0002_security_hardening.sql` on a disposable local Postgres instance and passes; a prior blocking DDL defect (non-immutable index expression) was found and fixed first. **The "wire into CI" recommendation this row used to carry is now done** — PR #31 added an `rls` job to `.github/workflows/ci.yml` running the suite against a disposable `postgres:16` service container on every push/PR to `main`, observed green (`Docs/sprints/2026-08-04-supabase-rls-ci.md`). | RLS correctness is now demonstrated, not just written, and a regression in `supabase/migrations/*.sql` now fails CI | — | No |
-| G-4 | Medium | Observability | No crash reporting, analytics, or logging framework found in dependencies. **Unchanged 2026-08-06 and explicitly untouched by the auth sprint** — recorded so its silence in that sprint's records is not mistaken for closure. | Production issues would be invisible until user-reported — now including failed sign-ins, which the app cannot report on at all | Decide on and integrate an observability stack before wider release | Yes |
+| G-4 | Medium | Observability | **Partially resolved on `feature/v1-observability`.** Privacy-filtered Sentry crash reporting covers root render failures and the six existing handled-error sites. Product analytics is deliberately absent. A release/non-demo test event and source-map symbolication have not been exercised because no DSN/upload credentials were added to this branch. | Code now has a diagnosable failure path, but the external delivery path is unproved until a release artifact sends and symbolicates one test failure | Configure owner-controlled Sentry/EAS values, send one release test event on each platform, confirm symbolication and privacy fields, then close the crash-reporting half | Yes |
 | ~~G-5~~ | ~~Medium~~ | ~~Error handling~~ | **Resolved.** All seven data-driven screens (`Today`, `Exercises`, `Insights`, `Social`, `Plans`, `Progress`, `Body`) now share `src/components/ui/ScreenState.tsx` and branch on `trainingStore.status` (`2026-07-30-ui-ux-product-polish.md`). Four of seven were individually photographed in their error state; three (Plans, Social, and one of Progress/Body) were wired identically and typecheck-covered but not individually screenshotted — see `Docs/readiness/2026-07-31-closure-inventory.md` item B2. | A load failure now shows an honest error state with retry, not stale/empty data | Photograph the remaining screens' error states (low-cost follow-up) | No |
 | ~~G-6~~ | ~~Medium~~ | ~~Dependency hygiene~~ | **Resolved 2026-08-01.** `react-hook-form`, `zod`, `@hookform/resolvers` removed — confirmed zero imports before removal (`Docs/sprints/2026-08-01-dependency-hygiene.md`). | — | — | — |
 | G-7 | Low | Release tooling | **Partially resolved 2026-08-06.** `eas.json` (development/preview/production, `appVersionSource: remote`) and an EAS project id in `app.json` are committed; `npx eas config --platform ios --profile production` resolves cleanly; each profile now sets `EXPO_PUBLIC_DEMO_MODE` explicitly. **No build has been run**, `submit.production` is empty, and the production EAS environment still has no Supabase variables — so a production build today hits the misconfigured path by design rather than shipping demo silently (`Docs/production-posture-v1.md` §4–§5). **Updated 2026-08-06 (auth sprint):** the `preview` flip from demo to real is now unblocked *in code* — G-1 no longer stands in its way — but it remains blocked on three things outside this repository, two of them owner-only: EAS environment variables for the `preview` environment (§4 currently documents only `production`), the migrations actually applied to the real project, and the project's email-confirmation setting. | A cloud build path exists on paper; whether it produces a working artifact is unverified. The auth blocker is gone, so this is now the nearest gate to a testable release | Create the EAS env vars for `preview` **and** `production`, confirm migrations are applied, then prove the `preview` profile with one build | Yes |
 | ~~G-8~~ | ~~Low~~ | ~~Accessibility (unconfirmed)~~ | **Resolved.** `maxFontSizeMultiplier` is implemented — confirmed in `src/components/ui/Text.tsx:41` (1.6×) plus `SearchField.tsx`, `Input.tsx` (1.4× each; `Stepper.tsx` also had it before its 2026-08-01 removal as dead code). The original discrepancy was this document not having read those files, not an implementation gap. | — | — | — |
 | G-9 | Low | Offline handling | No network-state detection code found (`NetInfo` or equivalent). **Precondition met 2026-08-06:** this row's recommended action was gated on "once production mode has an auth path", and that path now exists, so the item is actionable rather than blocked. | Behavior of the Supabase path when offline is unverified. One narrow case is now handled: `signOutAndTearDown` completes local teardown even when the server sign-out fails, so an offline sign-out cannot leave a lifter signed in on a shared device | Add offline detection/handling; its own branch, and out of v1 UX scope per `Docs/ui-ux-foundation-v1.md` §7 | No |
-| G-10 | Low | Dependency vulnerabilities | `npm audit`: 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling). `--force --dry-run` confirms no fix short of downgrading `expo` to `46.0.21` | Build-tooling-only exposure, not shipped in the app bundle; low real-world risk but nonzero | Re-check when a newer Expo SDK release lands | No |
+| G-10 | Low | Dependency vulnerabilities | `npm audit --omit=dev` on 2026-08-09 reports **25 transitive findings: 17 high, 8 moderate, 0 critical** in Expo/React Native/Metro build-tool chains. No advisory names `@sentry/react-native`; npm's proposed fixes are incompatible major downgrades of Expo/React Native. | Mostly developer/build-time parsing and bundling exposure; nonzero, and not safely repairable inside this feature sprint | Re-check against the next compatible Expo SDK patch; do not run a forced audit fix or dependency downgrade in a feature branch | No |
 
 ---
 

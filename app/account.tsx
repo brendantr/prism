@@ -10,6 +10,7 @@ import {
   summariseAccountExport,
 } from '@/domain/accountExport';
 import { getRepository } from '@/data/repository';
+import { reportHandledError } from '@/observability/telemetry';
 import {
   AccountDeletedLocalCleanupError,
   deleteAccountAndTearDown,
@@ -138,7 +139,7 @@ export default function AccountScreen() {
     } catch (e) {
       // The underlying error can carry schema detail, so it goes to the log and
       // never to the screen -- same rule as CheckInPrompt.
-      console.warn('[account] export failed', e);
+      reportHandledError('account', 'export failed', e);
       Alert.alert(ACCOUNT.exportFailedTitle, ACCOUNT.exportFailedMessage);
     } finally {
       setBusy(null);
@@ -164,7 +165,7 @@ export default function AccountScreen() {
         message = ACCOUNT.deleteConfirmMessage(summary);
       }
     } catch (e) {
-      console.warn('[account] could not summarise before delete', e);
+      reportHandledError('account', 'could not summarise before delete', e);
     } finally {
       setBusy(null);
     }
@@ -193,7 +194,7 @@ export default function AccountScreen() {
       // teardown flips the phase last and the route gate unmounts this modal.
       // Someone who just confirmed twice does not need a third screen.
     } catch (e) {
-      console.warn('[account] delete failed', e);
+      reportHandledError('account', 'delete failed', e);
       // TWO different failures, and telling them apart is the point.
       //
       // `AccountDeletedLocalCleanupError` means the account is gone and only
