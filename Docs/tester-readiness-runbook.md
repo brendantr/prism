@@ -240,7 +240,7 @@ if the account owns a custom movement — which, today, is not reachable from th
 |---|---|
 | **No custom movements** | `Repository` has no exercise write methods at all. A tester is capped at the 43 seeded movements — if their program uses something else, they cannot log it. This is the binding product gap. |
 | **No body measurements** | `listMeasurements()` has no writer anywhere in the interface, so bodyweight and measurements can never be recorded against a real account. |
-| **No observability (G-4)** | No crash reporting and no analytics. Tester feedback will arrive with nothing behind it — a report of "it crashed" is unactionable. `[recommendation]` Decide this before the cohort grows past people you can talk to directly. |
+| **Observability not release-proven (G-4)** | `feature/v1-observability` adds privacy-filtered crash reporting, but no owner-configured release test has proved delivery or source-map symbolication. Product analytics remains deliberately absent. `[recommendation]` Complete the test-event checklist before the cohort grows past people you can talk to directly. |
 | **Check-in day is bucketed in UTC** | `feature/v1-local-training-day` addresses it (committed and pushed 2026-08-09, not yet landed — it still needs its `0006_local_training_day.sql` renamed to `0008` and a rebase). Testers west or east of UTC can see two adjacent local dates collapse, or one local date split. |
 | **No favourites on a real account** | `trainingStore`'s default `favouriteExerciseIds` are bundle slugs (`ex_*`) that match no seeded UUID. Cosmetic. |
 | **Active routine is arbitrary** | `getActiveRoutine()` returns the first non-template routine or else the first by name, so every new account silently starts on "Prism 3". Nobody chose that. |

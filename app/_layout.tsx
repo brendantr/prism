@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { Splash } from '@/components/onboarding/Splash';
 import { resolveInitialRoute } from '@/domain/routing';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
@@ -10,6 +11,9 @@ import { useOnboardingStore } from '@/store/onboardingStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
 import { color } from '@/theme';
+import { initTelemetry } from '@/observability/telemetry';
+
+initTelemetry();
 
 /**
  * Root layout. Resolves who is signed in and whether this is a first run, then
@@ -83,40 +87,42 @@ export default function RootLayout() {
   }, [gateReady, completed, sessionPhase, segments, router]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.bg }}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        {!gateReady ? (
-          <Splash />
-        ) : (
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: color.bg },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-            {/* No back gesture: there is nothing behind sign-in to return to. */}
-            <Stack.Screen name="auth/index" options={{ gestureEnabled: false }} />
-            {/* Reached from Today's header. A modal because it is a detour, not
-                a destination -- and because it is the only way to sign out. */}
-            <Stack.Screen name="account" options={{ presentation: 'modal' }} />
-            <Stack.Screen
-              name="workout/active"
-              options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
-            />
-            <Stack.Screen name="workout/picker" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="workout/templates" options={{ presentation: 'modal' }} />
-            {/* Registered rather than left to file-convention routing alone, so
-                every route this stack can show is visible in one place. */}
-            <Stack.Screen name="workout/summary" />
-            <Stack.Screen name="history/index" />
-            <Stack.Screen name="history/[id]" />
-          </Stack>
-        )}
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AppErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.bg }}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          {!gateReady ? (
+            <Splash />
+          ) : (
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: color.bg },
+                animation: 'slide_from_right',
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+              {/* No back gesture: there is nothing behind sign-in to return to. */}
+              <Stack.Screen name="auth/index" options={{ gestureEnabled: false }} />
+              {/* Reached from Today's header. A modal because it is a detour, not
+                  a destination -- and because it is the only way to sign out. */}
+              <Stack.Screen name="account" options={{ presentation: 'modal' }} />
+              <Stack.Screen
+                name="workout/active"
+                options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+              />
+              <Stack.Screen name="workout/picker" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="workout/templates" options={{ presentation: 'modal' }} />
+              {/* Registered rather than left to file-convention routing alone, so
+                  every route this stack can show is visible in one place. */}
+              <Stack.Screen name="workout/summary" />
+              <Stack.Screen name="history/index" />
+              <Stack.Screen name="history/[id]" />
+            </Stack>
+          )}
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }

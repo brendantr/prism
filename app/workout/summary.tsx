@@ -7,6 +7,7 @@ import { muscleDistribution, workoutRepCount, workoutVolume, workoutWorkingSetCo
 import { bestsFromHistory, detectWorkoutPrs } from '@/domain/calc/prs';
 import { workoutDurationMinutes } from '@/domain/history';
 import { MUSCLE_META } from '@/domain/muscles';
+import { reportHandledError } from '@/observability/telemetry';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDuration, formatVolume } from '@/utils/format';
@@ -110,7 +111,7 @@ export default function WorkoutSummaryScreen() {
       // Nothing is lost: the session was persisted before this screen opened.
       // Only the rating and reflection are still unsaved, and they are still
       // on screen to retry with.
-      console.warn('[summary] rating/reflection save failed', e);
+      reportHandledError('summary', 'rating/reflection save failed', e);
       setSaveFailed(true);
     } finally {
       setSaving(false);
