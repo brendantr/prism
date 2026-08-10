@@ -3,10 +3,15 @@ import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Card, EmptyState, ListRow, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
-import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
+import {
+  estimateRecovery,
+  hasRecoveryEvidence,
+  RECOVERY_MODEL_EXPLANATION,
+} from '@/domain/calc/recovery';
 import { MUSCLE_META } from '@/domain/muscles';
 import { kgToDisplay } from '@/domain/calc/loadRecommendation';
 import { measurementsNewestFirst } from '@/domain/measurements';
+import { ZERO_DATA } from '@/content/zeroData';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { useShallow } from 'zustand/react/shallow';
 import { color, radius, recoveryScale, space } from '@/theme';
@@ -69,6 +74,36 @@ export default function BodyScreen() {
           onRetry={() => void refresh()}
           errorMessage={loadError}
           loadingLabel="Estimating recovery…"
+        />
+      </Screen>
+    );
+  }
+
+  /*
+    I-18, on the surface most able to violate it.
+
+    `estimateRecovery` answers for all sixteen `MUSCLE_GROUPS` whether or not it
+    has seen any of them trained, and its no-stimulus branch returns
+    `readiness: 1` / `status: 'fresh'`. On an account with no history that is
+    sixteen rows reading 100% under the heading "Estimated readiness" -- a
+    completely populated screen whose every number comes from the absence of
+    input rather than from any measurement of it. The number is not wrong so
+    much as unfounded, which is worse: it looks like a result.
+
+    So the screen asks whether the estimate has anything behind it, and says so
+    when it does not. `estimateRecovery`'s own contract is unchanged, because
+    the per-muscle default is correct for the callers that need a value for
+    every muscle (`averageReadiness`, and readiness scoring through it).
+  */
+  if (!hasRecoveryEvidence(recovery)) {
+    return (
+      <Screen scroll={false} {...header}>
+        <EmptyState
+          icon={ZERO_DATA.body.icon}
+          title={ZERO_DATA.body.title}
+          body={ZERO_DATA.body.body}
+          actionLabel={ZERO_DATA.body.actionLabel}
+          onAction={() => router.push(ZERO_DATA.body.route)}
         />
       </Screen>
     );

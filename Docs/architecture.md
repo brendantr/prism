@@ -246,6 +246,22 @@
   `feature/v1-user-data-writes` was cut. The production-posture, auth, sign-out, password-reset,
   hosted-verification, and local-training-day work named above are ancestors of that baseline. The
   user-data writes in the delta immediately above remain branch-only until this sprint is merged.
+- **Delta 2026-08-09 (`fix/v1-zero-data-surfaces`, based on `main` at `6d8e4d9`):** three analysis
+  surfaces now distinguish missing evidence from a result. Insights and Progress branch on zero
+  completed workouts instead of a missing profile; Body replaces sixteen unsupported 100%/fresh rows
+  with an actionable no-history state. Progress key lifts are selected from movements actually
+  repeated in completed, non-future sessions during the last eight weeks, so hosted UUID exercise ids
+  work instead of matching only demo catalogue slugs. The same selector bounds the panel to four and
+  resolves real exercise names. Default favourites are empty rather than four demo-only ids. No
+  repository, schema/RLS, dependency, native, or hosted-project change occurred. Evidence:
+  `npm run verify` passed **529/529 tests across 31 suites** with clean TypeScript; Jest retained its
+  worker-force-exit cleanup warning. The changed render states have no component tests and still need a
+  cold-start zero-account walkthrough. Full record:
+  `Docs/sprints/2026-08-09-v1-zero-data-surfaces.md`.
+- **Branch provenance note `[fact, 2026-08-09]`:** `main` and `origin/main` were at `6d8e4d9` when
+  `fix/v1-zero-data-surfaces` was cut. The production-posture, auth, sign-out, password-reset,
+  hosted-verification, and local-training-day work named above are ancestors of that baseline. The
+  zero-data changes in the delta immediately above remain branch-only until this sprint is merged.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -550,13 +566,23 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 
 ## Quality and Operational Readiness
 
-**Current branch evidence (2026-08-09, `feature/v1-user-data-writes`):** `npm run verify` passed
-**543/543 tests across 35 suites** plus a clean TypeScript check. New coverage spans custom-exercise
-and measurement validation, settings/plan selection, onboarding completion durability, demo
-persistence, Supabase ownership-shaped calls, training-store post-persistence updates, and copy
-guardrails. The credential-gated integration lane discovered no credentials and skipped **23/23**;
-the changed screens still have no component-rendering tests. Jest exited successfully but reported a
-worker that needed force-exit after the run, an existing harness-cleanup warning worth tracking.
+**Per-branch evidence (2026-08-09), each measured on its own branch before integration** `[fact]`:
+
+| Branch | `npm run verify` |
+|---|---|
+| `feature/v1-user-data-writes` | **543/543 tests, 35 suites**, TypeScript clean |
+| `fix/v1-zero-data-surfaces` | **529/529 tests, 31 suites**, TypeScript clean |
+
+New coverage on the first spans custom-exercise and measurement validation, settings/plan selection,
+onboarding completion durability, demo persistence, Supabase ownership-shaped calls, training-store
+post-persistence updates, and copy guardrails; on the second, UUID-backed and demo-backed key-lift
+selection, evidence windows/thresholds/order, completed/non-future session boundaries, recovery
+evidence, empty favourites/reset, and zero-data copy. The credential-gated integration lane found no
+credentials and skipped. **Neither number is the post-merge figure** — the integrated result is
+recorded in the integration delta below, because two independently green branches are not evidence
+that their merge is green. App rendering still has no component-test framework, so every changed
+screen remains unverified by test and needs the cold-start walkthrough
+(`Docs/tester-readiness-runbook.md` §6).
 
 **Existing test suites and what they cover (original, 2026-07-25):** One suite, `src/domain/calc/__tests__/calc.test.ts` (434 lines, 40 tests), covering: Epley 1RM (including rep cap and inversion), training volume (warm-up exclusion, incomplete-set exclusion), PR detection (both `e1rm` and `weight` kinds, extrapolation guard), recovery estimate (monotonicity, clamping, status bands), all five next-load-recommendation branches (deload/hold/increase×2/establish, rounding-cancellation guard), readiness score (bounds, weight-sum, ISO-week boundaries), and the demo seed generator (determinism, 8-week coverage, no future dates). **No tests exist** for `src/data` (repository, mappers), `src/store` (Zustand stores), any file under `app/`, or any file under `src/components`.
 

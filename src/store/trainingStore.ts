@@ -87,7 +87,19 @@ const INITIAL_DATA = {
   checkIns: [],
   measurements: [],
   personalRecords: [],
-  favouriteExerciseIds: ['ex_back_squat', 'ex_bench_press', 'ex_deadlift', 'ex_pullup'],
+  /*
+    Empty, not opinionated.
+
+    This used to default to four `exerciseLibrary` slugs -- `ex_back_squat`,
+    `ex_bench_press`, `ex_deadlift`, `ex_pullup`. Those ids exist only in the
+    bundled catalogue demo mode reads; against Supabase the same movements are
+    seeded with `gen_random_uuid()`, so on a real account the four matched
+    nothing and the "Favourites" chip in the exercise list and the workout picker
+    filtered a 43-movement library down to "Nothing matches those filters".
+    `toggleFavourite` keys on the real id, so starring has always worked -- it
+    was only the pre-seeded starting point that could not.
+  */
+  favouriteExerciseIds: [] as string[],
 };
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
