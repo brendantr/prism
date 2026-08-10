@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { Splash } from '@/components/onboarding/Splash';
 import { resolveInitialRoute } from '@/domain/routing';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
+import { useEntitlementStore } from '@/store/entitlementStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
@@ -39,6 +41,9 @@ export default function RootLayout() {
   const completed = useOnboardingStore((s) => s.completed);
   const hydrateActiveWorkout = useActiveWorkoutStore((s) => s.hydrate);
   const initializeSession = useSessionStore((s) => s.initialize);
+  const initializeEntitlement = useEntitlementStore((s) => s.initialize);
+  const refreshEntitlement = useEntitlementStore((s) => s.refresh);
+  const resetEntitlement = useEntitlementStore((s) => s.reset);
   const sessionPhase = useSessionStore((s) => s.phase);
   const userId = useSessionStore((s) => s.userId);
 
@@ -76,6 +81,29 @@ export default function RootLayout() {
   }, [sessionPhase, userId, refresh, hydrateActiveWorkout]);
 
   useEffect(() => {
+    if (sessionPhase === 'authenticated' || sessionPhase === 'disabled') {
+      void initializeEntitlement(sessionPhase === 'authenticated' ? userId : null);
+      return;
+    }
+    // An expired/revoked Supabase session reaches this path without going
+    // through `signOutAndTearDown`. Clear account-scoped access here as well so
+    // the next signed-in user cannot inherit the previous in-memory phase.
+    if (sessionPhase === 'unauthenticated') void resetEntitlement();
+  }, [sessionPhase, userId, initializeEntitlement, resetEntitlement]);
+
+  useEffect(() => {
+    if (sessionPhase !== 'authenticated') return;
+    // A refund or transfer can land while PRism is backgrounded. Re-read the
+    // server on foreground so a process that stays alive does not keep a stale
+    // grant until its next full launch. SDK CustomerInfo remains only transport;
+    // this refresh is the same owner-scoped Postgres read used at startup.
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void refreshEntitlement();
+    });
+    return () => subscription.remove();
+  }, [sessionPhase, userId, refreshEntitlement]);
+
+  useEffect(() => {
     if (!gateReady) return;
     const target = resolveInitialRoute({
       onboardingCompleted: completed,
@@ -111,6 +139,7 @@ export default function RootLayout() {
               <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
               <Stack.Screen name="exercise" options={{ presentation: 'modal' }} />
               <Stack.Screen name="measurement" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
               <Stack.Screen
                 name="workout/active"
                 options={{ animation: 'slide_from_bottom', gestureEnabled: false }}

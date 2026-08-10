@@ -59,7 +59,7 @@ export const ACCOUNT = {
   // --- Export (I-10) -------------------------------------------------------
 
   exportLabel: 'Export my data',
-  exportSubtitle: 'A copy of everything PRism has logged for you',
+  exportSubtitle: 'A copy of your account, training and access data',
   exportBusyLabel: 'Preparing your data…',
   /** The share sheet's subject line, when the destination has one (mail). */
   exportShareTitle: 'PRism data export',
@@ -108,11 +108,12 @@ export const ACCOUNT = {
   deleteBusyLabel: 'Deleting your account…',
   deleteFailedTitle: 'Could not delete your account',
   /**
-   * Says what did *not* happen. A failed deletion that reads like a completed
-   * one is the worst outcome on this screen: the lifter walks away believing
-   * their data is gone.
+   * Says what did *not* happen without claiming every processor-side record is
+   * unchanged. RevenueCat erasure deliberately precedes the database step, so a
+   * later database failure can leave the account and training data in place
+   * after the purchase-processing record has already been removed.
    */
-  deleteFailedMessage: 'Your account and your data are unchanged. Try again in a moment.',
+  deleteFailedMessage: 'Your account still exists and your training data remains. Try again in a moment.',
 
   /**
    * The account IS gone; only the device cleanup fell short.

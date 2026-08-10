@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Card,
+  Chip,
   EmptyState,
   ListRow,
   Screen,
@@ -25,6 +26,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatVolume } from '@/utils/format';
 import { color, radius, space } from '@/theme';
 import type { Workout } from '@/domain/types';
+import { isInsightsWindowLocked, isSurfaceLocked, resolveInsightsWindow } from '@/domain/entitlements';
+import { PAYWALL, PAYWALL_ROUTE } from '@/content/paywall';
+import { useEntitlementStore } from '@/store/entitlementStore';
 
 /**
  * INSIGHTS
@@ -83,10 +87,23 @@ export default function InsightsScreen() {
   const refresh = useTrainingStore((s) => s.refresh);
   const now = useMemo(() => new Date(), []);
 
-  const [windowDays, setWindowDays] = useState<WindowDays>('28');
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
+  const [windowDays, setWindowDays] = useState<WindowDays>('7');
+  const [lockedWindowNotice, setLockedWindowNotice] = useState(false);
   const days = Number(windowDays);
   const weeks = days / 7;
   const phrase = WINDOW_PHRASE[windowDays];
+
+  const selectWindow = (requested: WindowDays) => {
+    if (isInsightsWindowLocked(Number(requested), entitlementPhase)) {
+      setWindowDays(String(resolveInsightsWindow(Number(requested), entitlementPhase)) as WindowDays);
+      setLockedWindowNotice(true);
+      router.push(PAYWALL_ROUTE as never);
+      return;
+    }
+    setLockedWindowNotice(false);
+    setWindowDays(requested);
+  };
 
   const inWindow = useMemo(() => workoutsSince(history, now, days), [history, now, days]);
 
@@ -246,9 +263,15 @@ export default function InsightsScreen() {
         <SegmentedControl
           options={WINDOW_OPTIONS}
           value={windowDays}
-          onChange={setWindowDays}
+          onChange={selectWindow}
         />
       </View>
+
+      {lockedWindowNotice && entitlementPhase !== 'entitled' ? (
+        <Text variant="bodySm" tone="violet" style={styles.lockedNotice}>
+          {PAYWALL.lockedWindowNotice}
+        </Text>
+      ) : null}
 
       <Card variant="raised" padding="lg" spectral style={styles.summary}>
         <Text variant="eyebrow" tone="faint">
@@ -336,18 +359,22 @@ export default function InsightsScreen() {
           why the two screens stopped owning these words separately. */}
       <SectionHeader title={DEEPER_SECTION.title} eyebrow={DEEPER_SECTION.eyebrow} />
       <Card style={styles.gutterCard} padding="base">
-        {DEEPER_SURFACES.map((surface, i) => (
-          <ListRow
-            key={surface.key}
-            title={surface.label}
-            subtitle={surface.rowSubtitle}
-            icon={surface.icon}
-            iconTone={surface.iconTone}
-            chevron
-            divided={i > 0}
-            onPress={() => router.push(surface.route)}
-          />
-        ))}
+        {DEEPER_SURFACES.map((surface, i) => {
+          const locked = isSurfaceLocked({ requiresPro: surface.requiresPro, phase: entitlementPhase });
+          return (
+            <ListRow
+              key={surface.key}
+              title={surface.label}
+              subtitle={locked ? PAYWALL.lockedRowHint : surface.rowSubtitle}
+              icon={surface.icon}
+              iconTone={surface.iconTone}
+              trailing={locked ? <Chip label={PAYWALL.lockedBadge} tone="violet" icon="lock-closed" /> : undefined}
+              chevron={!locked}
+              divided={i > 0}
+              onPress={() => router.push((locked ? PAYWALL_ROUTE : surface.route) as never)}
+            />
+          );
+        })}
       </Card>
 
       <PhasePanel
@@ -383,6 +410,7 @@ const TINT = { violet: color.violetBright, cyan: color.cyanBright, coral: color.
 
 const styles = StyleSheet.create({
   gutter: { marginHorizontal: space.lg },
+  lockedNotice: { marginHorizontal: space.lg, marginTop: space.md },
   summary: { marginHorizontal: space.lg, marginTop: space.base },
   gutterCard: { marginHorizontal: space.lg, marginBottom: space.md },
   statRow: { flexDirection: 'row', marginTop: space.base },

@@ -47,9 +47,10 @@ PRism is provided by `[OWNER: legal entity name and registered address]` ("we", 
   account identity or training data. See §2.5.
 - **We ask for no device permissions.** No camera, no photos, no microphone, no location, no
   contacts, no notifications, no Apple Health or Google Fit connection.
-- **We do not sell your data or share it for advertising or profiling.**
-- You can **export everything** and **delete your account and all its data** from inside the app, in
-  a few taps. No email, no support ticket, no waiting.
+- **We do not sell your data or share it for advertising**, and we do not use it for profiling.
+  Supabase, Sentry and RevenueCat process only the data needed to operate PRism, as described in §4.
+- You can **export your account, training and access data** and **delete your account and its data**
+  from inside the app, in a few taps. No email or support ticket is required.
 
 Every one of these statements is checked against the code, not written from memory.
 
@@ -93,7 +94,19 @@ none of it is inferred from your device.
 We use this to run the app: to show you your history, your progress, your volume and your records,
 and to work out what to suggest next. We do not use it for anything else.
 
-### 2.3 Data stored only on your phone
+### 2.3 Purchase and access data
+
+If you buy the one-time PRism Pro unlock, Apple or Google handles the payment. PRism never receives
+or stores your card or bank details. RevenueCat receives the store transaction and your random PRism
+account identifier so it can report whether that account bought or restored the unlock. PRism does
+not send RevenueCat your email, password, workouts, check-ins, body information, or free-text notes.
+
+Supabase stores a small access record for your account: the entitlement and product identifiers,
+whether access is currently granted, the most recent relevant event time, and when the record was
+updated. The app may read that record but cannot create or change it; only authenticated server-side
+purchase events can do so.
+
+### 2.4 Data stored only on your phone
 
 Some things never leave your device and are never sent to us:
 
@@ -105,7 +118,7 @@ Some things never leave your device and are never sent to us:
   it, so the introduction does not replay every launch. This is treated as a property of the device
   rather than of your account, so signing out does not clear it.
 
-### 2.4 What we do NOT collect
+### 2.5 What we do NOT collect
 
 To be specific, because these are the things people reasonably assume an app is doing:
 
@@ -127,7 +140,8 @@ To be specific, because these are the things people reasonably assume an app is 
   location is.
 
 Apple and Google collect their own diagnostics at the operating-system and app-store level, under
-their own terms and your own device settings. That is outside PRism and we receive nothing from it.
+their own terms and your own device settings. PRism does not receive those diagnostics. Apple or
+Google also reports purchase status through RevenueCat when you buy or restore the Pro unlock.
 
 ### 2.5 Crash diagnostics
 
@@ -167,7 +181,8 @@ whether to describe this as a current feature or as one that is coming, and keep
 matched to what actually ships.]`
 
 **What we do with it.** It is used inside the app, for you: trends, readiness, and load suggestions.
-It is not used for advertising, not sold, not shared, and not analysed across users.
+It is not used for advertising, not sold, not sent to RevenueCat, and not analysed across users.
+Supabase stores it for PRism as described in §4.
 
 **What it is not.** PRism is a training log, not a medical device. Nothing in it is a diagnosis, a
 medical opinion, or medical advice, and no health professional sees your data because you use PRism.
@@ -185,9 +200,22 @@ order to run the service, and for no purpose of their own.
 - **Data processing terms with Supabase:** `[OWNER: state whether a data processing addendum is in
   place]`
 
-**Supabase processes account and training data. Sentry processes restricted crash diagnostics.**
-Sentry receives no account identity or training/health payload under the controls in §2.5. We use no
-product-analytics vendor, advertising network, data broker or marketing platform.
+**Supabase processes account and training data.** It hosts the database, the auth service and the
+API the app talks to.
+
+**Sentry processes restricted crash diagnostics.** It receives no account identity and no
+training or health payload, under the controls described in §2.5.
+
+**RevenueCat processes purchase and entitlement data.** It receives the store transaction and the
+random PRism account identifier described in §2.3 so PRism can grant or restore the correct account's
+access. It does not receive training, body, password, or free-text data from PRism.
+
+**Apple or Google processes payment.** The applicable store receives the payment information and
+purchase history required to complete the transaction under its own terms. PRism does not receive
+your payment-card details.
+
+Those four are the complete list. We use no analytics vendor, advertising network, data broker,
+marketing platform, or support tool that receives your training data.
 
 If you export your data, PRism hands the file to your phone's own share sheet and **you** choose
 where it goes — Files, email, a cloud drive, whatever you pick. Once it leaves the app it is covered
@@ -205,10 +233,10 @@ We are describing real, verifiable measures here, not aspirations.
 - **Every row is locked to its owner in the database itself.** PostgreSQL row-level security is
   enabled on every table, and each policy allows access only to rows belonging to the signed-in
   account. This is enforced by the database on every single query, not by the app being well behaved.
-- **The app carries no privileged credential.** The only key inside the app is Supabase's public
-  "anon" key, which is designed to be public precisely because row-level security — not the key — is
-  what grants access. Administrative and service-role credentials exist only on the server side and
-  are never present in, or reachable from, the app.
+- **The app carries no privileged credential.** The app contains Supabase's public "anon" key and
+  RevenueCat's public platform SDK key. Both are designed to be present in a client bundle; neither
+  grants administrative access. Supabase's service-role credential and the RevenueCat webhook
+  authorization value exist only on the server and are never present in, or reachable from, the app.
 - **Your ownership is never taken from the app's word.** When the app saves a workout or a check-in,
   it does not tell the database whose data it is; the database reads that from your verified session.
   A tampered request cannot write into someone else's account.
@@ -217,7 +245,7 @@ We are describing real, verifiable measures here, not aspirations.
   iCloud and from encrypted backups restored onto a different device. If a session is only partially
   written (say the app is killed mid-write), it reads as "signed out" rather than as something
   broken.
-- **Traffic is encrypted in transit** over HTTPS to the Supabase project.
+- **Traffic is encrypted in transit** over HTTPS to Supabase and RevenueCat.
 - **Account deletion is structurally contained.** The one privileged database function that destroys
   data takes no parameters at all: it can only ever delete the account of whoever called it. There is
   no identifier to get wrong and none the server would accept.
@@ -233,9 +261,22 @@ compromised, change your password and contact us at
 We keep your account and your training data **for as long as your account exists**. A training log is
 only useful if it goes back years, so nothing expires on its own and we do not delete old workouts.
 
-**When you delete your account, it is gone.** Deletion removes your authentication record, and every
-row of your data — profile, workouts, exercises, sets, check-ins, body measurements, personal
-records, plans, and any custom exercises — is removed with it by the database's own cascade rules.
+**When you delete your account, PRism first asks RevenueCat to erase its customer record and purchase
+history for your random account identifier.** Only after that succeeds (or RevenueCat reports that
+the customer is already absent) does PRism remove your authentication record and every database row
+— profile, workouts, exercises, sets, check-ins, body measurements, personal records, plans, any
+custom exercises, the entitlement record, and processed purchase-event targets — through the
+database's cascade rules. If processor erasure cannot be confirmed, the app reports that deletion
+failed and does not begin the database deletion.
+If RevenueCat erasure succeeds but the later database step fails, your PRism account and training
+data remain and the app reports that deletion did not complete. Trying again completes the same
+ordered process; the purchase record may be reported again later if you choose Restore Purchases.
+After the server confirms deletion, the app detaches the purchase SDK from the erased account
+identifier so the still-running process cannot recreate that customer on a later refresh.
+
+Apple or Google may retain the underlying store transaction under its own legal and accounting
+requirements. Deleting a PRism or RevenueCat customer does not erase a transaction from your store
+account; a later Restore may make the store report the purchase again.
 There is no soft delete, no recycle bin, and no way for us to restore it afterwards. This is why the
 app asks you to confirm twice.
 
@@ -257,12 +298,17 @@ Both of these are built into the app. Neither requires contacting us.
 **Account → Export my data.**
 
 This produces a single JSON file containing your profile, every workout with all of its exercises and
-sets, every check-in, every body measurement, every personal record, and any exercises you created.
+sets, every check-in, every body measurement, every personal record, any exercises you created, and
+your current PRism Pro entitlement record if one exists.
 It is the stored records themselves, not a summary, and it is formatted so a person can read it.
 The app then hands it to your phone's share sheet so you can save or send it wherever you like.
 
 The file does not include PRism's own built-in exercise library, because that is our content rather
 than yours and several hundred rows of it would bury the handful that are actually yours.
+It also does not include internal purchase-event delivery identifiers used only to prevent a
+webhook from being processed twice. Those records are not training or account content, are not shown
+in the app, and are erased when the account is deleted. You may still ask us for a broader access
+response at the contact address below where applicable.
 
 ### Delete your account and everything in it
 
@@ -343,9 +389,11 @@ the answers to hand.
 | Health & Fitness → Health | `[OWNER: yes if body measurements ship]` | Yes | No |
 | User Content → Other User Content | **Yes** (session reflections — free text you type) | Yes | No |
 | Identifiers → User ID | **Yes** (the account identifier) | Yes | No |
+| Purchases → Purchase History | **Yes** (the Pro unlock and restore status) | Yes | No |
 | Usage Data | **No** | — | — |
 | Diagnostics → Crash Data / Other Diagnostic Data | **Yes** (restricted crash reports described in §2.5) | No | No |
-| Location, Contacts, Browsing History, Search History, Purchases, Financial Info, Sensitive Info, Identifiers → Device ID | **No** | — | — |
+| Purchases → Purchase History | **Yes**, if the user buys the one-time unlock (§2.3) | No | No |
+| Location, Contacts, Browsing History, Search History, Financial Info, Sensitive Info, Identifiers → Device ID | **No** | — | — |
 
 Purpose for every collected item: **App Functionality** only. Not Analytics, not Product
 Personalization in the advertising sense, not Developer's Advertising or Marketing, not Third-Party
@@ -355,10 +403,12 @@ Advertising. **Nothing is used for tracking** as Apple defines it.
 
 - Data collected: **Personal info → Email address**; **Health and fitness → Fitness info** (and
   **Health info** if body measurements ship); **App activity → Other user-generated content**
-  (session reflections); **App info and performance → Crash logs / Diagnostics**.
-- Data shared with third parties: **None, if the current form continues to exclude service providers
-  acting on the developer's behalf.** Supabase and Sentry are processors — `[OWNER: confirm this
-  against the current Data Safety guidance and contracts before submitting.]`
+  (session reflections); **App info and performance → Crash logs / Diagnostics**; and **Financial
+  info → Purchase history** for the Pro unlock.
+- Data shared with third parties: Supabase, Sentry and RevenueCat act as processors operating on our
+  behalf. `[OWNER: confirm whether any of those three processor relationships counts as "sharing"
+  against Google's current Data Safety definitions, and against RevenueCat's and Sentry's current
+  disclosure guidance, before submitting.]`
 - Encrypted in transit: **Yes.**
 - Users can request data deletion: **Yes — in-app, Account → Delete account.** Provide the in-app
   path in the form, plus `[OWNER: the web deletion-request URL, which Google also requires.]`

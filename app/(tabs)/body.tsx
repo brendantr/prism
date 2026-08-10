@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Card, EmptyState, ListRow, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
+import { LockedProPanel } from '@/components/paywall/LockedProScreen';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import {
   estimateRecovery,
@@ -18,6 +19,8 @@ import { color, radius, recoveryScale, space } from '@/theme';
 import type { MuscleRecovery } from '@/domain/types';
 import { MEASUREMENT_COPY } from '@/content/userData';
 import { formatDate } from '@/utils/format';
+import { isSurfaceLocked } from '@/domain/entitlements';
+import { useEntitlementStore } from '@/store/entitlementStore';
 
 /**
  * BODY (Phase 3)
@@ -37,6 +40,7 @@ export default function BodyScreen() {
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
   const now = useMemo(() => new Date(), []);
 
   const recovery = useMemo(
@@ -65,6 +69,20 @@ export default function BodyScreen() {
     onBack: back,
     backLabel: 'Back to Insights',
   } as const;
+
+  /*
+    Body is split by the free/paid line rather than sitting on one side of it
+    (`Docs/decisions/ADR-0005-monetization.md`).
+
+    The recovery estimate is analysis, and analysis is what the unlock buys. The
+    measurements below it are the lifter's own entries, and this screen holds
+    the only route to them -- so locking the whole surface would put a lifter's
+    own bodyweight log behind a purchase, which is precisely what the free tier
+    is defined to prevent. Two sprints landing independently produced exactly
+    that: the paywall took the screen the measurement writer had just been added
+    to. The lock is therefore a panel inside the page, not a return from it.
+  */
+  const recoveryLocked = isSurfaceLocked({ requiresPro: true, phase: entitlementPhase });
 
   if (status !== 'ready') {
     return (
@@ -95,27 +113,23 @@ export default function BodyScreen() {
     the per-muscle default is correct for the callers that need a value for
     every muscle (`averageReadiness`, and readiness scoring through it).
   */
-  if (!hasRecoveryEvidence(recovery)) {
-    return (
-      <Screen scroll={false} {...header}>
-        <EmptyState
-          icon={ZERO_DATA.body.icon}
-          title={ZERO_DATA.body.title}
-          body={ZERO_DATA.body.body}
-          actionLabel={ZERO_DATA.body.actionLabel}
-          onAction={() => router.push(ZERO_DATA.body.route)}
-        />
-      </Screen>
-    );
-  }
+  /*
+    Same reasoning as the lock above, for the same reason: this used to return
+    early and take the whole screen with it, which meant a lifter with no logged
+    sessions yet -- exactly the person most likely to be recording a starting
+    bodyweight -- could not reach the measurement writer at all.
+  */
+  const recoveryHasEvidence = hasRecoveryEvidence(recovery);
 
   return (
     <Screen {...header}>
-      <Card style={styles.gutter} padding="lg">
-        <Text variant="bodySm" tone="muted" style={styles.explainer}>
-          {RECOVERY_MODEL_EXPLANATION}
-        </Text>
-      </Card>
+      {!recoveryLocked && recoveryHasEvidence ? (
+        <Card style={styles.gutter} padding="lg">
+          <Text variant="bodySm" tone="muted" style={styles.explainer}>
+            {RECOVERY_MODEL_EXPLANATION}
+          </Text>
+        </Card>
+      ) : null}
 
       <SectionHeader title="Measurements" eyebrow="Your entries" />
       {newestMeasurements.length === 0 ? (
@@ -149,11 +163,23 @@ export default function BodyScreen() {
       />
 
       <SectionHeader title="Recovery by muscle" eyebrow="Estimated readiness" />
-      <Card style={styles.gutter} padding="lg">
-        {recovery.map((r, i) => (
-          <RecoveryRow key={r.muscle} recovery={r} divided={i > 0} />
-        ))}
-      </Card>
+      {recoveryLocked ? (
+        <LockedProPanel />
+      ) : !recoveryHasEvidence ? (
+        <EmptyState
+          icon={ZERO_DATA.body.icon}
+          title={ZERO_DATA.body.title}
+          body={ZERO_DATA.body.body}
+          actionLabel={ZERO_DATA.body.actionLabel}
+          onAction={() => router.push(ZERO_DATA.body.route)}
+        />
+      ) : (
+        <Card style={styles.gutter} padding="lg">
+          {recovery.map((r, i) => (
+            <RecoveryRow key={r.muscle} recovery={r} divided={i > 0} />
+          ))}
+        </Card>
+      )}
 
       <PhasePanel
         phase={3}

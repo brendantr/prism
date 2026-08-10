@@ -6,6 +6,7 @@ import type {
   Profile,
   Workout,
 } from './types';
+import type { EntitlementRecord } from './entitlements';
 
 /**
  * ACCOUNT EXPORT
@@ -42,7 +43,7 @@ import type {
  * gone, and a document that cannot say what it is is a document that has to be
  * reverse-engineered.
  */
-export const ACCOUNT_EXPORT_FORMAT_VERSION = 2;
+export const ACCOUNT_EXPORT_FORMAT_VERSION = 3;
 
 export interface AccountExport {
   formatVersion: number;
@@ -59,6 +60,8 @@ export interface AccountExport {
   checkIns: CheckIn[];
   measurements: BodyMeasurement[];
   personalRecords: PersonalRecord[];
+  /** Purchase access held by PRism's backend; null when this account has none. */
+  entitlement: EntitlementRecord | null;
 }
 
 export interface AccountExportSource {
@@ -68,6 +71,7 @@ export interface AccountExportSource {
   checkIns: CheckIn[];
   measurements: BodyMeasurement[];
   personalRecords: PersonalRecord[];
+  entitlement: EntitlementRecord | null;
 }
 
 /**
@@ -92,6 +96,7 @@ export function buildAccountExport(source: AccountExportSource, exportedAt: stri
     personalRecords: [...source.personalRecords].sort((a, b) =>
       a.achievedAt.localeCompare(b.achievedAt),
     ),
+    entitlement: source.entitlement,
   };
 }
 
@@ -159,6 +164,7 @@ export function isEmptyExport(exported: AccountExport): boolean {
     summary.checkIns === 0 &&
     summary.measurements === 0 &&
     summary.personalRecords === 0 &&
-    summary.customExercises === 0
+    summary.customExercises === 0 &&
+    exported.entitlement === null
   );
 }
