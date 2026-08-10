@@ -43,12 +43,19 @@ claim in this project rests on cold-started manual verification per
 | `preview` | internal | Ad-hoc / internal testers |
 | `production` | store (default) | `autoIncrement: true`; `cli.appVersionSource: "remote"` |
 
-App identity, from `app.json` `[fact]`: `app.prism.trainer` on both platforms, `version` **0.1.0**,
+App identity, from `app.json` `[fact]`: `app.prism.trainer` on both platforms, `version` **1.0.0**,
 `ios.supportsTablet: false`, `ITSAppUsesNonExemptEncryption: false`, EAS project id present under
 `extra.eas`.
 
-**`version` is still 0.1.0** `[open question]` — a 1.0.0 release presumably wants a version bump, but
-what PRism calls its first public version is a product decision and is not made here.
+**The version open question is closed** `[decision, 2026-08-09]`. This section previously said
+"`version` is still 0.1.0" and left the first public version number as an unmade product decision.
+It is now **1.0.0** — the submission this checklist gates is the first public release, and shipping a
+store build numbered 0.1.0 misdescribes it to every user who reads the listing.
+
+`submit.production` is **no longer empty** `[fact]`. It configures the Android submitter to the
+`internal` track with `releaseStatus: "draft"` — see `Docs/store-submission-runbook.md` §8 for why
+that conservative default was chosen and which two fields to change for a public rollout. iOS submit
+config is deliberately absent so `eas submit` prompts rather than carrying a guessed `ascAppId`.
 
 ---
 
@@ -131,10 +138,26 @@ open.
 | **I-1 / I-6 — RLS** | **Met, and now confirmed against a real project** — the integration lane checks isolation between two real accounts in both directions, which the unit suite had been taking on trust. |
 | **I-9 / G-11 — payment and entitlement operations** | **Open.** S4's source is fail-closed and locally tested, but no store product, dedicated RevenueCat entitlement/offering project, restore behavior, webhook, hosted `0009`/functions, public EAS key, customer-deletion secret, or sandbox purchase/restore/delete has been configured or exercised. Follow `Docs/revenuecat-release-runbook.md`; a real sandbox buy, reinstall/restore, refund/transfer, and account deletion with confirmed RevenueCat erasure are blocking. |
 
-`[fact]` Two gates outside this table now bind harder than anything in it: **no way to create a custom
-exercise** (`Repository` has no exercise write methods, so a lifter is capped at the 43 seeded
-movements) and **check-in days bucketed in UTC** (`feature/v1-local-training-day`, unlanded). Neither
-blocks a store submission; both will be reported as bugs by the first cohort.
+| **G-12 — Expo SDK patch drift** | **Open, and it gates a release build.** `npx expo-doctor` is 19/20: five SDK-57 packages are one patch behind. `npm run fix-deps`, then re-run `npm run verify` and `expo-doctor`. A dependency change, so it needs owner approval. |
+
+**Corrected 2026-08-09** `[fact]`. This section previously ended: *"Two gates outside this table now
+bind harder than anything in it: **no way to create a custom exercise** … and **check-in days
+bucketed in UTC** … Neither blocks a store submission; both will be reported as bugs by the first
+cohort."* **Both are now closed**, and the paragraph is replaced rather than annotated because a
+pre-flight checklist read historically is not a checklist.
+
+- *Custom exercises.* `feature/v1-user-data-writes` added `createExercise`/`updateExercise`/
+  `deleteExercise` to the `Repository` interface and both implementations, reachable from the
+  Exercises tab and the mid-session picker. The 43-movement ceiling is gone. That sprint also closed
+  three gaps the old paragraph did not name: **no body-measurement writer**, **no profile editing at
+  all** (units, bodyweight and training preferences were frozen at the server defaults for every
+  account), and onboarding answers being collected and discarded.
+- *UTC check-in days.* `0008_local_training_day.sql` is committed and covered by 20 SQL assertions.
+
+`[fact]` What binds now is operational rather than product: **G-11** (nothing in the payment path has
+been configured or exercised against a real store), **G-4**'s remaining half (no release artifact has
+sent a test event), **G-12**, and the fact that **the production Supabase project has never had a
+migration applied to it**. `Docs/store-submission-runbook.md` is the procedure for all of them.
 
 ---
 

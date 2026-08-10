@@ -240,8 +240,10 @@ path behind Today's "Demo data" chip cannot throw on a misconfigured build `[fac
 - **No build or submission was run.**
 - **No functional/UX change.** No v2 behaviour: no undo, no editing or deleting completed sessions, no
   offline handling.
-- **`app.json` `version` is still `0.1.0`** `[open question]` — what PRism calls its first public
-  version is a product decision, not made here.
+- ~~**`app.json` `version` is still `0.1.0`** `[open question]`~~ — **closed 2026-08-09**
+  `[decision]`. It is **1.0.0**: the store submission this posture was written for is the first
+  public release, and a listing numbered 0.1.0 would misdescribe it. See
+  `Docs/release-checklist.md` §2 and `Docs/store-submission-runbook.md`.
 
 ## 7. The exact next decisions needed
 
