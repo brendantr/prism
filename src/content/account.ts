@@ -25,7 +25,7 @@
  */
 
 export const ACCOUNT = {
-  /** Today's header control. Icon-only, so this is what a screen reader says. */
+  /** Accessible label for navigation into the account-lifecycle surface. */
   headerControlLabel: 'Account',
 
   title: 'Account',

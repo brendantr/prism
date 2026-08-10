@@ -32,13 +32,9 @@ import {
   useActiveWorkoutStore,
 } from '@/store/activeWorkoutStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
-import { useSessionStore } from '@/store/sessionStore';
 import { DEEPER_SECTION, DEEPER_SURFACES } from '@/content/deeperSurfaces';
-import { ACCOUNT } from '@/content/account';
-import { canOfferSignOut } from '@/domain/account';
 import { formatDate, formatRelativeDay, formatVolume } from '@/utils/format';
 import { isDemoMode } from '@/data/repository';
-import { isAuthEnabled } from '@/data/supabase/auth';
 import { a11y, color, opacity, space } from '@/theme';
 
 /**
@@ -80,8 +76,6 @@ export default function TodayScreen() {
   const discardDraft = useActiveWorkoutStore((s) => s.discard);
   const draftCompletedSets = useActiveWorkoutStore(selectCompletedSetCount);
   const draftTotalSets = useActiveWorkoutStore(selectTotalSetCount);
-
-  const sessionPhase = useSessionStore((s) => s.phase);
 
   const now = useMemo(() => new Date(), []);
 
@@ -182,27 +176,20 @@ export default function TodayScreen() {
       title={profile.displayName.split(' ')[0]}
       headerRight={
         /*
-          The only way to sign out. It sits beside the lifter's own name, which
-          is where an account control is looked for, and it uses `Screen`'s
-          existing `headerRight` slot -- no new layout, and no sixth tab, which
-          D1 freezes for all of v1.
-
-          Absent rather than disabled in demo and misconfigured builds: a greyed
-          "Account" implies an account you could have had, and neither build has
-          one. `canOfferSignOut` owns that rule so it can be tested without a
-          renderer.
+          Settings is available in both demo and account builds because profile
+          preferences exist in both repositories. Account lifecycle remains a
+          separate row inside Settings and is still absent where auth is absent.
+          The header slot avoids adding a sixth tab, which D1 freezes for v1.
         */
-        canOfferSignOut({ authEnabled: isAuthEnabled(), sessionPhase }) ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={ACCOUNT.headerControlLabel}
-            onPress={() => router.push('/account')}
-            hitSlop={10}
-            style={({ pressed }) => [styles.accountButton, pressed && { opacity: opacity.pressed }]}
-          >
-            <Ionicons name="person-outline" size={19} color={color.textSecondary} />
-          </Pressable>
-        ) : null
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+          onPress={() => router.push('/settings')}
+          hitSlop={10}
+          style={({ pressed }) => [styles.accountButton, pressed && { opacity: opacity.pressed }]}
+        >
+          <Ionicons name="settings-outline" size={19} color={color.textSecondary} />
+        </Pressable>
       }
     >
       {isDemoMode() ? (

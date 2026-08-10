@@ -226,12 +226,26 @@
   which closes **G-7 for `preview`**. `production` and store submission remain unexercised.
   **The binding gates are now G-4 (no crash reporting or analytics at all) and the two product gaps
   below the store bar:** no way to create a custom exercise, and check-in days bucketed in UTC.
-- **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
-  contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
-  guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five
-  sit on their own branches, unmerged, each based on the one before it. Claims in this document
-  describing auth, sign-out, reset or the demo-fallback throw are claims about that branch chain, not
-  about `main`.
+- **Delta 2026-08-09 (`feature/v1-user-data-writes`, based on `main` at `6d8e4d9`):** the custom-
+  exercise blocker named immediately above is closed on this branch. The repository, training store,
+  and UI now create/edit/delete user-owned movements while leaving system movements read-only and
+  refusing deletion when logged history references one. Body measurements can be added, edited, and
+  deleted from Body. A Settings modal writes profile/training preferences and exposes the authenticated
+  account lifecycle; Today's header now opens Settings in demo and account modes. Onboarding answers
+  are applied to the profile before its durable completion flag opens Today. Shared-plan selection is
+  represented by the already-owned profile training-day fields because the shipped plans are global
+  rows (`profile_id is null`) and cannot carry a per-account `is_active` value. No migration, RLS
+  policy, dependency, native project, or hosted-project setting changed. Evidence on this branch:
+  `npm run verify` **passed, 543/543 across 35 suites**, and TypeScript passed; the integration lane
+  had no credentials in this Codex environment and **skipped 23/23**. `npx expo export --platform ios`
+  started Metro but did not finish after several bounded waits and was stopped, so it is not counted
+  as validation. The prior device walkthrough is superseded for the changed onboarding/routes/data
+  contracts: a new cold-start walkthrough is still required. Full record:
+  `Docs/sprints/2026-08-09-v1-user-data-writes.md`.
+- **Branch provenance note `[fact, 2026-08-09]`:** `main` and `origin/main` were at `6d8e4d9` when
+  `feature/v1-user-data-writes` was cut. The production-posture, auth, sign-out, password-reset,
+  hosted-verification, and local-training-day work named above are ancestors of that baseline. The
+  user-data writes in the delta immediately above remain branch-only until this sprint is merged.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -380,7 +394,7 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
 ## Runtime Architecture
 
 **1. App startup and route entry** *(verified, `app/_layout.tsx`)*
-Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account` (modal, added 2026-08-08), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
+Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account`, `settings`, `exercise`, and `measurement` (modals), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
 
 **Rewritten 2026-08-06 (`feature/v1-auth-and-session`).** The root layout previously ran two things on mount — an unconditional `trainingStore.load()` and a redirect effect that knew only about onboarding — and held the splash until the persisted onboarding flag resolved. It now holds **one combined gate**. `sessionStore.initialize()` and `onboardingStore.load()` both fire on mount and are allowed to race, because each only reads local storage and neither redirects; `Splash` renders until `sessionPhase !== 'unknown' && onboardingStatus === 'ready'`. Adding a second condition to the old shape would have meant two effects redirecting off the same `useSegments()` array, which is how a gate turns into a redirect loop.
 
@@ -442,18 +456,19 @@ flowchart TD
 **Entities and relationships** *(verified, `supabase/migrations/0001_init.sql` and `src/domain/types.ts`, which the file's own header states mirrors the SQL 1:1)*:
 `profiles` (1) → `workouts` (N) → `workout_exercises` (N) → `sets` (N); `profiles` → `routines` (N) → `routine_days` (N) → `routine_exercises` (N); `profiles` → `body_measurements`, `check_ins`, `personal_records` (N each); `exercises` is shared (system rows have `profile_id = null`) and referenced by `workout_exercises` and `routine_exercises`.
 
-**Ownership and lifecycle:** Every user-owned row carries `profile_id`, and `profiles.id` references `auth.users(id) on delete cascade` — deleting the Supabase auth user cascades through the entire schema (verified in migration comments and FK definitions). A trigger (`handle_new_user`) auto-creates a `profiles` row on signup. In demo mode, there is no `auth.users` equivalent — `DemoRepository` uses a fixed `DEMO_PROFILE_ID` constant and persists only *user-logged* workouts/records/check-ins to `AsyncStorage` under fixed keys (`prism.demo.workouts.v1`, etc.); the seeded 8-week history is regenerated in memory each launch and merged with anything the user has logged.
+**Ownership and lifecycle:** Every user-owned row carries `profile_id`, and `profiles.id` references `auth.users(id) on delete cascade` — deleting the Supabase auth user cascades through the entire schema (verified in migration comments and FK definitions). A trigger (`handle_new_user`) auto-creates a `profiles` row on signup. In demo mode, there is no `auth.users` equivalent — `DemoRepository` uses a fixed `DEMO_PROFILE_ID` constant and persists the profile override plus user-logged workouts, records, check-ins, custom exercises, and measurement overrides/tombstones to `AsyncStorage` under versioned keys; the seeded history is regenerated in memory each launch and merged with those writes.
 
 **Demo data vs. Supabase data:** These are two structurally-identical but operationally distinct datasets behind one `Repository` interface (verified, `src/data/repository.ts`). Demo data has no expiry, sync, or multi-device concept — it is single-device, `AsyncStorage`-backed. A `resetDemoData()` function exists to wipe it back to the pristine seed.
 
-**Repository abstraction and contracts:** The `Repository` interface (`src/data/repository.ts`) is the sole contract the UI depends on: `getProfile`, `updateProfile`, `listExercises`, `listRoutines`, `getActiveRoutine`, `listWorkouts`, `saveWorkout`, `deleteWorkout`, `listCheckIns`, `saveCheckIn`, `listMeasurements`, `listPersonalRecords`, `savePersonalRecords`. Both implementations satisfy it in full. `SupabaseRepository.saveWorkout` upserts the workout, its exercises, and its sets in three sequential calls (not a single transaction) — a partial failure mid-save (e.g. workout row succeeds, sets upsert fails) would leave Postgres in a partially-written state. This is a **confirmed code pattern**, not a confirmed production incident; no test exercises this path.
+**Repository abstraction and contracts:** The `Repository` interface (`src/data/repository.ts`) is the sole data-access contract used by the stores. It covers profile reads/updates; exercise list/create/update/delete; routine list/resolution/owned activation; atomic workout completion plus workout CRUD; partial check-in writes; measurement list/save/delete; personal-record writes; and account export/deletion. Both implementations satisfy it. Supabase ownership is stamped from the active session rather than caller fields; demo mode stamps its one `DEMO_PROFILE_ID`. Workout completion goes through `save_workout_graph`, including personal records, in one idempotent database transaction (G-2/I-2 closed).
 
-**Database migrations, RLS, and authorization posture:** One migration file, `0001_init.sql`, creates all tables, enums, indexes, the `updated_at` trigger, the `handle_new_user` trigger, and RLS policies for every table (`select`/`all` policies scoped to `auth.uid()`, with `exists`-walk policies for child tables lacking their own `profile_id`). No migration tooling (e.g. `supabase migration up`, a migrations runner script) was found in `package.json` — applying this file is a manual step per the README.
+**Database migrations, RLS, and authorization posture:** Eight migration files (`0001`–`0008`) define the schema, security hardening, atomic workout RPC, partial/day-local check-ins, account deletion, shared library seed, and deferrable custom-exercise references. The committed SQL is exercised against disposable Postgres in CI; hosted application remains an owner-run step because this repository still has no linked Supabase CLI project.
 
 **Data integrity gaps or unknowns:**
-- `saveWorkout`'s three-step upsert is not atomic (see above) — **likely risk**, unconfirmed by test.
-- No automated verification that the RLS policies actually behave as written against a real Postgres instance — **unknown, requires validation** (e.g. via `supabase test db` or a CI job with a local Postgres container, neither of which exists in this repo).
-- `exercises` table has a partial unique index (`lower(name), equipment) where profile_id is null`) preventing duplicate system exercises, but no equivalent constraint prevents a user from creating a duplicate personal exercise — **inferred, minor, not verified against runtime behavior**.
+- Shared-template choice is inferred from the profile's session target because global template rows cannot hold a per-user flag. An explicit choice distinct from that target would require an approved schema decision.
+- Saving Settings can span profile and owned-routine rows. It is safely retryable and the failure copy admits possible partial progress, but there is no cross-table transaction without a new RPC/migration.
+- `exercises` has a partial unique index for system movements only; user-created duplicate names are currently allowed by design.
+- The new write methods have hermetic ownership tests, but their staging integration cases skipped in this environment; live-project verification remains required.
 
 ---
 
@@ -465,7 +480,7 @@ A complete client-side authentication path now exists. `src/data/supabase/auth.t
 
 `SupabaseRepository.uid()` changed in two ways. It reads `auth.getSession()` rather than `auth.getUser()`: `getUser()` round-trips to `/auth/v1/user` on every call, and `uid()` is reached by six of the eight repository calls `trainingStore.refresh()` fires in parallel — six requests before a single row is fetched — while the access token is what Postgres evaluates RLS against anyway, so a second client-side validation proves nothing the query itself will not. And it throws `AuthRequiredError` rather than a bare `Error`, which is what allows the store layer to distinguish "no session" from every other failure. The error type lives in `src/data/authRequired.ts` rather than in a store, preserving the one-directional layering: `src/data` defines and throws it, stores catch and interpret it, and no repository reads session state back out of a store. No repository method accepts a caller-supplied id; `sessionStore.userId` exists for display and test assertions only.
 
-**Sign-out is reachable as of 2026-08-08** (`feature/v1-signout-surface`). Today renders an Account control in `Screen`'s previously-unused `headerRight` slot, beside the lifter's own name; it routes to `app/account.tsx`, a modal carrying an identity line, one explanatory sentence, and a destructive-toned "Sign out" row that calls `signOutAndTearDown`. Visibility is decided by one pure predicate, `canOfferSignOut({ authEnabled, sessionPhase })` (`src/domain/account.ts`), which is true only when auth is enabled **and** the phase is `'authenticated'`. Demo and misconfigured builds therefore have no control at all — absent rather than disabled, since a greyed-out "Account" implies an account that could have existed, and in the misconfigured case it would also compete with the `SUPABASE_MISCONFIGURED_MESSAGE` that build actually owes its user. Confirmation follows UX decision D6: the sheet warns before tearing down only when logged work would be lost (`shouldConfirmSignOut`, which counts completed sets including warm-ups), and signs out immediately otherwise.
+**Sign-out is reachable as of 2026-08-08** (`feature/v1-signout-surface`). As of the user-data-writes sprint, Today renders a Settings control for both demo and account modes; authenticated Settings includes an Account and privacy row leading to `app/account.tsx`, whose destructive-toned "Sign out" row calls `signOutAndTearDown`. The account row remains absent outside the authenticated phase. Confirmation follows UX decision D6: the sheet warns before tearing down only when logged work would be lost (`shouldConfirmSignOut`, which counts completed sets including warm-ups), and signs out immediately otherwise.
 
 **Password reset added 2026-08-09** (`feature/v1-password-reset`), and it is **code-based, not link-based**. `requestPasswordReset(email)` wraps `resetPasswordForEmail` and deliberately passes **no `redirectTo`**: this flow does not use the emailed link. `confirmPasswordReset(email, token, newPassword)` then runs three server calls behind one function — `verifyOtp({ type: 'recovery' })` to exchange the emailed code for a session, `updateUser({ password })` to make the change, and `signOut()` to hand the session straight back.
 
@@ -500,12 +515,17 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 | Route | File | Type |
 |---|---|---|
 | `auth` | `app/auth/index.tsx` | Stack screen — sign-in / sign-up, gestures disabled (added 2026-08-06, `feature/v1-auth-and-session`). There is nothing behind sign-in to return to. `app/onboarding/auth.tsx` is no longer a screen: it is a `<Redirect>` that resolves to `/auth` where accounts exist and to `/onboarding/steps` where they do not. |
-| `account` | `app/account.tsx` | Modal — identity, sign out, one explanatory line (added 2026-08-08, `feature/v1-signout-surface`). Reached only from Today's `headerRight` Account control, which renders only when `canOfferSignOut` is true. Deliberately not a settings screen: a fourth item on it would make it one. |
+| `account` | `app/account.tsx` | Modal — identity, sign out, export, and account deletion. Reached from authenticated Settings. |
+| `settings` | `app/settings.tsx` | Modal — profile, units/bodyweight, training preferences, active plan, equipment, and authenticated account entry. |
+| `exercise` | `app/exercise.tsx` | Modal — create/edit a user-owned movement; delete only when no active or logged session references it. |
+| `measurement` | `app/measurement.tsx` | Modal — add/edit/delete optional bodyweight, body-fat, and waist entries. |
 | `(tabs)/index` | `app/(tabs)/index.tsx` | Tab — Today |
-| `(tabs)/progress` | `app/(tabs)/progress.tsx` | Tab — Progress |
-| `(tabs)/body` | `app/(tabs)/body.tsx` | Tab — Body |
+| `(tabs)/exercises` | `app/(tabs)/exercises.tsx` | Tab — exercise library, custom movement entry/edit. |
 | `(tabs)/insights` | `app/(tabs)/insights.tsx` | Tab — Insights |
+| `(tabs)/social` | `app/(tabs)/social.tsx` | Tab — Social |
 | `(tabs)/plans` | `app/(tabs)/plans.tsx` | Tab — Plans |
+| `(tabs)/progress` | `app/(tabs)/progress.tsx` | Hidden tab route — deeper progress surface reached from Insights/Today. |
+| `(tabs)/body` | `app/(tabs)/body.tsx` | Hidden tab route — recovery plus user-entered measurements. |
 | `workout/active` | `app/workout/active.tsx` | Stack screen, slide-from-bottom, gestures disabled |
 | `workout/picker` | `app/workout/picker.tsx` | Modal |
 | `workout/summary` | `app/workout/summary.tsx` | Stack screen. **Updated 2026-08-03:** now registered explicitly in `app/_layout.tsx` (no options, so no behavioural change), closing the file-convention-only routing noted here and in `Docs/sprints/2026-08-02-workout-logging-v1-planning.md` §2.5 |
@@ -529,6 +549,14 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 ---
 
 ## Quality and Operational Readiness
+
+**Current branch evidence (2026-08-09, `feature/v1-user-data-writes`):** `npm run verify` passed
+**543/543 tests across 35 suites** plus a clean TypeScript check. New coverage spans custom-exercise
+and measurement validation, settings/plan selection, onboarding completion durability, demo
+persistence, Supabase ownership-shaped calls, training-store post-persistence updates, and copy
+guardrails. The credential-gated integration lane discovered no credentials and skipped **23/23**;
+the changed screens still have no component-rendering tests. Jest exited successfully but reported a
+worker that needed force-exit after the run, an existing harness-cleanup warning worth tracking.
 
 **Existing test suites and what they cover (original, 2026-07-25):** One suite, `src/domain/calc/__tests__/calc.test.ts` (434 lines, 40 tests), covering: Epley 1RM (including rep cap and inversion), training volume (warm-up exclusion, incomplete-set exclusion), PR detection (both `e1rm` and `weight` kinds, extrapolation guard), recovery estimate (monotonicity, clamping, status bands), all five next-load-recommendation branches (deload/hold/increase×2/establish, rounding-cancellation guard), readiness score (bounds, weight-sum, ISO-week boundaries), and the demo seed generator (determinism, 8-week coverage, no future dates). **No tests exist** for `src/data` (repository, mappers), `src/store` (Zustand stores), any file under `app/`, or any file under `src/components`.
 

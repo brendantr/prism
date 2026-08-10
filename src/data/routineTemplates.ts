@@ -52,6 +52,7 @@ export const SPECTRUM_FOUR: Routine = {
     'Four days, upper/lower, split by movement pattern so no muscle sees two hard sessions inside 48 hours. Built for lifters who want steady load progression without living in the gym.',
   daysPerWeek: 4,
   isTemplate: true,
+  isActive: false,
   days: [
     buildDay(SPLIT_ID, 0, 'Lower — Squat', 1, [
       { exerciseId: 'ex_back_squat', sets: 4, reps: [5, 8], rpe: 8, rest: 180 },
@@ -98,6 +99,7 @@ export const PRISM_THREE: Routine = {
     'Three full-body sessions a week. Every session has one squat, one hinge, one push and one pull, rotating the heavy slot so each pattern gets a hard day every week.',
   daysPerWeek: 3,
   isTemplate: true,
+  isActive: false,
   days: [
     buildDay(FULL_ID, 0, 'Full Body — Squat Lead', 1, [
       { exerciseId: 'ex_back_squat', sets: 4, reps: [5, 8], rpe: 8, rest: 180 },

@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Chip, SearchField, Text } from '@/components/ui';
+import { Button, Chip, SearchField, Text } from '@/components/ui';
 import { MUSCLE_META, REGION_LABEL, type MuscleRegion } from '@/domain/muscles';
 import { EQUIPMENT, type Equipment, type Exercise, type MuscleGroup } from '@/domain/types';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
@@ -93,6 +93,17 @@ export default function ExercisePickerScreen() {
         placeholder="Search exercises"
         accessibilityLabel="Search exercises by name, muscle or equipment"
         style={styles.search}
+      />
+
+      <Button
+        label="Create a custom movement"
+        variant="secondary"
+        size="sm"
+        icon="add"
+        onPress={() =>
+          router.push({ pathname: '/exercise', params: { addToWorkout: 'true' } })
+        }
+        style={styles.custom}
       />
 
       {/* Filters */}
@@ -220,6 +231,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   search: { marginHorizontal: space.lg },
+  custom: { marginHorizontal: space.lg, marginTop: space.md, alignSelf: 'flex-start' },
   filterRow: {
     paddingHorizontal: space.lg,
     paddingTop: space.md,

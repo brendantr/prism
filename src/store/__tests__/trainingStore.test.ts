@@ -205,3 +205,72 @@ describe('check-in date selectors', () => {
     expect(selectTodaysCheckIn(useTrainingStore.getState(), reference)).toBeNull();
   });
 });
+
+describe('user-owned write boundaries', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+    useTrainingStore.getState().reset();
+    await useTrainingStore.getState().refresh();
+  });
+
+  const input = (name: string) => ({
+    name,
+    equipment: 'cable' as const,
+    primaryMuscles: ['lats' as const],
+    secondaryMuscles: ['biceps' as const],
+    isUnilateral: true,
+    cue: null,
+  });
+
+  it('keeps the exercise list and id index together across create, edit, and delete', async () => {
+    const created = await useTrainingStore.getState().createExercise(input('My row'));
+    expect(useTrainingStore.getState().exerciseById.get(created.id)?.name).toBe('My row');
+    expect(useTrainingStore.getState().exercises.some((e) => e.id === created.id)).toBe(true);
+
+    await useTrainingStore.getState().updateExercise(created.id, input('My cable row'));
+    expect(useTrainingStore.getState().exerciseById.get(created.id)?.name).toBe('My cable row');
+
+    useTrainingStore.setState({ favouriteExerciseIds: [created.id] });
+    await useTrainingStore.getState().deleteExercise(created.id);
+    expect(useTrainingStore.getState().exerciseById.has(created.id)).toBe(false);
+    expect(useTrainingStore.getState().favouriteExerciseIds).not.toContain(created.id);
+  });
+
+  it('does not move the exercise read model ahead of a rejected repository write', async () => {
+    const repo = getRepository();
+    const before = useTrainingStore.getState().exercises;
+    const failure = jest.spyOn(repo, 'createExercise').mockRejectedValueOnce(new Error('offline'));
+    await expect(useTrainingStore.getState().createExercise(input('Not saved'))).rejects.toThrow('offline');
+    expect(useTrainingStore.getState().exercises).toBe(before);
+    failure.mockRestore();
+  });
+
+  it('upserts and deletes measurements only after persistence succeeds', async () => {
+    const measurement = {
+      id: 'store_measurement',
+      profileId: useTrainingStore.getState().profile!.id,
+      measuredAt: '2026-08-09T12:00:00.000Z',
+      bodyweightKg: 82,
+      bodyFatPct: null,
+      circumferencesCm: {},
+    };
+    await useTrainingStore.getState().saveMeasurement(measurement);
+    await useTrainingStore.getState().saveMeasurement({ ...measurement, bodyweightKg: 83 });
+    expect(useTrainingStore.getState().measurements.filter((m) => m.id === measurement.id)).toHaveLength(1);
+    expect(useTrainingStore.getState().measurements.find((m) => m.id === measurement.id)?.bodyweightKg).toBe(83);
+
+    await useTrainingStore.getState().deleteMeasurement(measurement.id);
+    expect(useTrainingStore.getState().measurements.some((m) => m.id === measurement.id)).toBe(false);
+  });
+
+  it('re-resolves the active template when profile training days change', async () => {
+    await useTrainingStore.getState().updateProfile({ trainingDaysPerWeek: 3 });
+    expect(useTrainingStore.getState().profile?.trainingDaysPerWeek).toBe(3);
+    expect(useTrainingStore.getState().activeRoutine?.daysPerWeek).toBe(3);
+
+    const fourDay = useTrainingStore.getState().routines.find((routine) => routine.daysPerWeek === 4)!;
+    await useTrainingStore.getState().selectRoutine(fourDay.id);
+    expect(useTrainingStore.getState().profile?.trainingDaysPerWeek).toBe(4);
+    expect(useTrainingStore.getState().activeRoutine?.id).toBe(fourDay.id);
+  });
+});

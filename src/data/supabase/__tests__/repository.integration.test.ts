@@ -31,7 +31,7 @@
  * So: SQL suite proves the schema is right, this proves the app can use it.
  */
 
-import type { CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
+import type { BodyMeasurement, CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
 import {
   INTEGRATION_TIMEOUT_MS,
   createDisposableAccount,
@@ -344,6 +344,66 @@ integrationSuite('SupabaseRepository against a real project', () => {
       expect(stored?.sleepQuality).toBeNull();
       expect(stored?.energy).toBe(2);
     });
+  });
+
+  it('creates, edits, and deletes a custom movement through the repository', async () => {
+    const created = await repo().createExercise({
+      name: `Repository Row ${newUuid().slice(0, 8)}`,
+      equipment: 'cable',
+      primaryMuscles: ['lats'],
+      secondaryMuscles: ['biceps'],
+      isUnilateral: true,
+      cue: null,
+    });
+    expect(created.isSystem).toBe(false);
+
+    const updated = await repo().updateExercise(created.id, {
+      name: `${created.name} edited`,
+      equipment: 'cable',
+      primaryMuscles: ['lats'],
+      secondaryMuscles: ['biceps'],
+      isUnilateral: true,
+      cue: 'Keep the elbow close.',
+    });
+    expect(updated.name).toMatch(/edited$/);
+    expect((await repo().listExercises()).find((exercise) => exercise.id === created.id)?.cue).toBe(
+      'Keep the elbow close.',
+    );
+
+    await repo().deleteExercise(created.id);
+    expect((await repo().listExercises()).some((exercise) => exercise.id === created.id)).toBe(false);
+  });
+
+  it('refuses to delete a custom movement that carries logged history', async () => {
+    await expect(repo().deleteExercise(exerciseA)).rejects.toMatchObject({
+      name: 'ExerciseInUseError',
+    });
+    expect((await repo().listExercises()).some((exercise) => exercise.id === exerciseA)).toBe(true);
+  });
+
+  it('saves and deletes a body measurement with session-derived ownership', async () => {
+    const measurement: BodyMeasurement = {
+      id: newUuid(),
+      profileId: FOREIGN_PROFILE_ID,
+      measuredAt: '2026-08-09T12:00:00.000Z',
+      bodyweightKg: 82.5,
+      bodyFatPct: 15,
+      circumferencesCm: { waist: 80 },
+    };
+    await repo().saveMeasurement(measurement);
+    const stored = (await repo().listMeasurements()).find((entry) => entry.id === measurement.id);
+    expect(stored?.profileId).toBe(account.userId);
+    expect(stored?.bodyweightKg).toBe(82.5);
+
+    await repo().deleteMeasurement(measurement.id);
+    expect((await repo().listMeasurements()).some((entry) => entry.id === measurement.id)).toBe(false);
+  });
+
+  it('resolves a shared plan from profile training days instead of alphabetic order', async () => {
+    await repo().updateProfile({ trainingDaysPerWeek: 3 });
+    expect((await repo().getActiveRoutine())?.daysPerWeek).toBe(3);
+    await repo().updateProfile({ trainingDaysPerWeek: 4 });
+    expect((await repo().getActiveRoutine())?.daysPerWeek).toBe(4);
   });
 
   it('exports every table the account owns', async () => {

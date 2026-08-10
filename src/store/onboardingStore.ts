@@ -8,10 +8,10 @@ import type { Equipment, Experience, Goal } from '@/domain/types';
  * Kept separate from `trainingStore` on purpose. This is first-run navigation
  * state, not training data, and the two have no reason to reload together.
  *
- * The selections are recorded but NOT yet applied to the user's profile --
- * wiring them through `trainingStore.updateProfile` would change data the rest
- * of the app already reads, which is outside this sprint's scope. They are
- * persisted so a follow-up can apply them without asking the user again.
+ * The selections are held here while the flow is open. On completion they are
+ * persisted with the completed flag; `app/onboarding/complete.tsx` first
+ * converts them to one profile patch. This store remains navigation state and
+ * never imports the training store itself.
  */
 
 const STORAGE_KEY = 'prism.onboarding.v1';
@@ -78,8 +78,12 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     })),
 
   complete: async () => {
+    const next = { ...get(), completed: true };
+    // Persist first. `_layout.tsx` treats the in-memory flag as authority and
+    // reveals Today as soon as it flips, so setting it before a rejected write
+    // could bypass the profile hand-off even though this promise failed.
+    await persist(next);
     set({ completed: true });
-    await persist(get());
   },
 
   reset: async () => {

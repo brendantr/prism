@@ -364,15 +364,13 @@ export const COMPLETE = {
   bodyAccount:
     'Nothing is logged yet — this account is yours and it starts empty. Everything you record saves to it, so it is there whenever you sign in.',
   primaryCta: 'Start training',
+  applyFailed:
+    'PRism could not finish setup. Check your connection and try again.',
   summaryEyebrow: 'What you told us',
   /** Shown for any question that was skipped. Never a stand-in value. */
   notSet: 'Not set',
-  /**
-   * Honest about where these answers currently go. The selections are persisted
-   * locally but not applied to the training profile -- see `onboardingStore`.
-   */
   summaryNote:
-    'Kept on this device. These answers are not applied to your training profile yet, so nothing in the app changes because of them.',
+    'These choices become your starting profile. Anything you skipped keeps its existing value, and you can change all of it later in Settings.',
   summaryLabels: {
     goal: 'Training for',
     experience: 'Experience',

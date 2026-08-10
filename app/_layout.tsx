@@ -100,9 +100,12 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
             {/* No back gesture: there is nothing behind sign-in to return to. */}
             <Stack.Screen name="auth/index" options={{ gestureEnabled: false }} />
-            {/* Reached from Today's header. A modal because it is a detour, not
-                a destination -- and because it is the only way to sign out. */}
+            {/* Reached from Settings. A modal because account lifecycle is a
+                detour, not a primary destination. */}
             <Stack.Screen name="account" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="exercise" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="measurement" options={{ presentation: 'modal' }} />
             <Stack.Screen
               name="workout/active"
               options={{ animation: 'slide_from_bottom', gestureEnabled: false }}

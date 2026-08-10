@@ -150,6 +150,16 @@ export interface Routine {
   description: string;
   daysPerWeek: number;
   isTemplate: boolean;
+  /**
+   * The lifter's chosen plan (`routines.is_active`).
+   *
+   * Only meaningful on a routine the lifter owns. A PRism template has
+   * `profileId === null` and is one shared row read by every account, so a flag
+   * on it would mean "active for everyone" -- which is why
+   * `selectActiveRoutine` resolves a template choice from the profile instead.
+   * See `src/domain/settings.ts`.
+   */
+  isActive: boolean;
   days: RoutineDay[];
 }
 

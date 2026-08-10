@@ -1,14 +1,18 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Card, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
+import { Button, Card, EmptyState, ListRow, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
 import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
 import { MUSCLE_META } from '@/domain/muscles';
+import { kgToDisplay } from '@/domain/calc/loadRecommendation';
+import { measurementsNewestFirst } from '@/domain/measurements';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { useShallow } from 'zustand/react/shallow';
 import { color, radius, recoveryScale, space } from '@/theme';
 import type { MuscleRecovery } from '@/domain/types';
+import { MEASUREMENT_COPY } from '@/content/userData';
+import { formatDate } from '@/utils/format';
 
 /**
  * BODY (Phase 3)
@@ -23,6 +27,8 @@ export default function BodyScreen() {
   const router = useRouter();
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const measurements = useTrainingStore((s) => s.measurements);
+  const profile = useTrainingStore((s) => s.profile);
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
@@ -31,6 +37,10 @@ export default function BodyScreen() {
   const recovery = useMemo(
     () => estimateRecovery(history, exerciseById, now).sort((a, b) => a.readiness - b.readiness),
     [history, exerciseById, now],
+  );
+  const newestMeasurements = useMemo(
+    () => measurementsNewestFirst(measurements).slice(0, 5),
+    [measurements],
   );
 
   /**
@@ -72,6 +82,37 @@ export default function BodyScreen() {
         </Text>
       </Card>
 
+      <SectionHeader title="Measurements" eyebrow="Your entries" />
+      {newestMeasurements.length === 0 ? (
+        <Card style={styles.gutter} padding="lg">
+          <EmptyState title={MEASUREMENT_COPY.emptyTitle} body={MEASUREMENT_COPY.emptyBody} />
+        </Card>
+      ) : (
+        <Card style={styles.gutter} padding="none">
+          {newestMeasurements.map((measurement, index) => (
+            <ListRow
+              key={measurement.id}
+              title={formatDate(measurement.measuredAt)}
+              subtitle={measurementSummary(measurement, profile?.unit ?? 'kg')}
+              icon="scale-outline"
+              iconTone="cyan"
+              chevron
+              divided={index > 0}
+              onPress={() =>
+                router.push({ pathname: '/measurement', params: { id: measurement.id } })
+              }
+            />
+          ))}
+        </Card>
+      )}
+      <Button
+        label={MEASUREMENT_COPY.addAction}
+        variant="secondary"
+        icon="add"
+        onPress={() => router.push('/measurement')}
+        style={styles.measurementAction}
+      />
+
       <SectionHeader title="Recovery by muscle" eyebrow="Estimated readiness" />
       <Card style={styles.gutter} padding="lg">
         {recovery.map((r, i) => (
@@ -96,6 +137,21 @@ export default function BodyScreen() {
       />
     </Screen>
   );
+}
+
+function measurementSummary(
+  measurement: import('@/domain/types').BodyMeasurement,
+  unit: import('@/domain/types').Unit,
+): string {
+  const parts: string[] = [];
+  if (measurement.bodyweightKg != null) {
+    const value = Math.round(kgToDisplay(measurement.bodyweightKg, unit) * 10) / 10;
+    parts.push(`${value} ${unit}`);
+  }
+  if (measurement.bodyFatPct != null) parts.push(`${measurement.bodyFatPct}% body fat`);
+  const waist = measurement.circumferencesCm.waist;
+  if (waist != null) parts.push(`${waist} cm waist`);
+  return parts.join(' · ');
 }
 
 function RecoveryRow({ recovery, divided }: { recovery: MuscleRecovery; divided: boolean }) {
@@ -136,6 +192,7 @@ function RecoveryRow({ recovery, divided }: { recovery: MuscleRecovery; divided:
 const styles = StyleSheet.create({
   gutter: { marginHorizontal: space.lg },
   explainer: { lineHeight: 19 },
+  measurementAction: { marginHorizontal: space.lg, marginTop: space.md, alignSelf: 'flex-start' },
   row: { paddingVertical: space.md, gap: 6 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   rowHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },

@@ -1,3 +1,4 @@
+import type { CustomExerciseInput } from '@/domain/customExercise';
 import type {
   BodyMeasurement,
   CheckIn,
@@ -56,6 +57,47 @@ export function toExercise(row: any): Exercise {
     isUnilateral: row.is_unilateral ?? false,
     isSystem: row.profile_id == null,
     cue: row.cue ?? undefined,
+  };
+}
+
+/**
+ * A custom movement, on its way into `exercises`.
+ *
+ * Note the absent `profile_id`, for the same reason `fromWorkout` omits it:
+ * ownership is not the mapper's to decide. The repository stamps it from the
+ * signed-in session, so a caller cannot write a row under someone else's
+ * account — and cannot write `profile_id: null` either, which is what the
+ * world-readable PRism library is (`Docs/invariants.md` I-6).
+ *
+ * `is_system` is likewise not a column. `toExercise` derives it from
+ * `profile_id == null`, so "is this part of the PRism library?" has exactly one
+ * source and cannot be asserted by a client.
+ */
+export function fromCustomExercise(input: CustomExerciseInput): Record<string, unknown> {
+  return {
+    name: input.name,
+    equipment: input.equipment,
+    primary_muscles: input.primaryMuscles,
+    secondary_muscles: input.secondaryMuscles,
+    is_unilateral: input.isUnilateral,
+    cue: input.cue,
+  };
+}
+
+/**
+ * A body measurement, on its way into `body_measurements`.
+ *
+ * `profile_id` is absent for the same reason as everywhere else in this file.
+ * `circumferences_cm` goes over as a jsonb object; the column is `not null
+ * default '{}'`, so an empty map is written as `{}` rather than omitted.
+ */
+export function fromMeasurement(m: BodyMeasurement): Record<string, unknown> {
+  return {
+    id: m.id,
+    measured_at: m.measuredAt,
+    bodyweight_kg: m.bodyweightKg,
+    body_fat_pct: m.bodyFatPct,
+    circumferences_cm: m.circumferencesCm,
   };
 }
 

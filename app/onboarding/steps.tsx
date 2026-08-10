@@ -31,8 +31,8 @@ type StepKey = (typeof STEP_KEYS)[number];
  * from a real choice later, which is the same mistake the check-in scales
  * deliberately avoid.
  *
- * Answers are recorded in `onboardingStore` and deliberately not applied to the
- * profile in this sprint; see that store for why.
+ * Answers are recorded in `onboardingStore` and applied as one profile patch on
+ * the completion screen. A skipped question stays absent from that patch.
  */
 export default function StepsScreen() {
   const router = useRouter();

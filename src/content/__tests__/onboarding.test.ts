@@ -138,5 +138,12 @@ describe('onboarding redesign content', () => {
       expect(body).toContain('this device');
       expect(body).not.toContain('sign in');
     });
+
+    it('says the answers become editable profile settings', () => {
+      const note = COMPLETE.summaryNote.toLowerCase();
+      expect(note).toContain('starting profile');
+      expect(note).toContain('settings');
+      expect(note).toContain('skipped');
+    });
   });
 });

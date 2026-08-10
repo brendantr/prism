@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { getRepository } from '@/data/repository';
 import { isAuthRequiredError } from '@/data/authRequired';
 import { useSessionStore } from './sessionStore';
+import type { CustomExerciseInput } from '@/domain/customExercise';
+import { planSelectionWrite, selectActiveRoutine } from '@/domain/settings';
 import { deviceLocalDate } from '@/domain/trainingDay';
 import type {
   BodyMeasurement,
@@ -53,6 +55,12 @@ interface TrainingState {
   completeWorkout: (workout: Workout, records: PersonalRecord[]) => Promise<void>;
   saveCheckIn: (checkIn: CheckIn) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
+  createExercise: (input: CustomExerciseInput) => Promise<Exercise>;
+  updateExercise: (id: string, input: CustomExerciseInput) => Promise<Exercise>;
+  deleteExercise: (id: string) => Promise<void>;
+  saveMeasurement: (measurement: BodyMeasurement) => Promise<void>;
+  deleteMeasurement: (id: string) => Promise<void>;
+  selectRoutine: (routineId: string) => Promise<void>;
   toggleFavourite: (exerciseId: string) => void;
 }
 
@@ -198,7 +206,67 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   updateProfile: async (patch) => {
     const profile = await getRepository().updateProfile(patch);
-    set({ profile });
+    set((s) => ({ profile, activeRoutine: selectActiveRoutine(s.routines, profile) }));
+  },
+
+  createExercise: async (input) => {
+    const exercise = await getRepository().createExercise(input);
+    set((s) => withExercise(s, exercise));
+    return exercise;
+  },
+
+  updateExercise: async (id, input) => {
+    const exercise = await getRepository().updateExercise(id, input);
+    set((s) => withExercise(s, exercise));
+    return exercise;
+  },
+
+  deleteExercise: async (id) => {
+    await getRepository().deleteExercise(id);
+    set((s) => {
+      const exercises = s.exercises.filter((exercise) => exercise.id !== id);
+      return {
+        exercises,
+        exerciseById: new Map(exercises.map((exercise) => [exercise.id, exercise])),
+        favouriteExerciseIds: s.favouriteExerciseIds.filter((exerciseId) => exerciseId !== id),
+      };
+    });
+  },
+
+  saveMeasurement: async (measurement) => {
+    await getRepository().saveMeasurement(measurement);
+    set((s) => ({
+      measurements: [...s.measurements.filter((m) => m.id !== measurement.id), measurement].sort(
+        (a, b) => a.measuredAt.localeCompare(b.measuredAt),
+      ),
+    }));
+  },
+
+  deleteMeasurement: async (id) => {
+    await getRepository().deleteMeasurement(id);
+    set((s) => ({ measurements: s.measurements.filter((m) => m.id !== id) }));
+  },
+
+  selectRoutine: async (routineId) => {
+    const routine = get().routines.find((candidate) => candidate.id === routineId);
+    if (!routine) throw new Error('That plan is not available.');
+
+    const write = planSelectionWrite(routine);
+    if (write.kind === 'profile') {
+      const profile = await getRepository().updateProfile(write.patch);
+      set((s) => ({ profile, activeRoutine: selectActiveRoutine(s.routines, profile) }));
+      return;
+    }
+
+    await getRepository().setActiveRoutine(write.routineId);
+    set((s) => {
+      const routines = s.routines.map((candidate) =>
+        candidate.profileId == null
+          ? candidate
+          : { ...candidate, isActive: candidate.id === write.routineId },
+      );
+      return { routines, activeRoutine: selectActiveRoutine(routines, s.profile) };
+    });
   },
 
   toggleFavourite: (exerciseId) =>
@@ -208,6 +276,19 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         : [...s.favouriteExerciseIds, exerciseId],
     })),
 }));
+
+/** Replace-or-add one exercise while keeping both read indexes in lockstep. */
+function withExercise(
+  state: Pick<TrainingState, 'exercises'>,
+  exercise: Exercise,
+): Pick<TrainingState, 'exercises' | 'exerciseById'> {
+  const exercises = [...state.exercises.filter((candidate) => candidate.id !== exercise.id), exercise]
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    exercises,
+    exerciseById: new Map(exercises.map((candidate) => [candidate.id, candidate])),
+  };
+}
 
 /** Completed sessions only, oldest first. Most calculations want this. */
 export function selectCompletedWorkouts(s: TrainingState): Workout[] {

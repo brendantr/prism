@@ -15,6 +15,7 @@ import {
   type SegmentedOption,
 } from '@/components/ui';
 import { MUSCLE_META, REGION_LABEL, type MuscleRegion } from '@/domain/muscles';
+import { canEditExercise } from '@/domain/customExercise';
 import {
   EQUIPMENT,
   MUSCLE_GROUPS,
@@ -184,7 +185,21 @@ export default function ExercisesScreen() {
   }
 
   return (
-    <Screen scroll={false} {...header}>
+    <Screen
+      scroll={false}
+      {...header}
+      headerRight={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add a custom movement"
+          onPress={() => router.push('/exercise')}
+          hitSlop={10}
+          style={({ pressed }) => [styles.addButton, pressed && { opacity: opacity.pressed }]}
+        >
+          <Ionicons name="add" size={22} color={color.violetBright} />
+        </Pressable>
+      }
+    >
       <SearchField
         value={query}
         onChangeText={setQuery}
@@ -283,6 +298,7 @@ export default function ExercisesScreen() {
             onToggleExpanded={() => setExpandedId((id) => (id === item.id ? null : item.id))}
             onToggleFavourite={() => toggleFavourite(item.id)}
             onLog={() => logExercise(item)}
+            onEdit={() => router.push({ pathname: '/exercise', params: { id: item.id } })}
           />
         )}
       />
@@ -300,6 +316,7 @@ interface ExerciseItemProps {
   onToggleExpanded: () => void;
   onToggleFavourite: () => void;
   onLog: () => void;
+  onEdit: () => void;
 }
 
 /**
@@ -315,6 +332,7 @@ function ExerciseItem({
   onToggleExpanded,
   onToggleFavourite,
   onLog,
+  onEdit,
 }: ExerciseItemProps) {
   const primary = exercise.primaryMuscles.map((m) => MUSCLE_META[m].label);
   const secondary = exercise.secondaryMuscles.map((m) => MUSCLE_META[m].label);
@@ -381,6 +399,16 @@ function ExerciseItem({
             onPress={onLog}
             style={styles.action}
           />
+          {canEditExercise(exercise) ? (
+            <Button
+              label="Edit movement"
+              variant="ghost"
+              size="sm"
+              icon="create-outline"
+              onPress={onEdit}
+              style={styles.action}
+            />
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -479,4 +507,5 @@ const styles = StyleSheet.create({
   cue: { lineHeight: 19 },
   muscleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   action: { alignSelf: 'flex-start' },
+  addButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });
