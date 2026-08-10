@@ -326,27 +326,6 @@
   `[recommendation]` The mechanism is worth more than the fixes: **a document owned by one sprint is
   wrong the moment two sprints run in parallel.** Privacy and store-form claims should be re-derived
   at integration by default, not merged.
-- **Delta 2026-08-10 — two `[fact, owner]` claims about the hosted project are withdrawn.**
-  `[fact, verified by probe]` This document has recorded since 2026-08-09 that a hosted project carried
-  `0001`–`0007`, and that the integration lane passed **19/19** against it. **Both are false.** On
-  2026-08-10 the probe was run against the only PRism Supabase project in the account and returned
-  **nine `false`s**; the first symptom was `0008` failing to apply with `relation "public.check_ins"
-  does not exist`. An empty database cannot have passed an integration lane.
-
-  `0001`–`0009` were then applied to that project in a single transaction and the probe re-run: **nine
-  `true`s**. That is the first verified presence of PRism's schema on any hosted project, and it means
-  every "verified against a real project" claim above — the `save_workout_graph` round trip, RLS
-  between two real accounts, `save_check_in`'s jsonb semantics, `0007`'s cascade fix — **is unproven
-  rather than proven.** The unit and SQL suites still stand; they run against local Postgres and were
-  never claims about a hosted project.
-
-  `[recommendation]` The mechanism, again, and it has now cost this project twice. The 2026-08-09
-  entry below already diagnosed it correctly — *"an agent has no dashboard, so a claim here about a
-  live project is the owner's report or it is nothing"* — and then the very next entries recorded two
-  more owner reports as `[fact]` and were believed for a day. **A cloud-state claim needs a probe
-  output pasted beside it, or it is not a fact.** The probe is cheap, read-only, and now verified to
-  discriminate on empty / `0007` / `0009` databases.
-
 - **Delta 2026-08-10 — the startup read is bounded** `[fact]`: `refresh()` loaded every session an
   account had ever logged, three levels deep (`workouts → workout_exercises → sets`), with no
   `.limit()`, `.range()` or pagination anywhere in `src/data/repository.ts`. The cost grew with
