@@ -67,29 +67,84 @@ SQL Editor. So first ask the project what it has, using the probe in
 `Docs/tester-readiness-runbook.md` §2, extended for the two newer migrations:
 
 ```sql
+-- PRism migration probe. READ-ONLY: creates nothing, changes nothing.
+-- Safe to run on a completely empty project.
 with fn as (
   select p.proname, pg_get_function_identity_arguments(p.oid) as args
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
 )
 select
-  to_regclass('public.profiles')            is not null as "0001 schema + RLS",
-  exists (select 1 from fn where proname = 'assert_exercise_visible') as "0002 hardening",
-  exists (select 1 from fn where proname = 'save_workout_graph')      as "0003 atomic writes",
-  exists (select 1 from fn where proname = 'save_check_in')           as "0004 partial check-ins",
-  exists (select 1 from fn where proname = 'delete_my_account')       as "0005 deletion",
-  (select count(*) from public.exercises where profile_id is null) >= 43 as "0006 catalogue",
-  exists (select 1 from pg_constraint
-           where conname = 'workout_exercises_exercise_id_fkey'
-             and condeferrable and confdeltype = 'a')                 as "0007 deletable w/ custom",
-  to_regclass('public.check_ins')           is not null
-    and exists (select 1 from information_schema.columns
-                 where table_schema='public' and table_name='check_ins'
-                   and column_name='local_date')                      as "0008 local training day",
-  to_regclass('public.entitlements')        is not null as "0009 entitlements";
+  to_regclass('public.profiles') is not null
+    as "0001 schema + RLS",
+
+  exists (select 1 from fn where proname = 'assert_exercise_visible')
+    as "0002 hardening",
+
+  exists (select 1 from fn where proname = 'save_workout_graph')
+    as "0003 atomic writes",
+
+  exists (select 1 from fn where proname = 'save_check_in')
+    as "0004 partial check-ins",
+
+  exists (select 1 from fn where proname = 'delete_my_account')
+    as "0005 deletion",
+
+  -- 0006 seeds rows and creates no objects of its own, so it can only be
+  -- counted. `query_to_xml` defers parsing until execution, and the CASE
+  -- short-circuits, so this stays safe when `exercises` does not exist yet.
+  case
+    when to_regclass('public.exercises') is null then false
+    else coalesce(
+      (xpath(
+        '/row/c/text()',
+        query_to_xml(
+          'select count(*) as c from public.exercises where profile_id is null',
+          false, true, ''
+        )
+      ))[1]::text::bigint >= 43,
+      false)
+  end as "0006 catalogue",
+
+  exists (
+    select 1 from pg_constraint
+     where conname = 'workout_exercises_exercise_id_fkey'
+       and condeferrable
+       and confdeltype = 'a'
+  ) as "0007 deletable w/ custom",
+
+  exists (
+    select 1
+      from pg_attribute a
+     where a.attrelid = to_regclass('public.check_ins')
+       and a.attname  = 'local_date'
+       and not a.attisdropped
+  ) as "0008 local training day",
+
+  to_regclass('public.entitlements') is not null
+    as "0009 entitlements";
 ```
 
+**Corrected 2026-08-10** `[fact]`. The earlier version of this query selected from `public.exercises`
+directly to count the seeded catalogue. Postgres resolves table references at **parse** time, so on a
+project that does not yet have `0001` it failed with `relation "public.exercises" does not exist`
+instead of reporting nine `false`s — it broke in exactly the situation it exists to diagnose. The
+count now goes through `query_to_xml`, whose SQL is a string and is therefore not parsed until it
+runs, behind a `case` that short-circuits when the table is absent.
+
+`[fact]` Verified against local Postgres in all three states, which is the only way to know a probe
+discriminates rather than merely runs: on an **empty** database it returns nine `false`s and no error;
+on a database migrated to **`0007`** it returns seven `true` and the last two `false`; on one migrated
+to **`0009`** it returns nine `true`.
+
 Apply every file the probe reports `false`, **in numeric order**, stopping at the first error.
+
+`[fact]` **The probe is the arbiter, not this document and not any sprint record.** On 2026-08-10 the
+`0008` migration was pasted into the PRism project and failed with `relation "public.check_ins" does
+not exist` — meaning `0001` had never been applied there, while `Docs/architecture.md` and
+`Docs/tester-readiness-runbook.md` both recorded the project as carrying `0001`–`0007`. Those records
+were the owner's report; the database disagreed. Run the probe before believing any of them.
 
 `[fact]` Two properties worth knowing before you run them: `0006` asserts 43 movements and 38 slots at
 the end and **aborts the whole transaction** rather than seeding a half catalogue — if it raises,
