@@ -282,6 +282,34 @@ only by `eas submit --platform android`.
 banking and tax details complete, before **any** in-app purchase can be created. Start it first; it
 gates the RevenueCat product, which gates the entitlement, which gates the paywall.
 
+### RevenueCat gates the first real-backend build — it is not parallel work
+
+`[fact, verified in source 2026-08-10]` A build with Supabase configured and **no** RevenueCat public
+key does not fall back to a free edition. `isEntitlementDisabled()` is false (not demo) and
+`isEntitlementBackendEnabled()` is true (Supabase present), so `entitlementStore.initialize()` asks
+Postgres, finds no entitlement, and settles on a locked phase. `isSurfaceLocked` then gates Progress,
+Body's recovery estimate and the 28/84-day Insights windows — while `purchaseReady` is false, so the
+paywall **cannot complete a sale**.
+
+That combination is a Guideline 2.1 rejection: features gated behind a purchase that cannot be made.
+
+**This is deliberate and must not be "fixed" by relaxing it.** The store's own comment states the
+reason: *"A real-backend build does not enter this branch merely because its public RevenueCat key is
+absent… otherwise missing client configuration would unlock every paid surface."* Treating an absent
+key as "free" would make deleting a key the way to unlock the paid product.
+
+`[recommendation]` The order is therefore fixed, not preferential:
+
+1. Paid Applications Agreement → App Store product
+2. RevenueCat project, entitlement `pro`, offering, and `EXPO_PUBLIC_REVENUECAT_IOS_KEY` in EAS
+3. **Only then** cut a production build
+
+`[fact, 2026-08-10]` `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set in the EAS
+`production` environment and `npx eas config --platform ios --profile production` resolves them
+alongside `EXPO_PUBLIC_DEMO_MODE=false`. `EXPO_PUBLIC_SENTRY_DSN` and the RevenueCat key are still
+absent — Sentry stays inert without a DSN, which is by design, but the RevenueCat gap is the blocker
+above.
+
 ### What App Review will do that testing does not
 
 `[recommendation]` Three things worth preparing, because each is a common rejection:
