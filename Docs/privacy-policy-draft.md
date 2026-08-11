@@ -17,22 +17,36 @@
 > **Keep it true.** If a future sprint starts collecting something new — a profile editor, body
 > measurements, notes, analytics, notifications — this document and the store forms must change in
 > the same sprint. A policy that describes an older version of the app is a liability, not a shield.
+>
+> **Synced 2026-08-11.** This file previously fell out of step with what was actually published: the
+> owner-supplied answers below were filled into a working copy that was rendered and sent out as the
+> live page, but never written back here — a repeat, in miniature, of the "record says one thing, the
+> real thing says another" failure this whole submission kept surfacing. Fixed by copying the same
+> answers back into this file. Two placeholders remain deliberately: whether the three processors
+> count as "sharing" under Google's current Data Safety definitions is a legal judgment, and the web
+> deletion-request URL depends on confirming the published page is actually live at its final URL.
 
 ---
 
 # Privacy Policy for PRism
 
-**Effective date:** `[OWNER: effective date]`
-**Last updated:** `[OWNER: date]`
+**Effective date:** 11 August 2026
+**Last updated:** 11 August 2026
+
+> **About in-app purchases in this version.** PRism currently offers **no in-app purchase**, and
+> collects no purchase or payment information of any kind. Where this policy describes purchases and
+> the payment processor RevenueCat — §2.3, and parts of §4, §5 and §6 — it describes how those will
+> work when a paid unlock ships, so the whole picture reads in one place. **None of it happens in the
+> version you are using.** When it does, the effective date above will change.
 
 PRism is a strength-training app. You log your workouts, and it shows you what has been happening to
 your training. This policy explains what information PRism holds, why, where it lives, and how you
 get it back or get rid of it.
 
 It is written to be read. If anything here is unclear, contact us at
-`[OWNER: contact email for privacy enquiries]`.
+qustrike@protonmail.com.
 
-PRism is provided by `[OWNER: legal entity name and registered address]` ("we", "us").
+PRism is provided by **Brendan Rodriguez**, an individual based in Florida, United States ("we", "us"). The best way to reach us about anything in this policy is email: qustrike@protonmail.com.
 
 ---
 
@@ -179,9 +193,7 @@ average. These ratings feed the app's readiness estimate.
 **Body information.** The app's database is built to hold your **bodyweight**, **body-fat
 percentage** and **body measurements** (for example waist or chest circumference in centimetres), and
 your export includes them if any exist.
-`[OWNER: the current release has no screen for entering body measurements — decide before publishing
-whether to describe this as a current feature or as one that is coming, and keep this paragraph
-matched to what actually ships.]`
+Entering them is entirely optional — the app works without a single one.
 
 **What we do with it.** It is used inside the app, for you: trends, readiness, and load suggestions.
 It is not used for advertising, not sold, not sent to RevenueCat, and not analysed across users.
@@ -200,8 +212,7 @@ that holds your email address and your hashed password. They process this data o
 order to run the service, and for no purpose of their own.
 
 - **Hosting region:** **us-east-1** (United States)
-- **Data processing terms with Supabase:** `[OWNER: state whether a data processing addendum is in
-  place]`
+- **Data processing terms with Supabase:** no separate data-processing addendum has been executed; Supabase's standard terms apply.
 
 **Supabase processes account and training data.** It hosts the database, the auth service and the
 API the app talks to.
@@ -209,13 +220,11 @@ API the app talks to.
 **Sentry processes restricted crash diagnostics.** It receives no account identity and no
 training or health payload, under the controls described in §2.5.
 
-**RevenueCat processes purchase and entitlement data — once the paid unlock exists.**
-`[OWNER: delete this paragraph and the one below for the first release, which has no in-app
-purchase. See Docs/privacy-data-inventory.md §1 "Which build are you declaring?" — with
-EXPO_PUBLIC_MONETIZATION_ENABLED off, RevenueCat is never configured and processes nothing.]`
-It receives the store transaction and the random PRism account identifier described in §2.3 so PRism
-can grant or restore the correct account's access. It does not receive training, body, password, or
-free-text data from PRism.
+**RevenueCat processes purchase and entitlement data — once the paid unlock exists** (see the notice
+at the top of this policy; nothing in this paragraph applies to the version you are using today). It
+would receive the store transaction and the random PRism account identifier described in §2.3 so
+PRism can grant or restore the correct account's access. It would not receive training, body,
+password, or free-text data from PRism.
 
 **Apple or Google processes payment.** The applicable store receives the payment information and
 purchase history required to complete the transaction under its own terms. PRism does not receive
@@ -228,8 +237,7 @@ If you export your data, PRism hands the file to your phone's own share sheet an
 where it goes — Files, email, a cloud drive, whatever you pick. Once it leaves the app it is covered
 by whatever service you sent it to, not by this policy.
 
-International transfers: `[OWNER: if the hosting region is outside your users' country, describe the
-transfer and its basis. This is a legal question and should be answered with counsel.]`
+International transfers: our database is hosted in the United States (us-east-1). If you use PRism from outside the United States, the information described above is transferred to and stored there.
 
 ---
 
@@ -258,8 +266,7 @@ We are describing real, verifiable measures here, not aspirations.
   no identifier to get wrong and none the server would accept.
 
 No system is perfectly secure, and we do not claim otherwise. If you believe your account has been
-compromised, change your password and contact us at
-`[OWNER: contact email for privacy enquiries]`.
+compromised, change your password and contact us at qustrike@protonmail.com.
 
 ---
 
@@ -287,9 +294,7 @@ account; a later Restore may make the store report the purchase again.
 There is no soft delete, no recycle bin, and no way for us to restore it afterwards. This is why the
 app asks you to confirm twice.
 
-Backups: `[OWNER: state your Supabase backup retention period and how long deleted data may persist
-in backups before rotating out. Read this from the Supabase project settings — it cannot be
-determined from the codebase, and it is a question store reviewers and users do ask.]`
+Backups: Supabase takes automated backups of the database under its standard terms. Deleting your account removes your data from the live database immediately; a copy may persist in those rotating backups for a short period afterwards before it is overwritten.
 
 Local device data (the in-progress workout draft and your session) is removed from your device when
 you sign out or delete your account, and when you uninstall the app.
@@ -334,14 +339,11 @@ sits directly above the delete control for that reason.
   your account and data are untouched.
 - **Change your password** using the "Forgot password" flow on the sign-in screen, which emails you a
   code.
-- **Ask us anything** at `[OWNER: contact email for privacy enquiries]`. If you would rather we
+- **Ask us anything** at qustrike@protonmail.com. If you would rather we
   handled an export or a deletion for you, or you cannot get into your account, write to us.
-  `[OWNER: state the response time you commit to.]`
+  We aim to respond within **30 days**.
 
-`[OWNER: depending on where your users live, they may have additional statutory rights — access,
-correction, restriction, objection, portability, and the right to complain to a supervisory
-authority. Whether and how to enumerate those here is a legal question. This draft deliberately
-describes the controls the app provides rather than asserting any legal entitlement.]`
+Depending on where you live, you may have further rights over your information under local law — such as access, correction, portability, or complaint to a regulator. This policy describes the controls the app gives you directly; it does not limit any right the law gives you.
 
 ---
 
@@ -349,12 +351,9 @@ describes the controls the app provides rather than asserting any legal entitlem
 
 PRism is not intended for children, and we do not knowingly collect data from them.
 
-- **Minimum age:** `[OWNER: state the minimum age — this must match the age rating declared on the
-  App Store and Google Play, and any age gate you implement.]`
-- The app has **no age gate** in the current version. `[OWNER: confirm whether one is required for
-  your declared age rating and target markets.]`
-- If you believe a child has created an account, contact
-  `[OWNER: contact email for privacy enquiries]` and we will delete it.
+- **Minimum age: 13.** PRism is not for anyone younger.
+- The app has **no age gate** in the current version — we ask, we do not verify.
+- If you believe a child has created an account, contact qustrike@protonmail.com and we will delete it.
 
 ---
 
@@ -365,20 +364,19 @@ If we change what PRism collects or what we do with it, we will update this poli
 of data, or using existing data for a new purpose — we will tell you in the app before it takes
 effect, and where the law requires it, ask for your consent.
 
-Previous versions: `[OWNER: decide whether to publish an archive of prior versions, and say so here.]`
+Previous versions: we do not publish an archive of earlier versions. The effective date at the top tells you which version you are reading.
 
 ---
 
 ## 10. Contact
 
-`[OWNER: legal entity name]`
-`[OWNER: registered address]`
-`[OWNER: contact email for privacy enquiries]`
+**Brendan Rodriguez**  
+Florida, United States  
+qustrike@protonmail.com
 
-`[OWNER: if you are required to appoint a data protection officer or an EU/UK representative, name
-them here. This is a legal question.]`
+We have not appointed a data protection officer or an EU/UK representative.
 
-**Governing law:** `[OWNER: governing jurisdiction]`
+**Governing law:** the State of Florida, United States.
 
 ---
 
@@ -422,7 +420,7 @@ Advertising. **Nothing is used for tracking** as Apple defines it.
   path in the form, plus `[OWNER: the web deletion-request URL, which Google also requires.]`
 - Data collection is: **required** for the account items, **optional** for check-in ratings,
   reflections and session ratings.
-- Independent security review: `[OWNER: no, unless one has been commissioned.]`
+- Independent security review: **No** — none has been commissioned for this release.
 
 **Before submitting either form, re-read `Docs/privacy-data-inventory.md` §7 (dormant columns) and
 §8 (what is not collected).** Those two sections are where an answer silently goes stale.
