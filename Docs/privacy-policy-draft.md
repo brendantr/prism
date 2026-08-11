@@ -196,7 +196,7 @@ use as our hosting and infrastructure provider. Supabase also operates the authe
 that holds your email address and your hashed password. They process this data on our instructions in
 order to run the service, and for no purpose of their own.
 
-- **Hosting region:** `[OWNER: Supabase project region]`
+- **Hosting region:** **us-east-1** (United States)
 - **Data processing terms with Supabase:** `[OWNER: state whether a data processing addendum is in
   place]`
 
@@ -390,7 +390,7 @@ the answers to hand.
 | --- | --- | --- | --- |
 | Contact Info → Email Address | **Yes** | Yes | No |
 | Health & Fitness → Fitness | **Yes** (workouts, sets, check-in wellbeing ratings) | Yes | No |
-| Health & Fitness → Health | `[OWNER: yes if body measurements ship]` | Yes | No |
+| Health & Fitness → Health | **Yes** — body measurements ship (`app/measurement.tsx`) | Yes | No |
 | User Content → Other User Content | **Yes** (session reflections — free text you type) | Yes | No |
 | Identifiers → User ID | **Yes** (the account identifier) | Yes | No |
 | Purchases → Purchase History | **Yes** (the Pro unlock and restore status) | Yes | No |
