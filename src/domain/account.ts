@@ -38,6 +38,26 @@ export function canOfferSignOut(opts: {
 }
 
 /**
+ * Whether the sign-in screen may offer "Forgot password?".
+ *
+ * The same rule as `canOfferSignOut`, applied to a different capability: show a
+ * control only where the build can honour it. Recovery needs **both** an
+ * account system (`authEnabled`) and an email path that delivers a typed code
+ * (`emailRecoveryEnabled` — custom SMTP plus a recovery template exposing
+ * `{{ .Token }}`; see `isEmailRecoveryEnabled`).
+ *
+ * Hidden rather than disabled, for the reason recorded above: a greyed-out
+ * "Forgot password?" tells a locked-out person that recovery exists and is
+ * being withheld, which is worse than it plainly not being offered.
+ */
+export function canOfferPasswordReset(opts: {
+  authEnabled: boolean;
+  emailRecoveryEnabled: boolean;
+}): boolean {
+  return opts.authEnabled && opts.emailRecoveryEnabled;
+}
+
+/**
  * Whether signing out has to stop and ask first.
  *
  * `signOutAndTearDown` discards the in-progress draft, so this is a destructive

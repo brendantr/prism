@@ -1,4 +1,9 @@
-import { canOfferSignOut, countCompletedSets, shouldConfirmSignOut } from '../account';
+import {
+  canOfferPasswordReset,
+  canOfferSignOut,
+  countCompletedSets,
+  shouldConfirmSignOut,
+} from '../account';
 import type { SessionPhase } from '../routing';
 import type { SetType, Workout, WorkoutSet } from '../types';
 
@@ -135,5 +140,29 @@ describe('countCompletedSets', () => {
 
   it('is zero for no session', () => {
     expect(countCompletedSets(null)).toBe(0);
+  });
+});
+
+/*
+  Recovery is offered only where the build can honour it.
+
+  PRism's reset asks for six typed digits (`verifyOtp`), and Supabase's default
+  recovery template sends a link containing none. Offering "Forgot password?"
+  against that template ends on a screen waiting forever for something that
+  never arrives -- a dead end is worse than an absent control, because it reads
+  as a broken promise rather than a missing feature.
+*/
+describe('canOfferPasswordReset', () => {
+  it('is hidden when the build cannot deliver a code, even with accounts working', () => {
+    expect(canOfferPasswordReset({ authEnabled: true, emailRecoveryEnabled: false })).toBe(false);
+  });
+
+  it('is hidden in a build with no accounts, however email is configured', () => {
+    expect(canOfferPasswordReset({ authEnabled: false, emailRecoveryEnabled: true })).toBe(false);
+    expect(canOfferPasswordReset({ authEnabled: false, emailRecoveryEnabled: false })).toBe(false);
+  });
+
+  it('is offered only when both hold', () => {
+    expect(canOfferPasswordReset({ authEnabled: true, emailRecoveryEnabled: true })).toBe(true);
   });
 });

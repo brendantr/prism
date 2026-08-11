@@ -29,6 +29,8 @@ import {
   type ResetRequestValidation,
   type ResetStage,
 } from '@/domain/authReset';
+import { canOfferPasswordReset } from '@/domain/account';
+import { isAuthEnabled, isEmailRecoveryEnabled } from '@/data/supabase/auth';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
 import { color, opacity, space } from '@/theme';
@@ -96,6 +98,12 @@ export default function AuthScreen() {
   const refreshTraining = useTrainingStore((s) => s.refresh);
 
   const isSignUp = mode === 'signup';
+  // Resolved once per render from build configuration, not from state: whether
+  // this build can deliver a reset code cannot change while the screen is open.
+  const recoveryOffered = canOfferPasswordReset({
+    authEnabled: isAuthEnabled(),
+    emailRecoveryEnabled: isEmailRecoveryEnabled(),
+  });
   const isReset = mode === 'reset';
   const busy = pending !== null;
   /**
@@ -486,8 +494,14 @@ export default function AuthScreen() {
 
         {/* Sign-in only. On sign-up there is no password to have forgotten, and
             offering a reset for an account that does not exist yet would be a
-            second way to ask the server whether an address is registered. */}
-        {!isSignUp ? (
+            second way to ask the server whether an address is registered.
+
+            Also hidden when the build cannot deliver a code at all: reset asks
+            for six typed digits, and Supabase's default recovery template sends
+            a link with none in it. Offering it then ends on a screen waiting
+            forever for something that never arrives -- see
+            `canOfferPasswordReset` and `Docs/store-submission-runbook.md` §3a. */}
+        {!isSignUp && recoveryOffered ? (
           <Pressable
             accessibilityRole="button"
             onPress={() => {

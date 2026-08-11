@@ -75,9 +75,43 @@ export function isEntitlementBackendEnabled(): boolean {
   return !DEMO_MODE && isSupabaseConfigured;
 }
 
-/** Explicit demo mode is the only mode that intentionally unlocks paid UI. */
+/**
+ * Whether this build sells anything at all.
+ *
+ * **A declaration, never an inference — and the distinction is the whole
+ * point.** `entitlementStore.initialize()` deliberately refuses to treat a
+ * *missing* RevenueCat key as "free", because that would make deleting a key
+ * the way to unlock the paid product. This flag is different in kind: it is the
+ * build stating, on purpose, that it has no paid tier.
+ *
+ * Default **off**. A build with no monetization configured therefore ships as a
+ * free app with every analysis surface open, instead of gating Progress, Body's
+ * recovery estimate and the 28/84-day Insights windows behind a paywall that
+ * cannot complete a sale — which is a Guideline 2.1 rejection and, before that,
+ * a lifter tapping a locked feature with no way to buy it.
+ *
+ * The default is chosen against the *failure*, not the happy path. Forgetting
+ * to set it when you do sell gives paid features away, which you will notice in
+ * a day and which harms nobody. Forgetting it the other way ships an app that
+ * looks broken to every user and to App Review.
+ *
+ * `[open question]` Setting this to `true` **without** a usable RevenueCat
+ * offering reproduces exactly the locked-but-unbuyable state described above.
+ * That combination is a misconfiguration; `Docs/store-submission-runbook.md`
+ * §7a treats it as a release stop condition rather than something the client
+ * tries to detect, because the client cannot tell a missing offering from one
+ * that has not synced yet.
+ */
+export function isMonetizationEnabled(): boolean {
+  return process.env.EXPO_PUBLIC_MONETIZATION_ENABLED === 'true';
+}
+
+/**
+ * Modes that intentionally unlock paid UI: explicit demo mode, and any build
+ * that declares it has no paid tier.
+ */
 export function isEntitlementDisabled(): boolean {
-  return DEMO_MODE;
+  return DEMO_MODE || !isMonetizationEnabled();
 }
 
 /** Whether the native purchase transport can be configured on this platform. */

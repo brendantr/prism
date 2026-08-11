@@ -420,6 +420,32 @@ alongside `EXPO_PUBLIC_DEMO_MODE=false`. `EXPO_PUBLIC_SENTRY_DSN` and the Revenu
 absent — Sentry stays inert without a DSN, which is by design, but the RevenueCat gap is the blocker
 above.
 
+### Shipping free first: two build declarations `[decision, owner, 2026-08-10]`
+
+Neither RevenueCat nor custom SMTP is on the critical path to collecting real training data. Two
+flags let a free build ship honestly while both are still outstanding. Both default **off**, and both
+are **declarations the build makes**, never inferences from missing configuration.
+
+| Variable | Default | Effect while off | Set to `"true"` when |
+|---|---|---|---|
+| `EXPO_PUBLIC_MONETIZATION_ENABLED` | off | Progress, Body's recovery estimate and the 28/84-day Insights windows are **open**. No paywall. | RevenueCat has a **synced offering** — §5 |
+| `EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED` | off | "Forgot password?" is **hidden** rather than dead-ending on a code that cannot arrive | Custom SMTP **and** `{{ .Token }}` are live — §3a |
+
+`[fact]` The monetization default is chosen against the failure, not the happy path. Forgetting it
+while you do sell gives paid features away — noticed within a day, harms nobody. Forgetting it the
+other way ships locked features with no way to buy them, which every user sees and App Review rejects.
+
+`[fact]` **The flag is not permission to infer.** `entitlementStore.initialize()` still refuses to
+treat a *missing* RevenueCat key as free, because that would make deleting a key the way to unlock the
+paid product. `isMonetizationEnabled()` is a different statement — the build declaring it has no paid
+tier — and only that statement unlocks. It also requires the literal string `"true"`, so a stray value
+cannot quietly start gating.
+
+`[recommendation]` **Setting `EXPO_PUBLIC_MONETIZATION_ENABLED=true` without a synced offering is a
+release stop condition**, not a state to debug in the field: it reproduces exactly the
+locked-but-unbuyable build described above. The client cannot distinguish a missing offering from one
+that has not synced, so this is checked by a sandbox purchase before submission, never at runtime.
+
 ### What App Review will do that testing does not
 
 `[recommendation]` Three things worth preparing, because each is a common rejection:

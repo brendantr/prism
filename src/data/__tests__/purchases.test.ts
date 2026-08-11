@@ -57,3 +57,45 @@ describe('purchase transport', () => {
     expect(mockSdk.purchasePackage).not.toHaveBeenCalled();
   });
 });
+
+/*
+  Whether the build sells anything, and why the default points the way it does.
+
+  entitlementStore refuses to read a MISSING RevenueCat key as "free", because
+  that would make deleting a key the way to unlock the paid product. This flag
+  is a different kind of statement -- the build declaring it has no paid tier --
+  so it is allowed to unlock what an absent key is not.
+*/
+describe('monetization declaration', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.EXPO_PUBLIC_MONETIZATION_ENABLED;
+    jest.resetModules();
+  });
+
+  it('is off when unset, so an unconfigured build ships free rather than locked-and-unbuyable', () => {
+    const { isMonetizationEnabled, isEntitlementDisabled } =
+      require('../purchases') as typeof import('../purchases');
+    expect(isMonetizationEnabled()).toBe(false);
+    // 'disabled' is the phase that unlocks every surface.
+    expect(isEntitlementDisabled()).toBe(true);
+  });
+
+  it('requires the literal string, so a stray value cannot silently start gating', () => {
+    for (const value of ['false', 'TRUE', '1', 'yes', '']) {
+      process.env.EXPO_PUBLIC_MONETIZATION_ENABLED = value;
+      jest.resetModules();
+      const { isMonetizationEnabled } = require('../purchases') as typeof import('../purchases');
+      expect(isMonetizationEnabled()).toBe(false);
+    }
+  });
+
+  it('gates the paid surfaces once the build says it sells', () => {
+    process.env.EXPO_PUBLIC_MONETIZATION_ENABLED = 'true';
+    jest.resetModules();
+    const { isMonetizationEnabled, isEntitlementDisabled } =
+      require('../purchases') as typeof import('../purchases');
+    expect(isMonetizationEnabled()).toBe(true);
+    expect(isEntitlementDisabled()).toBe(false);
+  });
+});
