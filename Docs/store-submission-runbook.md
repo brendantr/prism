@@ -169,6 +169,57 @@ document is a report, not an observation.
 
 ---
 
+## 3a. Email delivery — a prerequisite, not a polish step
+
+`[fact, 2026-08-10]` **Custom SMTP is required before password reset works at all**, and this was
+absent from every list in this repository until it surfaced by accident, from a banner on the
+Authentication → Emails page.
+
+The chain, each link verified:
+
+1. PRism's password reset is **code-based** — `confirmPasswordReset` calls
+   `verifyOtp({ type: 'recovery' })`, so the lifter types a code from the email
+   (`src/data/supabase/auth.ts`). No `redirectTo` is passed, deliberately, because this repository has
+   no deep-link capture.
+2. Supabase's **default recovery template sends only `{{ .ConfirmationURL }}`** — a link, and no code.
+   Against that template the app reaches "Enter your code" with nothing to enter.
+   `Docs/sprints/2026-08-09-password-reset.md` recorded this as an open question; it is still open.
+3. The template must therefore expose **`{{ .Token }}`**.
+4. **Supabase does not allow template editing without custom SMTP.** So the fix in (3) is gated on
+   SMTP, which makes SMTP gate password reset.
+
+`[fact]` Separately, the built-in sender is rate-limited and documented as being for testing rather
+than production, so it is not a basis for a real cohort even where it technically delivers.
+
+**The order matters, and the obvious order is wrong** `[decision, 2026-08-10]`:
+
+| State | Sign-up | Password reset |
+|---|---|---|
+| Confirmation **off**, no SMTP — *today* | works | **broken** |
+| Confirmation **on**, no SMTP | **broken** | **broken** |
+| Confirmation **on**, custom SMTP + `{{ .Token }}` | works | works |
+
+Turning on "Confirm email" before SMTP exists therefore makes things strictly worse: it adds a second
+failure to the one already present. An earlier version of this runbook recommended exactly that, on the
+assumption that confirmation was purely an auth-hardening toggle.
+
+### Steps
+
+1. **Authentication → Emails → SMTP Settings.** Any real sender works (Resend, Postmark, SendGrid,
+   SES); all require a verified sending domain.
+2. **Edit the templates**, now unlocked. The reset template must contain `{{ .Token }}`. Check the
+   confirmation template reads sensibly too — it is the first thing a new lifter sees from PRism.
+3. **Authentication → Sign In / Providers → Email → Confirm email.** Only now.
+
+`[recommendation]` Then exercise it once for real: request a reset for a throwaway account and confirm
+a usable code arrives. Reset has never been executed against any hosted project, and a lifter who
+forgets a password is otherwise a support ticket with no self-service path.
+
+`[fact]` One interaction with §7a: with confirmation on, **App Review needs pre-confirmed demo
+credentials**, or a reviewer must receive and click a confirmation mail on their own schedule.
+
+---
+
 ## 4. Create the EAS environment variables
 
 `[fact]` `eas.json` sets only `EXPO_PUBLIC_DEMO_MODE` per profile. Everything else lives in the EAS
@@ -387,6 +438,9 @@ Everything in the original walkthrough, plus what this release adds:
 4. Add a body measurement on Body.
 5. Force-quit mid-session, reopen, confirm the session survived.
 6. Submit a check-in.
+6a. **Request a password reset and complete it with the emailed code.** This exercises the SMTP and
+   `{{ .Token }}` work from §3a, and it is the only flow in the app that depends on a third party
+   delivering something to a human.
 7. **Paid surfaces while unentitled:** Insights' 28/84-day windows, Progress, and Body's recovery
    section should show the lock; Body's measurements and History must **not**.
 8. **Buy the unlock in sandbox.** Confirm the paid surfaces open. Force-quit and reopen — the
@@ -407,5 +461,10 @@ Stop and reconsider rather than working around it if:
   mode that takes money without delivering the product. Do not ship past it.
 - You are tempted to put a service-role key, a RevenueCat secret key, or the webhook auth value into
   an `EXPO_PUBLIC_*` variable to make something work. That is I-4, and it has no exception process.
+- You are about to enable "Confirm email" without custom SMTP configured (§3a). That does not harden
+  sign-up, it breaks it, on top of the password reset that is already broken.
+- A password-reset email arrives containing a link rather than a code. The recovery template is still
+  the Supabase default; the app has no deep-link capture and cannot use a link, so reset is
+  unusable until the template exposes `{{ .Token }}`.
 - Deleting a test account leaves its RevenueCat customer behind. I-10 is not met, and the privacy
   policy would be describing something the app does not do.
