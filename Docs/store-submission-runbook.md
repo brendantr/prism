@@ -261,6 +261,48 @@ paid unlock. Look at them in a real release build before deciding what the listi
 
 ---
 
+## 7a. iOS first — Play Console is deferred `[decision, owner, 2026-08-10]`
+
+There is no Google Play Console account, so the route is **TestFlight → App Store review**, and Android
+is out of scope until that lands. What that changes:
+
+**RevenueCat needs only the App Store side.** Create the project with the iOS app
+(`app.prism.trainer`) and the non-consumable `app.prism.trainer.pro.lifetime`; leave the Android app
+out entirely. `publicSdkKey()` (`src/data/purchases.ts`) resolves per platform, so an unset
+`EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` disables purchasing on a platform you are not shipping — the
+correct behaviour, not a gap. Set `EXPO_PUBLIC_REVENUECAT_IOS_KEY` only.
+
+**`eas.json`'s `submit.production` is currently the wrong way round for this plan** `[fact]`: it
+configures Android (a Play service account that does not exist yet) and deliberately omits iOS so
+`eas submit` prompts for `ascAppId`/`appleTeamId` and caches them. That is workable — the prompt is
+one-time — but the Android block is **staged for later, not live**. It is harmless because it is read
+only by `eas submit --platform android`.
+
+**The Paid Applications Agreement is the long pole.** In App Store Connect it must be active, with
+banking and tax details complete, before **any** in-app purchase can be created. Start it first; it
+gates the RevenueCat product, which gates the entitlement, which gates the paywall.
+
+### What App Review will do that testing does not
+
+`[recommendation]` Three things worth preparing, because each is a common rejection:
+
+1. **Provide demo credentials in App Review notes.** PRism requires an account, and Apple requires
+   working credentials when it does. If email confirmation is on, a reviewer signing up themselves has
+   to receive and click a confirmation email — avoidable friction on a reviewer's schedule, not yours.
+2. **Expect the reviewer to delete that account.** Apple actively tests account deletion, and PRism's
+   deletion works now — so the demo account can vanish mid-review and a second review attempt then
+   fails to sign in. Prepare two accounts, or be ready to recreate one immediately.
+3. **The paid surfaces must be reachable and honest.** Insights' 28/84-day windows, Progress and Body's
+   recovery estimate sit behind the unlock. A reviewer who taps them gets the paywall, which must show
+   a real price from a real offering — an offering that has not synced yet reads as a broken purchase,
+   which is Guideline 2.1. Verify a sandbox purchase before submitting, not after.
+
+`[fact]` Also relevant to review: `PhasePanel` renders `null` when `!__DEV__`, so Progress and Body are
+thinner in the build a reviewer sees than in dev. Look at them in a real release build before deciding
+what the listing promises.
+
+---
+
 ## 8. Build and submit
 
 `[fact]` Resolve the config without building first; it is free and catches a missing variable:
