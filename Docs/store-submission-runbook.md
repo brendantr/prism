@@ -203,13 +203,72 @@ Turning on "Confirm email" before SMTP exists therefore makes things strictly wo
 failure to the one already present. An earlier version of this runbook recommended exactly that, on the
 assumption that confirmation was purely an auth-hardening toggle.
 
-### Steps
+### Steps — explicit, in order `[decision, owner, 2026-08-10: Resend]`
 
-1. **Authentication → Emails → SMTP Settings.** Any real sender works (Resend, Postmark, SendGrid,
-   SES); all require a verified sending domain.
-2. **Edit the templates**, now unlocked. The reset template must contain `{{ .Token }}`. Check the
-   confirmation template reads sensibly too — it is the first thing a new lifter sees from PRism.
-3. **Authentication → Sign In / Providers → Email → Confirm email.** Only now.
+Navigation below is written against the Supabase dashboard for project `gyxcjmitzktffyuroucz`.
+
+**A. Resend: account and sending domain**
+
+1. Sign up at `resend.com` and verify the sign-up email.
+2. **Domains → Add Domain.** Enter a domain you control and can edit DNS for. The sender address must
+   live on it.
+3. Resend displays the DNS records to add — an `MX` for its sending subdomain plus `TXT` records for
+   SPF and DKIM. Add them at whoever hosts your DNS, exactly as shown. Add a DMARC record too if
+   Resend offers one.
+4. Press **Verify**. This is usually minutes but DNS propagation can take longer; the domain must read
+   **Verified** before anything else in this section will work.
+
+`[fact]` **Without a domain you are limited to Resend's onboarding sender, which only delivers to your
+own account address.** That is enough to prove the flow end to end and **not** enough for testers or
+App Review, both of which receive mail at addresses you do not own.
+
+**B. Resend: API key**
+
+5. **API Keys → Create API Key.** Name it something like `supabase-smtp`; sending permission is
+   sufficient. **Copy it now** — Resend shows it once.
+
+**C. Supabase: SMTP**
+
+6. **Authentication → Emails → SMTP Settings**, enable custom SMTP, and fill in:
+
+   | Field | Value |
+   |---|---|
+   | Host | `smtp.resend.com` |
+   | Port | `465` |
+   | Username | `resend` |
+   | Password | the API key from step 5 |
+   | Sender email | an address on the domain verified in step 4 |
+   | Sender name | `PRism` |
+
+   `[recommendation]` Confirm host and port against Resend's own SMTP page rather than this table —
+   providers do change them, and this document cannot notice when they do.
+
+7. Save. The "set up custom SMTP to edit templates" banner on the Templates tab should disappear.
+
+**D. Supabase: raise the email rate limit**
+
+8. **Authentication → Rate Limits → emails.** The default is set for the built-in testing sender and
+   is low enough to throttle a small cohort. Raise it to something your Resend plan supports.
+   `[fact]` Missing this produces the confusing failure where email works, then abruptly does not,
+   for reasons the app cannot see or report.
+
+**E. Supabase: templates**
+
+9. **Authentication → Emails → Templates → Reset password.** Replace subject and body with the
+   version holding `{{ .Token }}`. **The preview must show six digits, not a button or a URL** — that
+   is the whole point of this section.
+10. **Confirm sign up.** Replace subject and body. Keep `{{ .ConfirmationURL }}` here: confirmation is
+    a link opened in a browser, and unlike reset the app is not waiting on a typed value.
+
+**F. Supabase: turn confirmation on — only now**
+
+11. **Authentication → Sign In / Providers → Email → Confirm email**, on, and save.
+
+**G. Rename the project**
+
+12. **Project Settings → General → Project name.** `[fact]` The project **ref does not change**, so
+    the API URL, anon key, EAS variables, deployed Edge Functions and the RevenueCat webhook URL are
+    all unaffected. Nothing needs redoing afterwards.
 
 `[recommendation]` Then exercise it once for real: request a reset for a throwaway account and confirm
 a usable code arrives. Reset has never been executed against any hosted project, and a lifter who
