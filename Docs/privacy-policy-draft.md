@@ -157,9 +157,12 @@ query values. PRism does not attach a Sentry user. Screenshots, view hierarchy, 
 automatic sessions, performance tracing, failed-request capture and product analytics are disabled.
 Development and demo builds do not initialise Sentry at all.
 
-Sentry processes these diagnostics so we can identify and fix failures. Retention and processing
-details: `[OWNER: insert the configured Sentry retention period, hosting region, and applicable
-data-processing terms before publication.]`
+Sentry processes these diagnostics so we can identify and fix failures. They are stored in the
+**United States** — the same country as the database above, so no additional transfer arises — and
+kept for a limited retention period set by our Sentry plan, currently **30 days**, after which they
+are deleted automatically. Sentry's standard terms apply; no separate data-processing addendum has
+been executed. `[fact, 2026-08-11]` The region is read from the project's own DSN
+(`ingest.us.sentry.io`), not assumed.
 
 ---
 
