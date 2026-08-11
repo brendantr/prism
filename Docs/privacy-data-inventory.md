@@ -38,6 +38,24 @@ A column that exists but has no write path in the client is **dormant**, not col
 listed separately in §7 rather than mixed in, because declaring data you do not collect is as wrong
 as omitting data you do.
 
+### Which build are you declaring? `[fact, 2026-08-10]`
+
+**A store privacy form describes one binary, not the repository.** Two build flags change what is
+collected, both default **off**, and the first planned release ships with both off — so several rows
+below are *supported by the code and not collected by that build*. Declaring them anyway is as wrong
+as omitting data you do collect.
+
+| Flag | Default | When off |
+|---|---|---|
+| `EXPO_PUBLIC_MONETIZATION_ENABLED` | off | **No purchase data of any kind.** Verified in code: `alignPurchaseIdentity` has exactly one call site (`entitlementStore.ts:177`) and it sits behind the `isEntitlementDisabled()` early return. RevenueCat is never configured — no SDK initialisation, no customer created, no network call. §5.1 does not apply. |
+| `EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED` | off | "Forgot password?" is hidden, so no recovery email is ever requested. Sign-up confirmation is separate and follows the project's own setting. |
+| `EXPO_PUBLIC_SENTRY_DSN` | unset | **No diagnostics leave the device.** `TELEMETRY_ENABLED` is true only in a release, non-demo build with a DSN. §6's crash diagnostics do not apply. |
+
+**For the first release, therefore:** the processors are **Supabase**, plus **Sentry only if a DSN is
+set**, plus Apple for distribution. **RevenueCat processes nothing**, and Purchases / Financial Info
+are **not collected**. When the paid unlock ships, that changes and so must both store forms — it is a
+listing update, not only a build.
+
 **Two build modes exist and they collect differently.** Demo builds (`__DEV__`, or an explicit
 `EXPO_PUBLIC_DEMO_MODE=true`) make **zero network calls** and keep everything on the device
 (`src/data/supabase/client.ts:25-33`). Release builds set `EXPO_PUBLIC_DEMO_MODE=false`
@@ -149,7 +167,11 @@ saw the other.
 
 ---
 
-## 5.1 Purchase and access data
+## 5.1 Purchase and access data — **only when `EXPO_PUBLIC_MONETIZATION_ENABLED=true`**
+
+> `[fact]` Not applicable to the first release. With the flag off, RevenueCat is never configured and
+> nothing in this section is collected. Kept here because it becomes accurate the day the paid unlock
+> ships, and a section deleted now would be a section rewritten from memory later.
 
 | Data item | Stored where | Purpose | Required? | Evidence |
 | --- | --- | --- | --- | --- |

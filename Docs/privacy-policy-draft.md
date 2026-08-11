@@ -206,9 +206,13 @@ API the app talks to.
 **Sentry processes restricted crash diagnostics.** It receives no account identity and no
 training or health payload, under the controls described in §2.5.
 
-**RevenueCat processes purchase and entitlement data.** It receives the store transaction and the
-random PRism account identifier described in §2.3 so PRism can grant or restore the correct account's
-access. It does not receive training, body, password, or free-text data from PRism.
+**RevenueCat processes purchase and entitlement data — once the paid unlock exists.**
+`[OWNER: delete this paragraph and the one below for the first release, which has no in-app
+purchase. See Docs/privacy-data-inventory.md §1 "Which build are you declaring?" — with
+EXPO_PUBLIC_MONETIZATION_ENABLED off, RevenueCat is never configured and processes nothing.]`
+It receives the store transaction and the random PRism account identifier described in §2.3 so PRism
+can grant or restore the correct account's access. It does not receive training, body, password, or
+free-text data from PRism.
 
 **Apple or Google processes payment.** The applicable store receives the payment information and
 purchase history required to complete the transaction under its own terms. PRism does not receive
@@ -391,8 +395,8 @@ the answers to hand.
 | Identifiers → User ID | **Yes** (the account identifier) | Yes | No |
 | Purchases → Purchase History | **Yes** (the Pro unlock and restore status) | Yes | No |
 | Usage Data | **No** | — | — |
-| Diagnostics → Crash Data / Other Diagnostic Data | **Yes** (restricted crash reports described in §2.5) | No | No |
-| Purchases → Purchase History | **Yes**, if the user buys the one-time unlock (§2.3) | No | No |
+| Diagnostics → Crash Data / Other Diagnostic Data | **Yes** if the build has a Sentry DSN (restricted crash reports, §2.5); **No** if it does not — nothing leaves the device without one | No | No |
+| Purchases → Purchase History | **No for the first release** (no in-app purchase exists). **Yes** once the one-time unlock ships (§2.3) | No | No |
 | Location, Contacts, Browsing History, Search History, Financial Info, Sensitive Info, Identifiers → Device ID | **No** | — | — |
 
 Purpose for every collected item: **App Functionality** only. Not Analytics, not Product
@@ -403,8 +407,9 @@ Advertising. **Nothing is used for tracking** as Apple defines it.
 
 - Data collected: **Personal info → Email address**; **Health and fitness → Fitness info** (and
   **Health info** if body measurements ship); **App activity → Other user-generated content**
-  (session reflections); **App info and performance → Crash logs / Diagnostics**; and **Financial
-  info → Purchase history** for the Pro unlock.
+  (session reflections); **App info and performance → Crash logs / Diagnostics** (only with a Sentry
+  DSN configured); and **Financial info → Purchase history** — the last of which applies **only once
+  the Pro unlock ships**, not to the first release.
 - Data shared with third parties: Supabase, Sentry and RevenueCat act as processors operating on our
   behalf. `[OWNER: confirm whether any of those three processor relationships counts as "sharing"
   against Google's current Data Safety definitions, and against RevenueCat's and Sentry's current
