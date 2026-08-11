@@ -29,6 +29,28 @@ export function authenticatedUserId(authorization: string | null): string | null
   }
 }
 
+/**
+ * Whether this deployment has a RevenueCat customer to erase at all.
+ *
+ * The distinction this draws is the whole point, and it is not the same as
+ * "did the call succeed":
+ *
+ *  - **Not configured** — no project id and no secret key, so this app has
+ *    never sent RevenueCat a customer. There is nothing there to delete, and
+ *    refusing to delete the Supabase account over it would block I-10 on a
+ *    processor the build does not even use. Skip it and delete the account.
+ *  - **Configured but failing** — a customer may well exist. Skipping would
+ *    tell a lifter their data is gone while it sits at a processor. That stays
+ *    a hard failure, and the caller sees 502.
+ *
+ * Both halves are required together. One without the other cannot authenticate
+ * a v2 request, so a half-set deployment is treated as unconfigured rather than
+ * attempted and reported as a transport failure.
+ */
+export function revenueCatConfigured(projectId: string, secretKey: string): boolean {
+  return projectId.length > 0 && secretKey.length > 0;
+}
+
 export function revenueCatCustomerUrl(projectId: string, userId: string): string {
   return `https://api.revenuecat.com/v2/projects/${encodeURIComponent(projectId)}/customers/${encodeURIComponent(userId)}`;
 }

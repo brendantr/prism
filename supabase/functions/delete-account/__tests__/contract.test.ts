@@ -1,5 +1,6 @@
 import {
   authenticatedUserId,
+  revenueCatConfigured,
   revenueCatCustomerUrl,
   revenueCatDeletionComplete,
 } from '../contract';
@@ -28,5 +29,29 @@ describe('delete-account request contract', () => {
   it('treats accepted, completed and already-absent deletion as idempotent success', () => {
     expect([200, 202, 404].every(revenueCatDeletionComplete)).toBe(true);
     expect([400, 401, 403, 409, 429, 500].some(revenueCatDeletionComplete)).toBe(false);
+  });
+
+  /*
+    I-10 must not depend on billing being set up.
+
+    The fourth condition that used to sit on the 503 made account deletion
+    refuse to run until RevenueCat was configured -- on a build with no
+    RevenueCat keys in any environment, which therefore could not sell
+    anything. Deletion is a hard store gate that App Review tests; billing is
+    optional until you charge someone.
+  */
+  describe('revenueCatConfigured', () => {
+    it('is false when neither value is set, so deletion proceeds without a processor', () => {
+      expect(revenueCatConfigured('', '')).toBe(false);
+    });
+
+    it('is false when only one half is set, rather than attempting an unauthenticatable call', () => {
+      expect(revenueCatConfigured('proj_123', '')).toBe(false);
+      expect(revenueCatConfigured('', 'sk_secret')).toBe(false);
+    });
+
+    it('is true only with both, which is what makes a failure fatal rather than skippable', () => {
+      expect(revenueCatConfigured('proj_123', 'sk_secret')).toBe(true);
+    });
   });
 });

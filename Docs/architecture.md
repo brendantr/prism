@@ -346,11 +346,35 @@
   requires working deletion before submission and App Review tests it**, so this would have been a
   rejection rather than a bug report.
 
-  `[fact]` A consequence worth stating: **RevenueCat is now on the critical path for account deletion**,
-  not only for payments — the function needs `REVENUECAT_SECRET_API_KEY`, so the RevenueCat project has
-  to exist before I-10 can be met. `[fact]` A second: every failed deletion in this lane leaves its
-  disposable test accounts behind, so that project currently holds orphaned test users that should be
-  cleared before real ones arrive.
+  **Closed the same day, and the fix was a design correction rather than configuration**
+  `[decision, owner, 2026-08-10]`. `delete-account` treated a missing `REVENUECAT_PROJECT_ID` /
+  `REVENUECAT_SECRET_API_KEY` as a `503`, alongside the genuinely required platform values — so
+  **account deletion refused to run until a payment processor was configured, on a build that had no
+  RevenueCat keys in any environment and therefore could not sell anything.** That inverts the
+  priority: I-10 is a hard store gate that App Review tests, and billing is optional until you charge
+  someone.
+
+  The function now separates two cases a single condition had conflated (`revenueCatConfigured`, pure
+  and tested):
+  - **Not configured** — no customer was ever sent, so there is nothing to erase. Skip it and delete
+    the account.
+  - **Configured but failing** — a customer may exist, so this still aborts *before* the database
+    delete with a `502`. A lifter is never told their data is gone while a copy sits at a processor.
+
+  A half-set deployment counts as unconfigured, since one value without the other cannot authenticate
+  a v2 request.
+
+  `[fact]` Both Edge Functions were then deployed to `gyxcjmitzktffyuroucz` with the `verify_jwt`
+  settings `supabase/config.toml` specifies (`revenuecat-webhook` false, `delete-account` true), and
+  the lane re-run: **23 passed, 0 failed, 23 total.** Account deletion is now verified end to end
+  against a hosted project — the erasure of an account owning a custom movement logged in a session,
+  which is the exact cascade-ordering case `0007` exists to fix. **I-10 is met in practice, not only
+  in code.**
+
+  `[fact]` Still true: the earlier failing runs left their disposable test accounts behind, so that
+  project holds orphaned test users to clear before real ones arrive. And the RevenueCat secrets are
+  still unset — the webhook rejects everything until `REVENUECAT_WEBHOOK_AUTH` exists, so **entitlements
+  cannot yet be granted**; deletion simply no longer waits on that.
 
 - **Delta 2026-08-10 — the startup read is bounded** `[fact]`: `refresh()` loaded every session an
   account had ever logged, three levels deep (`workouts → workout_exercises → sets`), with no
