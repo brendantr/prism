@@ -3,7 +3,7 @@
 ## Document status
 
 - **Status:** Draft for engineer/owner review.
-- **Date:** 2026-08-09
+- **Date:** 2026-08-09; reconciled 2026-08-11 for the free-first iOS binary
 - **Purpose:** One place naming the commands that gate a release, what each actually covers, and the
   release-configuration facts a build inherits today. It records state; it does not grant approval for
   any release step.
@@ -52,10 +52,10 @@ App identity, from `app.json` `[fact]`: `app.prism.trainer` on both platforms, `
 It is now **1.0.0** — the submission this checklist gates is the first public release, and shipping a
 store build numbered 0.1.0 misdescribes it to every user who reads the listing.
 
-`submit.production` is **no longer empty** `[fact]`. It configures the Android submitter to the
-`internal` track with `releaseStatus: "draft"` — see `Docs/store-submission-runbook.md` §8 for why
-that conservative default was chosen and which two fields to change for a public rollout. iOS submit
-config is deliberately absent so `eas submit` prompts rather than carrying a guessed `ascAppId`.
+`submit.production` is **no longer empty** `[fact]`. Android remains staged on the `internal` track
+with `releaseStatus: "draft"`. Commit `3c09ea9` also pins the account-specific `ascAppId` and
+`appleTeamId` under `submit.production.ios`; their values are not credentials and are not repeated in
+this document. Submission credentials remain external and must never be committed.
 
 ---
 
@@ -71,44 +71,49 @@ config is deliberately absent so `eas submit` prompts rather than carrying a gue
 > The correction matters more than the wording: an operator following the old §3 would have expected
 > a safe, self-contained demo build and produced one that opens into a permanent data-load failure.
 
-**What a production build does today** `[fact, traced through `eas.json` and
-`src/data/supabase/client.ts`]`:
+**What the intended first production binary does** `[decision, owner, 2026-08-11; behavior traced
+through source/configuration]`:
 
 - `eas.json`'s `build.production.env` sets `EXPO_PUBLIC_DEMO_MODE` to **`"false"`** explicitly. It is
   not unset, and it is not inherited from the EAS environment.
 - Even without that, an unset flag would still resolve to non-demo: `DEMO_MODE` falls back to
   `__DEV__`, which is false in any EAS/release bundle (`client.ts`).
 - So a production build runs **against the real backend**, and needs `EXPO_PUBLIC_SUPABASE_URL` and
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY` to be present to function at all. A store-ready S4 build also needs
-  the matching platform's public RevenueCat SDK key: `EXPO_PUBLIC_REVENUECAT_IOS_KEY` or
-  `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY`.
-- If those are absent, `isSupabaseConfigured` is false with demo off. That state **fails loudly by
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY` to be present to function at all.
+- `EXPO_PUBLIC_MONETIZATION_ENABLED=false` explicitly selects the free-first path. Entitlement
+  initialization returns before RevenueCat SDK configuration/customer alignment, analysis surfaces
+  remain open, and paywall/purchase/restore controls are absent. No RevenueCat key is required.
+- `EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED=false` hides "Forgot password?"; custom SMTP and the recovery
+  template are deferred until a future v1.x binary explicitly enables recovery.
+- Sentry diagnostics are enabled only if the exact release, non-demo binary resolves a non-empty
+  `EXPO_PUBLIC_SENTRY_DSN`; the store disclosure must match that candidate.
+- If the Supabase values are absent, `isSupabaseConfigured` is false with demo off. That state **fails loudly by
   design** — it does not fall back to demo. A silent fallback would ship a build that claims to be
   live while writing every logged session to local storage only.
 
 **Therefore the pre-submission check is a positive one, not an absence check** `[decision]`:
 
-1. Confirm the `production` profile actually resolves both Supabase variables and the correct
-   platform RevenueCat public SDK key
-   (`npx eas config --platform ios --profile production`). Absent variables are now a release
-   blocker, not a fallback into demo.
+1. Confirm the `production` profile resolves both Supabase variables plus the three intended
+   declarations: demo, monetization and email recovery all false
+   (`npx eas config --platform ios --profile production`). Confirm whether a Sentry DSN is present
+   without publishing its value. A missing Supabase variable or mismatched declaration is a blocker.
 2. Confirm the Supabase project those variables point at has had every migration in
    `supabase/migrations/` applied — including `0003_workout_write_integrity.sql`, without which
    `save_workout_graph` does not exist and **every workout save fails**.
-3. Confirm migration `0009_entitlements.sql` is applied and both `revenuecat-webhook` and
-   `delete-account` Edge Functions are deployed. Server configuration includes
-   `REVENUECAT_WEBHOOK_AUTH`, a least-privilege `REVENUECAT_SECRET_API_KEY` for customer deletion,
-   and `REVENUECAT_PROJECT_ID`, alongside Supabase's function runtime values. Never place privileged
-   values in EAS or any `EXPO_PUBLIC_*` variable.
+3. Confirm migration `0009_entitlements.sql` is applied and the `delete-account` Edge Function is
+   deployed. The current export path reads the entitlement shape, and in-app deletion depends on the
+   function even with RevenueCat disabled. Never place privileged values in EAS or any
+   `EXPO_PUBLIC_*` variable.
 4. Confirm sign-in works against that project on a real build. Authentication exists now
    (`Docs/decisions/ADR-0004-authentication-and-session.md`); the older G-1 framing of this document,
    which assumed no auth path existed, no longer applies.
-5. Complete every external product, entitlement, offering, webhook and sandbox acceptance step in
-   `Docs/revenuecat-release-runbook.md`; repository tests cannot verify any of them.
+5. Confirm the free-first candidate exposes no paywall, purchase, restore or locked analysis surface.
+   RevenueCat products, offerings, webhook, purchase validation and sandbox acceptance are v1.x gates
+   only after a future binary explicitly enables monetization.
 
-**Not changed by this branch** `[fact]`: no EAS environment variable was created and `eas.json` was
-not edited. Both are production configuration, gated behind explicit engineer/owner approval
-(`CLAUDE.md` § Scope discipline).
+**External state remains unverified** `[fact]`: commit `3c09ea9` changed repository submit metadata,
+but this reconciliation did not inspect or change any EAS environment variable, credential or
+external account. Those remain behind explicit engineer/owner control (`CLAUDE.md` § Scope discipline).
 
 **Secrets posture** `[fact]`: only `EXPO_PUBLIC_*` variables are ever referenced, and those are inlined
 into the client bundle by design — RLS is the authorization boundary, not variable secrecy
@@ -133,10 +138,10 @@ open.
 | **G-1 — no authentication path** | **Closed** 2026-08-06 (auth sprint) and repaired 2026-08-08 (#58, `feature/v1-first-run-routing`) after it was found that a real-backend build could neither sign up nor sign in. Verified on a cold-started simulator against staging `[fact, owner, 2026-08-09]`. |
 | **I-10 — account deletion + data export** | **Closed.** `0005` (deletion RPC) and `0007` (the cascade-ordering defect that stopped a lifter with a custom movement deleting at all). Both applied to staging; export and deletion driven through the UI on device `[fact, owner, 2026-08-09]`. |
 | **I-2 / G-2 — non-atomic `saveWorkout`** | **Closed** 2026-08-06. `save_workout_graph` (`0003`), one transaction, verified against a real project by the integration lane — whole-graph commit, ownership stamped over a forged payload, no-op on exact retry, removed children reconciled. |
-| **G-4 — no observability** | **Partially closed on `feature/v1-observability`.** Privacy-filtered Sentry crash reporting, a root boundary, and six handled-error sites exist. It remains a release gate until an owner-configured non-demo artifact sends and symbolicates a test event on both platforms and its payload matches the privacy inventory. Product analytics remains deliberately absent. |
+| **G-4 — no observability** | **Conditional for the first binary.** Privacy-filtered Sentry reporting exists, but initializes only when the exact release, non-demo candidate has a non-empty DSN. If the submitted binary includes one, a symbolicated restricted test event and matching disclosure are gates; if it does not, Diagnostics must be declared No. Product analytics remains deliberately absent. |
 | **G-7 — release tooling** | **Closed for `preview`.** A preview build was produced end to end on 2026-08-09 (Android, ~22 min, commit `048114b`), with all three environment variables confirmed resolving into it. The `production` profile and store submission remain unexercised. |
 | **I-1 / I-6 — RLS** | **Met, and now confirmed against a real project** — the integration lane checks isolation between two real accounts in both directions, which the unit suite had been taking on trust. |
-| **I-9 / G-11 — payment and entitlement operations** | **Open.** S4's source is fail-closed and locally tested, but no store product, dedicated RevenueCat entitlement/offering project, restore behavior, webhook, hosted `0009`/functions, public EAS key, customer-deletion secret, or sandbox purchase/restore/delete has been configured or exercised. Follow `Docs/revenuecat-release-runbook.md`; a real sandbox buy, reinstall/restore, refund/transfer, and account deletion with confirmed RevenueCat erasure are blocking. |
+| **I-9 / G-11 — payment and entitlement operations** | **Deferred to v1.x.** The first binary explicitly sets monetization false, initializes no RevenueCat customer or SDK, collects no purchase history, and keeps analysis surfaces open. Products, offerings, webhook, purchase validation, restore/refund/transfer testing and processor erasure become gates only before enabling monetization. Migration `0009` and the deployed `delete-account` function remain current v1 requirements for export/deletion. |
 
 | **G-12 — Expo SDK patch drift** | **Open, and it gates a release build.** `npx expo-doctor` is 19/20: five SDK-57 packages are one patch behind. `npm run fix-deps`, then re-run `npm run verify` and `expo-doctor`. A dependency change, so it needs owner approval. |
 
@@ -154,10 +159,10 @@ pre-flight checklist read historically is not a checklist.
   account), and onboarding answers being collected and discarded.
 - *UTC check-in days.* `0008_local_training_day.sql` is committed and covered by 20 SQL assertions.
 
-`[fact]` What binds now is operational rather than product: **G-11** (nothing in the payment path has
-been configured or exercised against a real store), **G-4**'s remaining half (no release artifact has
-sent a test event), **G-12**, and the fact that **the production Supabase project has never had a
-migration applied to it**. `Docs/store-submission-runbook.md` is the procedure for all of them.
+`[fact]` What binds the free-first v1 now is operational rather than payment activation: **G-4 only
+if the exact candidate includes a Sentry DSN**, **G-12**, effective EAS configuration proof, the
+authoritative production Supabase migration probe (including `0009`), deployed deletion verification,
+and physical-device/store evidence. `Docs/store-submission-runbook.md` is the procedure.
 
 ---
 
@@ -180,7 +185,9 @@ check is the pre-existing patch drift in five Expo packages (`expo`, `expo-asset
 - **No EAS build was run** — not `build`, not `build --local`, not `submit`. Cloud builds consume
   quota and produce artifacts, which is an outward-facing action outside this branch's scope. The
   profiles are therefore *syntactically resolved*, not *proven to build*.
-- **No store submission was attempted or configured**; `submit.production` is an empty object.
+- **No store submission was attempted.** Repository submit configuration now includes pinned iOS
+  identifiers (`3c09ea9`), but that does not prove credentials, external account state or a successful
+  submission.
 - **No RevenueCat, App Store Connect, Play Console, hosted Supabase function/migration, or EAS
   variable was created or changed.** No purchase, restore, refund, transfer, or charge occurred.
 - **Neither platform was exercised on a device or simulator with the native purchase SDK.** Local

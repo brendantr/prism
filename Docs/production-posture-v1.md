@@ -2,12 +2,12 @@
 
 ## Document status
 
-- **Status:** Decision recorded. **The client-side account lifecycle and repository path are verified
-  against staging** — 19/19 integration tests and a cold-started first-run/device deletion path on
-  2026-08-08. Production remains unverified; the next release-tooling dependency is the two EAS
-  `preview` variables. See §4, §4.1 and §7.
+- **Status:** Decision recorded and reconciled for the intended free-first iOS binary. Earlier staging
+  evidence remains historical; production, the effective EAS candidate, deployed deletion and the
+  physical-device TestFlight matrix remain unverified. See §1.1 and §7.
 - **Date:** 2026-08-06; revised 2026-08-06 (`feature/v1-auth-session-docs`), 2026-08-08
-  (`feature/v1-signout-surface`) and 2026-08-09 (`feature/v1-password-reset`)
+  (`feature/v1-signout-surface`), 2026-08-09 (`feature/v1-password-reset`) and 2026-08-11
+  (`claude/prism-app-store-submission-fae97a`)
 - **Branch:** opened on `feature/v1-production-posture`; reconciled on
   `docs/live-backend-reconciliation` after the auth, write-integrity, deletion/export, staging and
   library work landed on `main`, and based on open PR #58's first-run fix.
@@ -25,6 +25,27 @@ This supersedes the prior implicit posture, in which no one had decided and the 
 them: `EXPO_PUBLIC_DEMO_MODE` defaulted to `true` everywhere, so an EAS production build with no
 environment configured would have shipped in demo mode — deterministic seed data, no network, every
 session written to a single device `[fact, prior `src/data/supabase/client.ts:12`]`.
+
+### 1.1 Free-first release reconciliation `[decision, owner, 2026-08-11]`
+
+The intended first submitted iOS binary declares:
+
+```text
+EXPO_PUBLIC_DEMO_MODE=false
+EXPO_PUBLIC_MONETIZATION_ENABLED=false
+EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED=false
+```
+
+`[fact, source/configuration]` This means real Supabase-backed accounts and training data; no
+RevenueCat initialization/customer/purchase processing; no paywall, purchase, restore or locked
+analysis surface; and no password-reset UI. RevenueCat activation and custom SMTP/recovery delivery
+are v1.x work. Sentry diagnostics apply only if the exact submitted release binary has a non-empty
+DSN. Commit `3c09ea9` pins the account-specific iOS `ascAppId` and `appleTeamId` in `eas.json` without
+committing credentials.
+
+`[open question, owner]` Repository intent does not prove the effective EAS environment, production
+Supabase target/migrations, deployed deletion function, DSN state, TestFlight behavior, public policy
+URL, App Privacy answers, listing or reviewer account. Those remain release gates.
 
 ---
 
@@ -67,13 +88,12 @@ Current posture after the staging follow-up `[fact]`:
   unverified against an owner-configured release project; product analytics remains deliberately
   absent.
 - **No deep-link session capture** `[fact]`. `detectSessionInUrl` is false and no `Linking` handler
-  exists, so email confirmation still ends in a manual sign-in — and password reset is code-based for
-  the same reason. See §4.1.
-- **Password reset is unverified end to end** `[fact, 2026-08-09]`. It exists in the client (below), but
-  whether the recovery email actually carries a six-digit code depends on an **owner-side edit to the
-  Supabase recovery template** (`{{ .Token }}`) that this repository did not and cannot make. If the
-  template still sends only a link, the flow reaches "Enter your code" with nothing to enter. This is
-  the first thing to test once the template lands.
+  exists, so email confirmation still ends in a manual sign-in; the disabled recovery capability is
+  code-based for the same reason. See §4.1.
+- **Password-reset capability exists but is disabled for the first binary** `[fact, reconciled
+  2026-08-11]`. `EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED=false` hides the control before a request can be
+  made. Custom SMTP, a recovery template exposing `{{ .Token }}` and end-to-end delivery verification
+  are deferred v1.x activation work.
 
 **Closed since this section was written** `[fact]`, in two steps:
 
@@ -81,17 +101,16 @@ Current posture after the staging follow-up `[fact]`:
   carries an Account control, gated by `canOfferSignOut` so it appears only for an authenticated session
   in a build with credentials, which opens the `account` modal and calls `signOutAndTearDown`,
   confirming first when logged work would be lost.
-- **2026-08-09 (`feature/v1-password-reset`)** — a forgotten password is no longer a dead end. A
-  "Forgot password?" control in sign-in mode opens a code-based reset inside the same screen:
+- **2026-08-09 (`feature/v1-password-reset`)** — the repository gained a code-based recovery
+  capability. When explicitly enabled, a "Forgot password?" control in sign-in mode opens reset inside the same screen:
   `resetPasswordForEmail` (no `redirectTo`), then `verifyOtp({ type: 'recovery' })` →
   `updateUser({ password })` → `signOut()`, ending on sign-in so the lifter proves the new password
   works. Code-based rather than link-based **because** deep-link capture is out of scope — see §4.1.
 
-Together these close §7's decisions 2 and 3, and the "a lifter can sign in and cannot sign out"
-and "recoverable only by hand in the Supabase dashboard" gaps this list previously carried. **The
-client-side account lifecycle is complete: sign up, sign in, sign out, recover.** That is a statement
-about code, not about a working release — see the two bullets above it, which are the ones that still
-bite.
+Together these close the source-capability gaps for sign-out and recovery. The first binary offers
+sign-up, sign-in and sign-out; recovery remains deliberately hidden until its external delivery
+prerequisites are configured and the flag is enabled. That is a statement about code and build
+posture, not about a verified production runtime.
 
 ---
 
@@ -196,8 +215,9 @@ link handler in the app, a redirect URL allow-listed in the Supabase project, an
 flipped alongside them. Whether confirmation stays on at all is likewise an **owner decision** — it is a
 Supabase project setting, and `CLAUDE.md` puts those behind explicit approval.
 
-**Password reset uses the same recovery channel, and the same constraint shaped it**
-`[fact, 2026-08-09, `feature/v1-password-reset`]`. The SDK's contract is that reset is two steps — log in
+**The disabled password-reset capability uses the same recovery channel, and the same constraint
+shaped it** `[fact, 2026-08-09; reconciled 2026-08-11]`. When enabled in v1.x, the SDK's contract is
+that reset is two steps — log in
 via the emailed link, then update the password — and `updateUser` requires a signed-in user. The return
 leg of that link *is* the deep-link capture deferred above, so the canonical flow cannot complete here.
 Reset therefore uses the **code** in the recovery email rather than the link: `resetPasswordForEmail` is
@@ -205,7 +225,7 @@ called with **no `redirectTo`**, and the six digits the lifter types are exchang
 `verifyOtp({ type: 'recovery' })`. Nothing about the project's redirect configuration is involved, which
 is the point — it needs no URL allow-listed and no linking infrastructure.
 
-**One owner action it does depend on** `[open question — not done by this repository]`: the Supabase
+**Before v1.x activation, one owner action it depends on** `[open question — not done by this repository]`: the Supabase
 **recovery email template** must expose `{{ .Token }}`. The default template sends only
 `{{ .ConfirmationURL }}`, and against that template the flow reaches "Enter your code" with nothing to
 enter. This is a template edit, not the confirmation ON/OFF setting above, but it is still a project
@@ -252,16 +272,19 @@ execution were the prior construction gates.~~ **They are closed for the client 
 2026-08-08]`: migrations `0001`–`0007`, 19/19 integration tests, and a cold-started first run through
 account deletion.
 
-The next gate is operational: finish the two `preview` environment values in §4, then build and
-cold-start the EAS artifact against staging. Separately, the owner must decide or verify before
-production:
+The next gates are operational. Before building or submitting the free-first iOS candidate, the owner
+must decide or verify:
 
-1. **Recovery-email template:** does it expose `{{ .Token }}` so the code-based reset can complete?
-   This is still unverified.
-2. **Production email confirmation:** does it stay on? Staging's test setting does not decide this.
-3. **Deep-link capture:** still deferred and non-blocking; confirmation is manual and reset is
-   code-based until a handler, allow-listed redirect and client setting land together.
-4. **Privacy policy and observability:** the branch-level implementation and disclosure draft exist;
-   owner configuration, a release test event/source-map check, and legal review remain release work.
+1. **Effective EAS configuration:** prove the Supabase target and all three free-first declarations
+   for the exact candidate; independently decide whether a Sentry DSN is present.
+2. **Production backend:** identify the authoritative Supabase project, run the read-only migration
+   probe through `0009`, and verify deployed account deletion.
+3. **TestFlight:** complete the physical-device matrix for persistence, export, deletion,
+   cross-account isolation, free-first analysis surfaces and error/offline behavior.
+4. **Privacy and review:** publish and verify the policy URL, align diagnostics to the exact DSN
+   decision, complete App Privacy/listing data, and provide working reviewer credentials.
+
+Custom SMTP/recovery delivery, deep-link capture and RevenueCat activation are v1.x work and do not
+block this binary while their declarations remain false.
 
 No production build or submission is authorized by staging verification alone.

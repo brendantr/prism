@@ -5,14 +5,16 @@
 - **Status:** Repository side is complete. Every remaining step needs a dashboard, a credential, or a
   build service, so every one of them is **yours** — an agent holds none of those
   (`CLAUDE.md` § Scope discipline, `Docs/invariants.md` I-4).
-- **Date:** 2026-08-09
+- **Date:** 2026-08-09; reconciled 2026-08-11 for the free-first iOS binary
 - **Baseline:** the integration of `feature/v1-user-data-writes`, `fix/v1-zero-data-surfaces`,
   `feature/v1-observability` and `feature/v1-entitlements`.
 - **Labels** follow I-15: `[fact]` / `[decision]` / `[assumption]` / `[open question]`.
 
-**This runbook does not cover RevenueCat or the Edge Functions.** Those have their own, more detailed
-procedure in `Docs/revenuecat-release-runbook.md`, and it is a prerequisite of §5 below. This document
-covers everything else and says where the two meet.
+`[decision, owner, 2026-08-11]` The first submitted binary is iOS-only and free-first:
+`EXPO_PUBLIC_DEMO_MODE=false`, `EXPO_PUBLIC_MONETIZATION_ENABLED=false`, and
+`EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED=false`. RevenueCat and custom SMTP/recovery activation are v1.x
+work, not prerequisites for this binary. The deployed `delete-account` function and migration `0009`
+remain prerequisites because current deletion and export paths depend on them.
 
 ---
 
@@ -31,8 +33,9 @@ covers everything else and says where the two meet.
 | Crash reporting (G-4) | Implemented, privacy-filtered, inert without a DSN |
 | Entitlements (I-9) | Server-side: `select`-only RLS for clients, webhook-written |
 
-`[fact]` **Nothing below has been done.** No migration has been applied to production, no EAS
-environment variable exists for `production`, no build has been cut, and no store listing exists.
+`[open question, owner]` External release state is not proven by this repository. Do not assume the
+production migrations, effective EAS environment, build artifact, policy URL or store listing exist;
+verify each gate below against its authoritative system.
 
 ---
 
@@ -169,7 +172,12 @@ document is a report, not an observation.
 
 ---
 
-## 3a. Email delivery — a prerequisite, not a polish step
+## 3a. Email delivery — v1.x recovery activation
+
+`[decision, owner, 2026-08-11]` The first free-first binary keeps
+`EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED=false`. The "Forgot password?" control is hidden, so the delivery
+work below is not a first-binary submission blocker. Complete and verify every step before a future
+v1.x binary explicitly enables recovery; sign-up confirmation is a separate owner-controlled setting.
 
 `[fact, 2026-08-10]` **Custom SMTP is required before password reset works at all**, and this was
 absent from every list in this repository until it surfaced by accident, from a banner on the
@@ -287,17 +295,19 @@ environment, deliberately, because the values differ per environment and `eas.js
 ```bash
 eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_URL --value 'https://YOUR-PROD-PROJECT.supabase.co'
 eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value 'YOUR-PROD-ANON-KEY'
-eas env:create --environment production --name EXPO_PUBLIC_SENTRY_DSN --value 'YOUR-SENTRY-DSN'
-eas env:create --environment production --name EXPO_PUBLIC_REVENUECAT_IOS_KEY --value 'YOUR-RC-IOS-PUBLIC-KEY'
-eas env:create --environment production --name EXPO_PUBLIC_REVENUECAT_ANDROID_KEY --value 'YOUR-RC-ANDROID-PUBLIC-KEY'
 eas env:list --environment production
 ```
 
-`[fact]` **Every one of these is `EXPO_PUBLIC_*` and is therefore inlined into the client bundle and
-readable by anyone with the app.** That is correct and safe for exactly these five: the Supabase anon
-key (RLS is the boundary), the Sentry DSN (write-only ingestion), and the RevenueCat *platform* keys.
-A Supabase service-role key, a RevenueCat **secret** API key, or the webhook auth value in this list
-would be a serious breach of I-4 — those belong only in the Edge Function's server environment.
+`[open question, owner]` Decide whether the exact submitted binary includes
+`EXPO_PUBLIC_SENTRY_DSN`. Add it only if diagnostics are intended for that binary, then verify the
+restricted payload and align the store disclosure. Do not create RevenueCat variables for the
+free-first build; its explicit monetization declaration is false.
+
+`[fact]` **Every `EXPO_PUBLIC_*` value is inlined into the client bundle and readable by anyone with
+the app.** That is appropriate for the Supabase anon key (RLS is the boundary), a Sentry DSN
+(write-only ingestion), and future RevenueCat *platform* keys. A Supabase service-role key, a
+RevenueCat **secret** API key, or a webhook authorization value in EAS/client configuration would be a
+serious breach of I-4 — those belong only in an Edge Function's server environment.
 
 `[fact]` A production build with the Supabase variables missing does **not** silently fall back to
 demo. It fails loudly with `SUPABASE_MISCONFIGURED_MESSAGE`, by design — a build that claims to be
@@ -305,21 +315,21 @@ live while writing to local storage is exactly the invisible data loss I-2/I-15 
 
 ---
 
-## 5. RevenueCat and the Edge Functions
+## 5. Account deletion now; RevenueCat in v1.x
 
-`[fact]` Follow `Docs/revenuecat-release-runbook.md` end to end. It covers the store products, the
-entitlement and offering, the webhook, the two Edge Functions and their server secrets, and a
-sandbox acceptance matrix.
+`[fact]` `supabase/functions/delete-account/` must be deployed and verified for the first binary.
+Current in-app account deletion calls it even when RevenueCat is disabled; without it, the privacy
+control fails. The function skips RevenueCat erasure when RevenueCat server configuration is absent,
+then invokes the authenticated database deletion path.
 
-**Do not skip its sandbox matrix.** `[recommendation]` The failure it exists to catch is the one that
-costs the most: a missing or misrouted webhook takes the customer's money while the app keeps the
-feature locked, because the client reads the entitlement from Postgres and Postgres never heard about
-the purchase.
+`[fact]` Migration `0009_entitlements.sql` also remains required. The free-first export path reads the
+server entitlement shape even though no purchase record is created, and the deletion cascade includes
+the entitlement tables.
 
-`[fact]` `supabase/functions/delete-account/` must be deployed and configured too, not only the
-webhook. It deletes the RevenueCat customer when a lifter deletes their PRism account. Without it,
-account deletion still succeeds in Postgres but leaves personal data at a processor — which makes
-I-10 incomplete and the privacy policy inaccurate.
+`[decision, owner, 2026-08-11]` Store products, the RevenueCat entitlement/offering, public SDK key,
+webhook, purchase validation, processor-erasure credentials and the sandbox purchase/restore matrix
+are deferred to v1.x. Before enabling `EXPO_PUBLIC_MONETIZATION_ENABLED=true`, follow
+`Docs/revenuecat-release-runbook.md` end to end. None of that activation applies to the first binary.
 
 ---
 
@@ -333,10 +343,9 @@ I-10 incomplete and the privacy policy inaccurate.
    that it has not been read by a lawyer. PRism stores health-adjacent data, which raises the stakes.
 3. Host it, and put the URL in both store listings.
 
-`[fact]` The policy and `Docs/privacy-data-inventory.md` were reconciled at integration and now
-describe **three** processors (Supabase, Sentry, RevenueCat) and **both** crash diagnostics and
-purchase history. Earlier per-branch versions of those files each described two. Use the integrated
-version.
+`[fact]` The policy and `Docs/privacy-data-inventory.md` describe the exact first binary: Supabase
+processes account/training data; Sentry processes diagnostics only if that binary has a non-empty DSN;
+RevenueCat and purchase history do not apply. Future monetization language is labelled v1.x.
 
 ---
 
@@ -345,14 +354,15 @@ version.
 `[fact]` App identity, from `app.json`: bundle id and package are both `app.prism.trainer`, version
 `1.0.0`, portrait only, `supportsTablet: false`, `ITSAppUsesNonExemptEncryption: false`.
 
-**Apple — App Privacy.** Derive answers from `Docs/privacy-data-inventory.md`, not from memory. The
-categories that are **Yes**: Contact Info → Email; Health & Fitness (bodyweight, measurements, the
-four check-in scales, training data); User Content (session reflections); Diagnostics → Crash Data;
-and **Purchases → Purchase History**. Everything else is No.
+**Apple — App Privacy.** Derive answers from `Docs/privacy-data-inventory.md`, not from memory. For the
+free-first binary, the categories that are **Yes** are Contact Info → Email; Health & Fitness
+(bodyweight, measurements, the four check-in scales, training data); User Content (session
+reflections); and Diagnostics → Crash Data **only if the exact submitted build has a Sentry DSN**.
+Purchases → Purchase History is **No**. Everything else is No.
 
 **Google Play — Data Safety.** Same source. Note the two questions that are easy to get wrong:
-whether the three processors count as "sharing" under Google's current definition, and the
-health-data declaration. Both are flagged `[OWNER: ...]` in the inventory.
+whether the processor relationships present in the exact binary count as "sharing" under Google's
+current definition, and the health-data declaration. Both are flagged `[OWNER: ...]` in the inventory.
 
 **Age rating.** `[assumption]` PRism has no user-generated content visible to others, no ads, and no
 social features (the Social tab is a shell). That points at the lowest rating band, but the
@@ -366,8 +376,9 @@ seed and the reason to keep it.
 
 `[fact]` **One thing to look at before you write the listing copy.** `PhasePanel` renders `null` when
 `!__DEV__` (`src/components/ui/PhasePanel.tsx:47`), so Progress, Body, Plans, Insights and Social are
-all visibly thinner in a release build than in dev. Two of those — Progress and Body — are behind the
-paid unlock. Look at them in a real release build before deciding what the listing promises.
+all visibly thinner in a release build than in dev. The free-first declaration keeps Progress, Body
+analysis and the longer Insights windows open; verify that exact presentation in TestFlight before
+deciding what the listing promises.
 
 ---
 
@@ -376,49 +387,27 @@ paid unlock. Look at them in a real release build before deciding what the listi
 There is no Google Play Console account, so the route is **TestFlight → App Store review**, and Android
 is out of scope until that lands. What that changes:
 
-**RevenueCat needs only the App Store side.** Create the project with the iOS app
-(`app.prism.trainer`) and the non-consumable `app.prism.trainer.pro.lifetime`; leave the Android app
-out entirely. `publicSdkKey()` (`src/data/purchases.ts`) resolves per platform, so an unset
-`EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` disables purchasing on a platform you are not shipping — the
-correct behaviour, not a gap. Set `EXPO_PUBLIC_REVENUECAT_IOS_KEY` only.
+**RevenueCat is not activated for the first binary** `[decision, owner, 2026-08-11]`. App Store
+products, agreements, offerings and SDK keys belong to the v1.x monetization runbook. Do not configure
+RevenueCat merely to submit this free-first build.
 
-**`eas.json`'s `submit.production` is currently the wrong way round for this plan** `[fact]`: it
-configures Android (a Play service account that does not exist yet) and deliberately omits iOS so
-`eas submit` prompts for `ascAppId`/`appleTeamId` and caches them. That is workable — the prompt is
-one-time — but the Android block is **staged for later, not live**. It is harmless because it is read
-only by `eas submit --platform android`.
+**iOS production submit identifiers are pinned** `[fact, repository, `3c09ea9`]`.
+`eas.json` now contains account-specific `ascAppId` and `appleTeamId` fields under
+`submit.production.ios`, enabling non-interactive identifier selection. Their values are not
+credentials and are not repeated here. Signing and submission credentials remain external and must
+never be committed.
 
-**The Paid Applications Agreement is the long pole.** In App Store Connect it must be active, with
-banking and tax details complete, before **any** in-app purchase can be created. Start it first; it
-gates the RevenueCat product, which gates the entitlement, which gates the paywall.
+`[open question, owner]` Confirm that the effective EAS configuration targets the intended App Store
+Connect application before building. Repository presence does not prove external account state.
 
-### RevenueCat gates the first real-backend build — it is not parallel work
+### Why the free-first declaration is a release gate
 
-`[fact, verified in source 2026-08-10]` A build with Supabase configured and **no** RevenueCat public
-key does not fall back to a free edition. `isEntitlementDisabled()` is false (not demo) and
-`isEntitlementBackendEnabled()` is true (Supabase present), so `entitlementStore.initialize()` asks
-Postgres, finds no entitlement, and settles on a locked phase. `isSurfaceLocked` then gates Progress,
-Body's recovery estimate and the 28/84-day Insights windows — while `purchaseReady` is false, so the
-paywall **cannot complete a sale**.
-
-That combination is a Guideline 2.1 rejection: features gated behind a purchase that cannot be made.
-
-**This is deliberate and must not be "fixed" by relaxing it.** The store's own comment states the
-reason: *"A real-backend build does not enter this branch merely because its public RevenueCat key is
-absent… otherwise missing client configuration would unlock every paid surface."* Treating an absent
-key as "free" would make deleting a key the way to unlock the paid product.
-
-`[recommendation]` The order is therefore fixed, not preferential:
-
-1. Paid Applications Agreement → App Store product
-2. RevenueCat project, entitlement `pro`, offering, and `EXPO_PUBLIC_REVENUECAT_IOS_KEY` in EAS
-3. **Only then** cut a production build
-
-`[fact, 2026-08-10]` `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set in the EAS
-`production` environment and `npx eas config --platform ios --profile production` resolves them
-alongside `EXPO_PUBLIC_DEMO_MODE=false`. `EXPO_PUBLIC_SENTRY_DSN` and the RevenueCat key are still
-absent — Sentry stays inert without a DSN, which is by design, but the RevenueCat gap is the blocker
-above.
+`[fact, verified in source 2026-08-11]` An absent RevenueCat key is not itself a free-edition signal.
+If monetization is enabled without a usable offering, analysis surfaces can lock while purchasing is
+unavailable. The first binary avoids that state through the explicit
+`EXPO_PUBLIC_MONETIZATION_ENABLED=false` declaration: entitlement initialization returns before
+RevenueCat configuration, analysis surfaces remain open, and paywall/purchase/restore controls do not
+render. Effective production configuration must prove the declaration is false before TestFlight.
 
 ### Shipping free first: two build declarations `[decision, owner, 2026-08-10]`
 
@@ -456,10 +445,9 @@ that has not synced, so this is checked by a sandbox purchase before submission,
 2. **Expect the reviewer to delete that account.** Apple actively tests account deletion, and PRism's
    deletion works now — so the demo account can vanish mid-review and a second review attempt then
    fails to sign in. Prepare two accounts, or be ready to recreate one immediately.
-3. **The paid surfaces must be reachable and honest.** Insights' 28/84-day windows, Progress and Body's
-   recovery estimate sit behind the unlock. A reviewer who taps them gets the paywall, which must show
-   a real price from a real offering — an offering that has not synced yet reads as a broken purchase,
-   which is Guideline 2.1. Verify a sandbox purchase before submitting, not after.
+3. **The free-first surfaces must be reachable and honest.** Insights' 28/84-day windows, Progress and
+   Body's recovery estimate must open without a lock or paywall. Purchase and restore controls must be
+   absent, matching the binary's declaration and store metadata.
 
 `[fact]` Also relevant to review: `PhasePanel` renders `null` when `!__DEV__`, so Progress and Body are
 thinner in the build a reviewer sees than in dev. Look at them in a real release build before deciding
@@ -473,21 +461,18 @@ what the listing promises.
 
 ```bash
 npx eas config --platform ios --profile production
-npx eas config --platform android --profile production
 ```
 
 Then build:
 
 ```bash
 eas build --platform ios --profile production
-eas build --platform android --profile production
 ```
 
 Then submit:
 
 ```bash
 eas submit --platform ios --profile production
-eas submit --platform android --profile production
 ```
 
 `[decision, 2026-08-09]` **`eas.json`'s Android submit config deliberately targets the `internal`
@@ -495,9 +480,9 @@ track with `releaseStatus: "draft"`.** A first automated submission that goes st
 is one misconfiguration away from a public release of an unverified build; promoting internal → production
 is one action in the Play Console. Change those two fields when you actually want the public rollout.
 
-`[fact]` iOS submit config is intentionally **absent** from `eas.json`. `ascAppId` and `appleTeamId`
-are account-specific, and `eas submit` prompts for them and caches the answers — which is better than
-committing a guess. Add them to `eas.json` later if you want it non-interactive.
+`[fact, repository, `3c09ea9`]` iOS `ascAppId` and `appleTeamId` are pinned under
+`submit.production.ios` in `eas.json`. This selects the intended account/application identifiers for
+non-interactive submit; it does not provide credentials or prove external App Store Connect access.
 
 `[fact]` The Play service account key goes at `./credentials/play-service-account.json`. That path is
 git-ignored (along with `*.p8`, `*.p12`, `*.mobileprovision`) because it is a privileged credential
@@ -523,15 +508,13 @@ Everything in the original walkthrough, plus what this release adds:
 4. Add a body measurement on Body.
 5. Force-quit mid-session, reopen, confirm the session survived.
 6. Submit a check-in.
-6a. **Request a password reset and complete it with the emailed code.** This exercises the SMTP and
-   `{{ .Token }}` work from §3a, and it is the only flow in the app that depends on a third party
-   delivering something to a human.
-7. **Paid surfaces while unentitled:** Insights' 28/84-day windows, Progress, and Body's recovery
-   section should show the lock; Body's measurements and History must **not**.
-8. **Buy the unlock in sandbox.** Confirm the paid surfaces open. Force-quit and reopen — the
-   entitlement must survive, because it comes from Postgres, not the SDK.
-9. **Restore purchases** from Account on a second install.
-10. Export the account data, then delete the account. Confirm the RevenueCat customer is deleted too.
+6a. Confirm "Forgot password?" is absent; do not request a recovery email in this binary.
+7. **Free-first analysis:** Insights' 28/84-day windows, Progress and Body's recovery section must be
+   open. No paywall, purchase or restore control may appear.
+8. Sign out and back in; confirm the workout, custom movement and measurement persist.
+9. Export the account data and inspect that the user-entered categories are present.
+10. Delete the account and confirm the deployed function removes access. No RevenueCat customer check
+    applies because this binary never creates one.
 
 ---
 
@@ -542,8 +525,8 @@ Stop and reconsider rather than working around it if:
 - The §3 probe reports `false` for `0001`–`0005` on a project you believed was migrated. The project
   is not what the records describe, and applying newer migrations on top would be guessing.
 - `0006` raises. It is telling you the catalogue would have been seeded incomplete. Nothing was written.
-- A sandbox purchase succeeds but the app stays locked. That is the webhook, and it is the failure
-  mode that takes money without delivering the product. Do not ship past it.
+- `EXPO_PUBLIC_MONETIZATION_ENABLED` resolves true, a paywall appears, or an analysis surface is
+  locked in the free-first candidate. That is the wrong binary posture; do not ship past it.
 - You are tempted to put a service-role key, a RevenueCat secret key, or the webhook auth value into
   an `EXPO_PUBLIC_*` variable to make something work. That is I-4, and it has no exception process.
 - You are about to enable "Confirm email" without custom SMTP configured (§3a). That does not harden
@@ -551,5 +534,5 @@ Stop and reconsider rather than working around it if:
 - A password-reset email arrives containing a link rather than a code. The recovery template is still
   the Supabase default; the app has no deep-link capture and cannot use a link, so reset is
   unusable until the template exposes `{{ .Token }}`.
-- Deleting a test account leaves its RevenueCat customer behind. I-10 is not met, and the privacy
-  policy would be describing something the app does not do.
+- Account deletion fails against the production target. The `delete-account` deployment and migration
+  chain must be verified before submission.
