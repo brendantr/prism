@@ -24,6 +24,10 @@ device behavior, privacy publication, store metadata, or reviewer access is comp
 - explicitly intended to set monetization to false; and
 - explicitly intended to set email recovery to false.
 
+`[decision, owner]` Sentry is intentionally enabled for the first TestFlight/App Store candidate. Its
+role is limited crash diagnostics, not product analytics. App Privacy Diagnostics disclosures must
+match the exact submitted binary.
+
 These are intended declarations, not evidence that the effective EAS production configuration already
 contains them. RevenueCat activation and password-recovery delivery are not part of this binary.
 
@@ -48,16 +52,22 @@ contains them. RevenueCat activation and password-recovery delivery are not part
 | Read-only migration/object probe | Passed | Every result for migrations `0001` through `0009` was `true`. No user row or configuration value was queried or copied into this record. |
 | `delete-account` deployment presence | Confirmed | The function exists on the selected project. No deployment identifier or raw log is recorded. |
 | `delete-account` JWT setting | Confirmed enabled | This records the observed setting only. |
+| Production Sentry configuration | Confirmed present | Owner-observed presence only. No variable value, DSN, project or organization name, token, URL, identifier, screenshot, or event content is recorded. |
 
 ### Evidence limitation
 
 `[open question, owner]` Anonymous gateway rejection was not independently exercised. The observed JWT
 setting must not be described as independent runtime proof of the gateway rejection path.
 
+`[pending, owner]` Sentry release-event delivery, source-map symbolication, and review of the
+privacy-constrained event payload have not been verified. Configuration presence is not evidence that
+any of those three properties work.
+
 ## 5. Build and device evidence
 
-`[pending, owner]` No production iOS build has been produced or uploaded to TestFlight for this record.
-No physical-device acceptance result exists yet.
+`[pending, owner]` An existing TestFlight build is not accepted by this record as proof of the intended
+free-first declarations, the current merged code, or Sentry delivery/privacy behavior. No exact
+candidate build or physical-device acceptance result has been recorded yet.
 
 The exact TestFlight build must complete the following matrix on a physical iPhone from a fresh install
 and cold launch. Every item is currently **Pending**.
@@ -73,7 +83,7 @@ and cold launch. Every item is currently **Pending**.
 | 7 | Authentication lifecycle | Sign-out/sign-in preserves server data, clears prior local user state, and exposes no password-reset control. | Pending |
 | 8 | User-data writes | Profile/unit changes, custom exercise, body measurement, and local-date check-in persist after relaunch and re-authentication. | Pending |
 | 9 | Offline and error recovery | Network loss produces an honest retryable error, never demo fallback or false success; reconnecting recovers without lost or duplicate data. | Pending |
-| 10 | Conditional diagnostics | App behavior and App Privacy match the final Sentry decision: no PRism diagnostics when absent, or approved restricted release evidence when configured. | Pending |
+| 10 | Sentry-enabled diagnostics | One controlled release event reaches Sentry and is symbolicated. Review confirms that account identity, email, workout/training data, body measurements, reflections, secrets, request/response bodies, screenshots, replay, product analytics, and performance tracing are absent. App Privacy Diagnostics disclosure matches that exact binary. | Pending |
 
 ## 6. Remaining owner gates
 
@@ -83,9 +93,10 @@ All items below remain pending and must not be inferred from the checks in §4:
    monetization false, and email recovery false.
 2. Privately verify equality between the EAS production Supabase target and the selected project checked
    in §4.
-3. Decide the first binary's Sentry posture. App Privacy must match the exact submitted binary. If
-   diagnostics are configured, their release delivery and privacy restrictions require separate
-   evidence; if absent, Diagnostics must be declared accordingly.
+3. Build the exact candidate with the existing enabled Sentry posture, trigger one controlled release
+   event, and verify arrival, source-map symbolication, and the restricted payload. Record only
+   pass/fail, build number, timestamp, and a redacted conclusion. Complete App Privacy Diagnostics
+   disclosures consistent with that exact binary.
 4. Produce the production iOS build from the accepted repository baseline and upload that exact artifact
    to TestFlight.
 5. Complete and accept all ten physical-device tests in §5.
@@ -98,13 +109,15 @@ Anonymous gateway rejection also remains unverified as noted in §4.
 
 ## 7. Go/no-go
 
-- **TestFlight build:** **NO-GO.** Do not build or upload until the effective EAS declarations and
-  EAS-to-Supabase target equality are verified and the Sentry posture is decided.
-- **TestFlight acceptance:** **NO-GO.** No production build, upload, or physical-device matrix has been
-  completed.
+- **TestFlight build:** **NO-GO.** Do not build or upload until the effective EAS free-first
+  declarations and EAS-to-Supabase target equality are verified. Sentry is enabled by owner decision
+  and is no longer awaiting a posture decision.
+- **TestFlight acceptance:** **NO-GO.** No exact candidate build or physical-device matrix has been
+  accepted, and the Sentry-enabled release-event delivery, symbolication, and restricted-payload review
+  have not passed.
 - **App Review:** **NO-GO.** App Review remains blocked until TestFlight acceptance, a reachable public
-  privacy policy, accurate store disclosures/listing for the exact binary, and working reviewer access
-  are complete.
+  privacy policy, accurate store disclosures/listing for the exact binary, working reviewer access,
+  and an App Privacy Diagnostics disclosure matching the verified Sentry-enabled build are complete.
 
 ## 8. External changes
 
