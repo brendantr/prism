@@ -1,14 +1,26 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Card, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
+import { Button, Card, EmptyState, ListRow, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
+import { LockedProPanel } from '@/components/paywall/LockedProScreen';
 import { PhasePanel } from '@/components/ui/PhasePanel';
-import { estimateRecovery, RECOVERY_MODEL_EXPLANATION } from '@/domain/calc/recovery';
+import {
+  estimateRecovery,
+  hasRecoveryEvidence,
+  RECOVERY_MODEL_EXPLANATION,
+} from '@/domain/calc/recovery';
 import { MUSCLE_META } from '@/domain/muscles';
+import { kgToDisplay } from '@/domain/calc/loadRecommendation';
+import { measurementsNewestFirst } from '@/domain/measurements';
+import { ZERO_DATA } from '@/content/zeroData';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { useShallow } from 'zustand/react/shallow';
 import { color, radius, recoveryScale, space } from '@/theme';
 import type { MuscleRecovery } from '@/domain/types';
+import { MEASUREMENT_COPY } from '@/content/userData';
+import { formatDate } from '@/utils/format';
+import { isSurfaceLocked } from '@/domain/entitlements';
+import { useEntitlementStore } from '@/store/entitlementStore';
 
 /**
  * BODY (Phase 3)
@@ -23,14 +35,21 @@ export default function BodyScreen() {
   const router = useRouter();
   const history = useTrainingStore(useShallow(selectCompletedWorkouts));
   const exerciseById = useTrainingStore((s) => s.exerciseById);
+  const measurements = useTrainingStore((s) => s.measurements);
+  const profile = useTrainingStore((s) => s.profile);
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
   const now = useMemo(() => new Date(), []);
 
   const recovery = useMemo(
     () => estimateRecovery(history, exerciseById, now).sort((a, b) => a.readiness - b.readiness),
     [history, exerciseById, now],
+  );
+  const newestMeasurements = useMemo(
+    () => measurementsNewestFirst(measurements).slice(0, 5),
+    [measurements],
   );
 
   /**
@@ -51,6 +70,20 @@ export default function BodyScreen() {
     backLabel: 'Back to Insights',
   } as const;
 
+  /*
+    Body is split by the free/paid line rather than sitting on one side of it
+    (`Docs/decisions/ADR-0005-monetization.md`).
+
+    The recovery estimate is analysis, and analysis is what the unlock buys. The
+    measurements below it are the lifter's own entries, and this screen holds
+    the only route to them -- so locking the whole surface would put a lifter's
+    own bodyweight log behind a purchase, which is precisely what the free tier
+    is defined to prevent. Two sprints landing independently produced exactly
+    that: the paywall took the screen the measurement writer had just been added
+    to. The lock is therefore a panel inside the page, not a return from it.
+  */
+  const recoveryLocked = isSurfaceLocked({ requiresPro: true, phase: entitlementPhase });
+
   if (status !== 'ready') {
     return (
       <Screen scroll={false} {...header}>
@@ -64,20 +97,89 @@ export default function BodyScreen() {
     );
   }
 
+  /*
+    I-18, on the surface most able to violate it.
+
+    `estimateRecovery` answers for all sixteen `MUSCLE_GROUPS` whether or not it
+    has seen any of them trained, and its no-stimulus branch returns
+    `readiness: 1` / `status: 'fresh'`. On an account with no history that is
+    sixteen rows reading 100% under the heading "Estimated readiness" -- a
+    completely populated screen whose every number comes from the absence of
+    input rather than from any measurement of it. The number is not wrong so
+    much as unfounded, which is worse: it looks like a result.
+
+    So the screen asks whether the estimate has anything behind it, and says so
+    when it does not. `estimateRecovery`'s own contract is unchanged, because
+    the per-muscle default is correct for the callers that need a value for
+    every muscle (`averageReadiness`, and readiness scoring through it).
+  */
+  /*
+    Same reasoning as the lock above, for the same reason: this used to return
+    early and take the whole screen with it, which meant a lifter with no logged
+    sessions yet -- exactly the person most likely to be recording a starting
+    bodyweight -- could not reach the measurement writer at all.
+  */
+  const recoveryHasEvidence = hasRecoveryEvidence(recovery);
+
   return (
     <Screen {...header}>
-      <Card style={styles.gutter} padding="lg">
-        <Text variant="bodySm" tone="muted" style={styles.explainer}>
-          {RECOVERY_MODEL_EXPLANATION}
-        </Text>
-      </Card>
+      {!recoveryLocked && recoveryHasEvidence ? (
+        <Card style={styles.gutter} padding="lg">
+          <Text variant="bodySm" tone="muted" style={styles.explainer}>
+            {RECOVERY_MODEL_EXPLANATION}
+          </Text>
+        </Card>
+      ) : null}
+
+      <SectionHeader title="Measurements" eyebrow="Your entries" />
+      {newestMeasurements.length === 0 ? (
+        <Card style={styles.gutter} padding="lg">
+          <EmptyState title={MEASUREMENT_COPY.emptyTitle} body={MEASUREMENT_COPY.emptyBody} />
+        </Card>
+      ) : (
+        <Card style={styles.gutter} padding="none">
+          {newestMeasurements.map((measurement, index) => (
+            <ListRow
+              key={measurement.id}
+              title={formatDate(measurement.measuredAt)}
+              subtitle={measurementSummary(measurement, profile?.unit ?? 'kg')}
+              icon="scale-outline"
+              iconTone="cyan"
+              chevron
+              divided={index > 0}
+              onPress={() =>
+                router.push({ pathname: '/measurement', params: { id: measurement.id } })
+              }
+            />
+          ))}
+        </Card>
+      )}
+      <Button
+        label={MEASUREMENT_COPY.addAction}
+        variant="secondary"
+        icon="add"
+        onPress={() => router.push('/measurement')}
+        style={styles.measurementAction}
+      />
 
       <SectionHeader title="Recovery by muscle" eyebrow="Estimated readiness" />
-      <Card style={styles.gutter} padding="lg">
-        {recovery.map((r, i) => (
-          <RecoveryRow key={r.muscle} recovery={r} divided={i > 0} />
-        ))}
-      </Card>
+      {recoveryLocked ? (
+        <LockedProPanel />
+      ) : !recoveryHasEvidence ? (
+        <EmptyState
+          icon={ZERO_DATA.body.icon}
+          title={ZERO_DATA.body.title}
+          body={ZERO_DATA.body.body}
+          actionLabel={ZERO_DATA.body.actionLabel}
+          onAction={() => router.push(ZERO_DATA.body.route)}
+        />
+      ) : (
+        <Card style={styles.gutter} padding="lg">
+          {recovery.map((r, i) => (
+            <RecoveryRow key={r.muscle} recovery={r} divided={i > 0} />
+          ))}
+        </Card>
+      )}
 
       <PhasePanel
         phase={3}
@@ -96,6 +198,21 @@ export default function BodyScreen() {
       />
     </Screen>
   );
+}
+
+function measurementSummary(
+  measurement: import('@/domain/types').BodyMeasurement,
+  unit: import('@/domain/types').Unit,
+): string {
+  const parts: string[] = [];
+  if (measurement.bodyweightKg != null) {
+    const value = Math.round(kgToDisplay(measurement.bodyweightKg, unit) * 10) / 10;
+    parts.push(`${value} ${unit}`);
+  }
+  if (measurement.bodyFatPct != null) parts.push(`${measurement.bodyFatPct}% body fat`);
+  const waist = measurement.circumferencesCm.waist;
+  if (waist != null) parts.push(`${waist} cm waist`);
+  return parts.join(' · ');
 }
 
 function RecoveryRow({ recovery, divided }: { recovery: MuscleRecovery; divided: boolean }) {
@@ -136,6 +253,7 @@ function RecoveryRow({ recovery, divided }: { recovery: MuscleRecovery; divided:
 const styles = StyleSheet.create({
   gutter: { marginHorizontal: space.lg },
   explainer: { lineHeight: 19 },
+  measurementAction: { marginHorizontal: space.lg, marginTop: space.md, alignSelf: 'flex-start' },
   row: { paddingVertical: space.md, gap: 6 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   rowHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },

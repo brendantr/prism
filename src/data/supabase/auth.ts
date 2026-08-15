@@ -33,6 +33,31 @@ export function isAuthEnabled(): boolean {
   return !DEMO_MODE && isSupabaseConfigured;
 }
 
+/**
+ * Whether this build can actually deliver a password-reset code.
+ *
+ * **Declared, never inferred.** The app cannot detect whether the Supabase
+ * project has custom SMTP, or whether its recovery template exposes
+ * `{{ .Token }}` — and both are required, because `confirmPasswordReset` asks
+ * the lifter to type a six-digit code and Supabase's default template sends a
+ * link with no code in it.
+ *
+ * Until both are true, "Forgot password?" leads to a screen that waits forever
+ * for digits that will never arrive. That is worse than having no recovery at
+ * all: an absent control is a missing feature, a dead-ended one is a broken
+ * promise. This repository already holds that line twice — `canOfferSignOut`
+ * hides sign-out where there is no session, and `resolveOnboardingAuthHref`
+ * routes demo builds past an account step they cannot complete, on the stated
+ * grounds that a form which cannot work is a form that should not be shown.
+ *
+ * Default **off**, so a build claims recovery only when someone has configured
+ * it and said so. Set `EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED=true` once
+ * `Docs/store-submission-runbook.md` §3a is done.
+ */
+export function isEmailRecoveryEnabled(): boolean {
+  return process.env.EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED === 'true';
+}
+
 export interface SessionUser {
   userId: string;
   /**

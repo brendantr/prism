@@ -6,7 +6,16 @@ function day(id: string, routineId: string, name: string): RoutineDay {
 }
 
 function routine(id: string, name: string, days: RoutineDay[]): Routine {
-  return { id, profileId: null, name, description: '', daysPerWeek: days.length, isTemplate: true, days };
+  return {
+    id,
+    profileId: null,
+    name,
+    description: '',
+    daysPerWeek: days.length,
+    isTemplate: true,
+    isActive: false,
+    days,
+  };
 }
 
 describe('listTemplateChoices', () => {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "PRism",
     "slug": "prism",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "scheme": "prism",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -38,7 +38,8 @@
           "imageWidth": 180
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,11 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRepository, resetDemoData, resetRepository } from '../repository';
+import { ExerciseInUseError, RoutineNotSelectableError } from '../repositoryErrors';
+import { DEMO_PROFILE_ID } from '../demoSeed';
 import { deviceLocalDate } from '@/domain/trainingDay';
-import type { CheckIn, CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
+import type { BodyMeasurement, CheckIn, CheckInPatch, PersonalRecord, Workout } from '@/domain/types';
+import type { CustomExerciseInput } from '@/domain/customExercise';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => require('node:crypto').randomUUID(),
+}));
 
 /**
  * DemoRepository check-in semantics.
@@ -336,7 +342,10 @@ describe('DemoRepository.completeWorkout', () => {
   it('leaves nothing behind when the write to storage fails', async () => {
     const repo = getRepository();
     const failure = new Error('storage full');
-    const spy = jest.spyOn(AsyncStorage, 'multiSet').mockRejectedValueOnce(failure);
+    // AsyncStorage's Jest module is already a mock. Spying on that mock and
+    // calling `mockRestore()` removes its implementation for later tests;
+    // queue one rejection on the existing mock so it falls back naturally.
+    (AsyncStorage.multiSet as jest.Mock).mockRejectedValueOnce(failure);
 
     await expect(repo.completeWorkout(workout(), [record('pr_1')])).rejects.toThrow('storage full');
 
@@ -346,6 +355,169 @@ describe('DemoRepository.completeWorkout', () => {
     expect((await repo.listWorkouts()).some((w) => w.id === 'w_complete_1')).toBe(false);
     expect(await mine(repo)).toHaveLength(0);
 
-    spy.mockRestore();
+  });
+});
+
+const customInput = (name = 'My cable press'): CustomExerciseInput => ({
+  name,
+  equipment: 'cable',
+  primaryMuscles: ['chest'],
+  secondaryMuscles: ['triceps'],
+  isUnilateral: true,
+  cue: 'Reach forward',
+});
+
+describe('DemoRepository user-owned writes', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+  });
+
+  it('creates, edits, and persists a custom movement across repository instances', async () => {
+    const created = await getRepository().createExercise(customInput());
+    expect(created.isSystem).toBe(false);
+    expect(created.name).toBe('My cable press');
+    expect(JSON.parse((await AsyncStorage.getItem('prism.demo.exercises.v1')) ?? '[]')).toEqual([
+      created,
+    ]);
+
+    resetRepository();
+    expect(await AsyncStorage.getItem('prism.demo.exercises.v1')).not.toBeNull();
+    expect((await getRepository().listExercises()).find((e) => e.id === created.id)).toEqual(created);
+
+    const updated = await getRepository().updateExercise(created.id, customInput('My press'));
+    expect(updated.name).toBe('My press');
+    resetRepository();
+    expect((await getRepository().listExercises()).find((e) => e.id === created.id)?.name).toBe('My press');
+
+    await getRepository().deleteExercise(created.id);
+    resetRepository();
+    expect((await getRepository().listExercises()).some((e) => e.id === created.id)).toBe(false);
+  });
+
+  it('does not let the demo edit or delete a shared PRism movement', async () => {
+    const system = (await getRepository().listExercises()).find((e) => e.isSystem)!;
+    await expect(getRepository().updateExercise(system.id, customInput())).rejects.toThrow(/not yours/i);
+    await expect(getRepository().deleteExercise(system.id)).rejects.toThrow(/not yours/i);
+  });
+
+  it('refuses to delete a custom movement referenced by logged history', async () => {
+    const created = await getRepository().createExercise(customInput());
+    const workout: Workout = {
+      id: 'custom_workout',
+      profileId: 'p1',
+      routineDayId: null,
+      title: 'Custom work',
+      status: 'completed',
+      startedAt: '2026-08-09T10:00:00.000Z',
+      endedAt: '2026-08-09T11:00:00.000Z',
+      reflection: null,
+      sessionRating: null,
+      exercises: [{
+        id: 'custom_block',
+        workoutId: 'custom_workout',
+        exerciseId: created.id,
+        orderIndex: 0,
+        notes: null,
+        sets: [],
+      }],
+    };
+    await getRepository().saveWorkout(workout);
+
+    await expect(getRepository().deleteExercise(created.id)).rejects.toBeInstanceOf(ExerciseInUseError);
+    expect((await getRepository().listExercises()).some((e) => e.id === created.id)).toBe(true);
+  });
+
+  it('selects a shared plan through profile training days and refuses a shared-row flag', async () => {
+    await getRepository().updateProfile({ trainingDaysPerWeek: 3 });
+    expect((await getRepository().getActiveRoutine())?.daysPerWeek).toBe(3);
+    const shared = (await getRepository().listRoutines())[0];
+    await expect(getRepository().setActiveRoutine(shared.id)).rejects.toBeInstanceOf(RoutineNotSelectableError);
+  });
+
+  it('does not move its profile ahead of a rejected storage write', async () => {
+    const repo = getRepository();
+    const before = await repo.getProfile();
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(repo.updateProfile({ displayName: 'Not stored' })).rejects.toThrow(
+      'storage unavailable',
+    );
+
+    expect(await repo.getProfile()).toEqual(before);
+  });
+
+  it('saves, updates, and persists a body measurement', async () => {
+    const measurement: BodyMeasurement = {
+      id: 'measurement_user',
+      profileId: 'p1',
+      measuredAt: '2026-08-09T12:00:00.000Z',
+      bodyweightKg: 82.5,
+      bodyFatPct: null,
+      circumferencesCm: { waist: 80 },
+    };
+    await getRepository().saveMeasurement(measurement);
+    await getRepository().saveMeasurement({ ...measurement, bodyweightKg: 83 });
+    expect(await AsyncStorage.getItem('prism.demo.measurements.v1')).not.toBeNull();
+
+    resetRepository();
+    const saved = (await getRepository().listMeasurements()).filter((m) => m.id === measurement.id);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].bodyweightKg).toBe(83);
+    expect(saved[0].profileId).toBe(DEMO_PROFILE_ID);
+  });
+
+  it('keeps a deleted seeded measurement deleted after a relaunch', async () => {
+    const seeded = (await getRepository().listMeasurements())[0];
+    await getRepository().deleteMeasurement(seeded.id);
+    expect(await AsyncStorage.getItem('prism.demo.measurements.v1')).not.toBeNull();
+    resetRepository();
+    expect((await getRepository().listMeasurements()).some((m) => m.id === seeded.id)).toBe(false);
+  });
+});
+
+/*
+  The bounded startup read, against the real demo implementation.
+
+  Parity with Postgres is the property under test, not the number: demo mode is
+  what every developer and every screenshot runs on, so a bound that behaves
+  differently in the two implementations is a bug that only ever appears in
+  production. The Supabase side of the same contract is pinned in
+  `src/data/__tests__/workoutWindow.test.ts`.
+*/
+describe('DemoRepository.listWorkouts windowing', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+  });
+
+  it('returns every session, oldest first, when unbounded', async () => {
+    const all = await getRepository().listWorkouts();
+    expect(all.length).toBeGreaterThan(3);
+    for (let i = 1; i < all.length; i++) {
+      expect(all[i - 1].startedAt <= all[i].startedAt).toBe(true);
+    }
+  });
+
+  it('returns the newest sessions when bounded, still oldest first', async () => {
+    const repo = getRepository();
+    const all = await repo.listWorkouts();
+    const window = await repo.listWorkouts({ limit: 3 });
+
+    expect(window).toHaveLength(3);
+    // The newest three, in the same order they appear at the end of the full list.
+    expect(window.map((w) => w.id)).toEqual(all.slice(-3).map((w) => w.id));
+  });
+
+  it('is a no-op when the account has fewer sessions than the limit', async () => {
+    const repo = getRepository();
+    const all = await repo.listWorkouts();
+    const window = await repo.listWorkouts({ limit: all.length + 50 });
+    expect(window.map((w) => w.id)).toEqual(all.map((w) => w.id));
+  });
+
+  it('keeps the export complete, which is what I-10 promises', async () => {
+    const repo = getRepository();
+    const all = await repo.listWorkouts();
+    const exported = await repo.exportAccountData();
+    expect(exported.workouts).toHaveLength(all.length);
   });
 });

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, FadeIn, LinearSpectrum, Text } from '@/components/ui';
@@ -13,7 +12,9 @@ import {
   EXPERIENCE_OPTIONS,
   GOAL_OPTIONS,
 } from '@/content/onboarding';
+import { isEmptyProfilePatch, profilePatchFromOnboarding } from '@/domain/settings';
 import { useOnboardingStore, type OnboardingSelections } from '@/store/onboardingStore';
+import { useTrainingStore } from '@/store/trainingStore';
 import { color, radius, space } from '@/theme';
 
 /**
@@ -21,31 +22,51 @@ import { color, radius, space } from '@/theme';
  * ==========
  * The handover into the app.
  *
- * Marking onboarding complete is what flips the root layout's gate, so this is
- * the only screen in the flow that writes anything. The navigation is left to
- * that gate rather than pushed from here -- two things steering the same
- * transition is how you get a double navigation.
+ * The answers are written to the training profile before onboarding is marked
+ * complete. That order is load-bearing: the completion flag is what lets the
+ * root gate reveal Today, so flipping it first would briefly render the
+ * default profile and could leave the answers unapplied if the write failed.
  *
  * The screen echoes back what was chosen, including "Not set" for anything
- * skipped, and says plainly that these answers are not applied to the training
- * profile yet. A summary that implied the app had been reconfigured would be
- * the more flattering lie.
+ * skipped. Skipped fields are omitted from the patch, so the account's
+ * existing/default value survives rather than being replaced by a stand-in.
  */
 export default function CompleteScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const complete = useOnboardingStore((s) => s.complete);
   const goal = useOnboardingStore((s) => s.goal);
   const experience = useOnboardingStore((s) => s.experience);
   const trainingDaysPerWeek = useOnboardingStore((s) => s.trainingDaysPerWeek);
   const availableEquipment = useOnboardingStore((s) => s.availableEquipment);
+  const updateProfile = useTrainingStore((s) => s.updateProfile);
+  const refresh = useTrainingStore((s) => s.refresh);
   const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
 
   const finish = async () => {
     setFinishing(true);
+    setFinishError(null);
     try {
+      let profile = useTrainingStore.getState().profile;
+      if (!profile) {
+        await refresh();
+        profile = useTrainingStore.getState().profile;
+      }
+      if (!profile) throw new Error('Profile unavailable');
+
+      const patch = profilePatchFromOnboarding({
+        goal,
+        experience,
+        trainingDaysPerWeek,
+        availableEquipment,
+      });
+      if (!isEmptyProfilePatch(patch)) await updateProfile(patch);
+
       await complete();
-      router.replace('/(tabs)');
+      // The root gate observes `completed` and owns the one redirect to Today.
+    } catch (error) {
+      console.warn('[onboarding] completion failed', error);
+      setFinishError(COMPLETE.applyFailed);
     } finally {
       setFinishing(false);
     }
@@ -119,6 +140,11 @@ export default function CompleteScreen() {
           loading={finishing}
           onPress={() => void finish()}
         />
+        {finishError ? (
+          <Text variant="bodySm" tone="coral" accessibilityRole="alert" style={styles.error}>
+            {finishError}
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -184,4 +210,5 @@ const styles = StyleSheet.create({
     borderTopColor: color.line,
     backgroundColor: color.bg,
   },
+  error: { marginTop: space.sm, textAlign: 'center' },
 });

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Card,
+  Chip,
   EmptyState,
   ListRow,
   Screen,
@@ -20,10 +21,14 @@ import { muscleDistribution, workoutWorkingSetCount } from '@/domain/calc/volume
 import { MUSCLE_META } from '@/domain/muscles';
 import { selectCompletedWorkouts, useTrainingStore } from '@/store/trainingStore';
 import { DEEPER_SECTION, DEEPER_SURFACES } from '@/content/deeperSurfaces';
+import { ZERO_DATA } from '@/content/zeroData';
 import { useShallow } from 'zustand/react/shallow';
 import { formatVolume } from '@/utils/format';
 import { color, radius, space } from '@/theme';
 import type { Workout } from '@/domain/types';
+import { isInsightsWindowLocked, isSurfaceLocked, resolveInsightsWindow } from '@/domain/entitlements';
+import { PAYWALL, PAYWALL_ROUTE } from '@/content/paywall';
+import { useEntitlementStore } from '@/store/entitlementStore';
 
 /**
  * INSIGHTS
@@ -82,10 +87,23 @@ export default function InsightsScreen() {
   const refresh = useTrainingStore((s) => s.refresh);
   const now = useMemo(() => new Date(), []);
 
-  const [windowDays, setWindowDays] = useState<WindowDays>('28');
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
+  const [windowDays, setWindowDays] = useState<WindowDays>('7');
+  const [lockedWindowNotice, setLockedWindowNotice] = useState(false);
   const days = Number(windowDays);
   const weeks = days / 7;
   const phrase = WINDOW_PHRASE[windowDays];
+
+  const selectWindow = (requested: WindowDays) => {
+    if (isInsightsWindowLocked(Number(requested), entitlementPhase)) {
+      setWindowDays(String(resolveInsightsWindow(Number(requested), entitlementPhase)) as WindowDays);
+      setLockedWindowNotice(true);
+      router.push(PAYWALL_ROUTE as never);
+      return;
+    }
+    setLockedWindowNotice(false);
+    setWindowDays(requested);
+  };
 
   const inWindow = useMemo(() => workoutsSince(history, now, days), [history, now, days]);
 
@@ -195,21 +213,45 @@ export default function InsightsScreen() {
     );
   }
 
-  // Loaded, but there is genuinely nothing to derive from yet. This used to
-  // render as a bare title over blank space, which reads as a broken screen
-  // rather than a new lifter's honest starting point.
+  // A loaded store with no profile is a fault, not an empty account, so it gets
+  // the retry rather than the empty state -- `app/history/index.tsx` reads the
+  // same condition the same way. It was previously the *only* thing reaching
+  // the empty state below, and it never happens.
   if (!profile || !summary) {
     return (
       <Screen scroll={false} {...header}>
+        <ScreenState phase="error" onRetry={() => void refresh()} errorMessage={loadError} />
+      </Screen>
+    );
+  }
+
+  /*
+    Loaded, correct, and genuinely nothing to derive from yet.
+
+    The guard this sits under used to be the empty state's only condition, and
+    `summary` is null exactly when `profile` is -- so `!profile || !summary`
+    collapsed to `!profile`, which never holds once the store is ready. The
+    well-written state below was unreachable, and a new lifter got the alternative
+    instead: Volume 0, Sessions 0, Working sets 0, and a highlight card
+    announcing "0 kg logged in the last 4 weeks". Every one of those numbers is
+    true and the screenful of them is still misleading, which is the same
+    reading I-18 makes of a confident result built on absent input.
+
+    Branching on finished sessions -- the thing actually missing -- is what makes
+    it reachable. Copy lives in `content/zeroData` per D11.
+  */
+  if (history.length === 0) {
+    return (
+      <Screen scroll={false} {...header}>
         {/* Every other empty state in the app offers a way out, which is what
-            `EmptyState` is for -- this one used to be a dead end, and the way
-            out of "no data yet" is the same first session History points at. */}
+            `EmptyState` is for -- the way out of "no data yet" is the same first
+            session History points at. */}
         <EmptyState
-          icon="sparkles-outline"
-          title="Nothing to read yet"
-          body="Insights appear once you have finished a session or two. There is no shortcut — the numbers come from your own training."
-          actionLabel="Choose a workout"
-          onAction={() => router.push('/workout/templates')}
+          icon={ZERO_DATA.insights.icon}
+          title={ZERO_DATA.insights.title}
+          body={ZERO_DATA.insights.body}
+          actionLabel={ZERO_DATA.insights.actionLabel}
+          onAction={() => router.push(ZERO_DATA.insights.route)}
         />
       </Screen>
     );
@@ -221,9 +263,15 @@ export default function InsightsScreen() {
         <SegmentedControl
           options={WINDOW_OPTIONS}
           value={windowDays}
-          onChange={setWindowDays}
+          onChange={selectWindow}
         />
       </View>
+
+      {lockedWindowNotice && entitlementPhase !== 'entitled' ? (
+        <Text variant="bodySm" tone="violet" style={styles.lockedNotice}>
+          {PAYWALL.lockedWindowNotice}
+        </Text>
+      ) : null}
 
       <Card variant="raised" padding="lg" spectral style={styles.summary}>
         <Text variant="eyebrow" tone="faint">
@@ -311,18 +359,22 @@ export default function InsightsScreen() {
           why the two screens stopped owning these words separately. */}
       <SectionHeader title={DEEPER_SECTION.title} eyebrow={DEEPER_SECTION.eyebrow} />
       <Card style={styles.gutterCard} padding="base">
-        {DEEPER_SURFACES.map((surface, i) => (
-          <ListRow
-            key={surface.key}
-            title={surface.label}
-            subtitle={surface.rowSubtitle}
-            icon={surface.icon}
-            iconTone={surface.iconTone}
-            chevron
-            divided={i > 0}
-            onPress={() => router.push(surface.route)}
-          />
-        ))}
+        {DEEPER_SURFACES.map((surface, i) => {
+          const locked = isSurfaceLocked({ requiresPro: surface.requiresPro, phase: entitlementPhase });
+          return (
+            <ListRow
+              key={surface.key}
+              title={surface.label}
+              subtitle={locked ? PAYWALL.lockedRowHint : surface.rowSubtitle}
+              icon={surface.icon}
+              iconTone={surface.iconTone}
+              trailing={locked ? <Chip label={PAYWALL.lockedBadge} tone="violet" icon="lock-closed" /> : undefined}
+              chevron={!locked}
+              divided={i > 0}
+              onPress={() => router.push((locked ? PAYWALL_ROUTE : surface.route) as never)}
+            />
+          );
+        })}
       </Card>
 
       <PhasePanel
@@ -358,6 +410,7 @@ const TINT = { violet: color.violetBright, cyan: color.cyanBright, coral: color.
 
 const styles = StyleSheet.create({
   gutter: { marginHorizontal: space.lg },
+  lockedNotice: { marginHorizontal: space.lg, marginTop: space.md },
   summary: { marginHorizontal: space.lg, marginTop: space.base },
   gutterCard: { marginHorizontal: space.lg, marginBottom: space.md },
   statRow: { flexDirection: 'row', marginTop: space.base },

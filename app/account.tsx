@@ -3,6 +3,7 @@ import { Alert, Share, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Card, ListRow, Screen, Text } from '@/components/ui';
 import { ACCOUNT } from '@/content/account';
+import { PAYWALL, PURCHASE_OUTCOME_COPY, PURCHASE_OUTCOME_TITLE } from '@/content/paywall';
 import { countCompletedSets, shouldConfirmSignOut } from '@/domain/account';
 import {
   isEmptyExport,
@@ -10,6 +11,7 @@ import {
   summariseAccountExport,
 } from '@/domain/accountExport';
 import { getRepository } from '@/data/repository';
+import { reportHandledError } from '@/observability/telemetry';
 import {
   AccountDeletedLocalCleanupError,
   deleteAccountAndTearDown,
@@ -18,6 +20,7 @@ import {
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
+import { useEntitlementStore } from '@/store/entitlementStore';
 import { space } from '@/theme';
 
 /**
@@ -58,6 +61,9 @@ export default function AccountScreen() {
   const email = useSessionStore((s) => s.email);
   const displayName = useTrainingStore((s) => s.profile?.displayName ?? null);
   const workout = useActiveWorkoutStore((s) => s.workout);
+  const entitlementPhase = useEntitlementStore((s) => s.phase);
+  const restorePurchase = useEntitlementStore((s) => s.restore);
+  const clearPurchaseOutcome = useEntitlementStore((s) => s.clearOutcome);
 
   /**
    * Which long-running action is in flight, if any.
@@ -66,7 +72,7 @@ export default function AccountScreen() {
    * startable at the same time, and a single field makes that structural
    * instead of a pair of flags someone has to remember to check together.
    */
-  const [busy, setBusy] = useState<'export' | 'delete' | null>(null);
+  const [busy, setBusy] = useState<'restore' | 'export' | 'delete' | null>(null);
 
   /*
     Only reachable when authenticated -- Today's control is gated on the same
@@ -138,8 +144,26 @@ export default function AccountScreen() {
     } catch (e) {
       // The underlying error can carry schema detail, so it goes to the log and
       // never to the screen -- same rule as CheckInPrompt.
-      console.warn('[account] export failed', e);
+      reportHandledError('account', 'export failed', e);
       Alert.alert(ACCOUNT.exportFailedTitle, ACCOUNT.exportFailedMessage);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onRestorePressed = async () => {
+    setBusy('restore');
+    clearPurchaseOutcome();
+    try {
+      const restored = await restorePurchase();
+      if (restored) {
+        Alert.alert(PAYWALL.restoredTitle, PAYWALL.restoredMessage);
+        return;
+      }
+      const failure = useEntitlementStore.getState().lastFailure;
+      if (failure && failure !== 'cancelled') {
+        Alert.alert(PURCHASE_OUTCOME_TITLE[failure], PURCHASE_OUTCOME_COPY[failure]);
+      }
     } finally {
       setBusy(null);
     }
@@ -164,7 +188,7 @@ export default function AccountScreen() {
         message = ACCOUNT.deleteConfirmMessage(summary);
       }
     } catch (e) {
-      console.warn('[account] could not summarise before delete', e);
+      reportHandledError('account', 'could not summarise before delete', e);
     } finally {
       setBusy(null);
     }
@@ -193,7 +217,7 @@ export default function AccountScreen() {
       // teardown flips the phase last and the route gate unmounts this modal.
       // Someone who just confirmed twice does not need a third screen.
     } catch (e) {
-      console.warn('[account] delete failed', e);
+      reportHandledError('account', 'delete failed', e);
       // TWO different failures, and telling them apart is the point.
       //
       // `AccountDeletedLocalCleanupError` means the account is gone and only
@@ -238,6 +262,21 @@ export default function AccountScreen() {
       <Text variant="bodySm" tone="faint" style={styles.explanation}>
         {ACCOUNT.explanation}
       </Text>
+
+      {entitlementPhase !== 'disabled' ? (
+        <Card style={styles.gutter} padding="none">
+          <ListRow
+            title={busy === 'restore' ? PAYWALL.restoreBusyLabel : PAYWALL.restoreLabel}
+            subtitle={PAYWALL.restoreSubtitle}
+            icon="refresh-outline"
+            iconTone="violet"
+            accessibilityLabel={PAYWALL.restoreLabel}
+            disabled={busy !== null}
+            busy={busy === 'restore'}
+            onPress={() => void onRestorePressed()}
+          />
+        </Card>
+      ) : null}
 
       {/*
         Export sits ABOVE delete, and the order is the design.

@@ -4,6 +4,7 @@ import { Button, Card, Chip, Text } from '@/components/ui';
 import { useTrainingStore } from '@/store/trainingStore';
 import { newId } from '@/utils/id';
 import { deviceLocalDate } from '@/domain/trainingDay';
+import { reportHandledError } from '@/observability/telemetry';
 import { space } from '@/theme';
 import type { CheckIn } from '@/domain/types';
 
@@ -93,7 +94,7 @@ export function CheckInPrompt({ profileId, checkIn }: CheckInPromptProps) {
     } catch (e) {
       // The only place the underlying error is kept. It can carry schema
       // detail, so it goes to the log and never to the screen.
-      console.warn('[check-in] save failed', e);
+      reportHandledError('check-in', 'save failed', e);
       setFailed(true);
     } finally {
       setSaving(false);

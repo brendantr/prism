@@ -113,6 +113,7 @@ const source = (overrides: Partial<AccountExportSource> = {}): AccountExportSour
   checkIns: [checkIn('c2', '2026-02-01T07:00:00.000Z'), checkIn('c1', '2026-01-01T07:00:00.000Z')],
   measurements: [measurement('m1', '2026-01-01T07:00:00.000Z')],
   personalRecords: [record('r1', '2026-01-01T10:00:00.000Z')],
+  entitlement: null,
   ...overrides,
 });
 
@@ -120,7 +121,7 @@ const AT = '2026-08-06T12:00:00.000Z';
 
 describe('buildAccountExport', () => {
   it('carries a format version, so a file can say what it is years later', () => {
-    expect(ACCOUNT_EXPORT_FORMAT_VERSION).toBe(2);
+    expect(ACCOUNT_EXPORT_FORMAT_VERSION).toBe(3);
     expect(buildAccountExport(source(), AT).formatVersion).toBe(ACCOUNT_EXPORT_FORMAT_VERSION);
   });
 
@@ -221,7 +222,7 @@ describe('summariseAccountExport', () => {
 describe('isEmptyExport', () => {
   it('is true for a fresh account', () => {
     const empty = buildAccountExport(
-      { profile, exercises: [exercise('sys1', true)], workouts: [], checkIns: [], measurements: [], personalRecords: [] },
+      { profile, exercises: [exercise('sys1', true)], workouts: [], checkIns: [], measurements: [], personalRecords: [], entitlement: null },
       AT,
     );
     expect(isEmptyExport(empty)).toBe(true);
@@ -236,6 +237,7 @@ describe('isEmptyExport', () => {
         checkIns: [checkIn('c1', '2026-01-01T07:00:00.000Z')],
         measurements: [],
         personalRecords: [],
+        entitlement: null,
       },
       AT,
     );
@@ -246,9 +248,31 @@ describe('isEmptyExport', () => {
     // Every account has a profile. If it counted, the empty state would never
     // show and a new lifter would get a share sheet full of defaults.
     const empty = buildAccountExport(
-      { profile, exercises: [], workouts: [], checkIns: [], measurements: [], personalRecords: [] },
+      { profile, exercises: [], workouts: [], checkIns: [], measurements: [], personalRecords: [], entitlement: null },
       AT,
     );
     expect(isEmptyExport(empty)).toBe(true);
+  });
+
+  it('is not empty when purchase access is the only stored account data', () => {
+    const exported = buildAccountExport(
+      {
+        profile,
+        exercises: [],
+        workouts: [],
+        checkIns: [],
+        measurements: [],
+        personalRecords: [],
+        entitlement: {
+          entitlementId: 'pro',
+          productId: 'app.prism.trainer.pro.lifetime',
+          grantedAt: AT,
+          revokedAt: null,
+          source: 'revenuecat',
+        },
+      },
+      AT,
+    );
+    expect(isEmptyExport(exported)).toBe(false);
   });
 });

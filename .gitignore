@@ -15,6 +15,19 @@ android/
 .env
 .env*.local
 
+# Store submission credentials (Docs/invariants.md I-4, I-5).
+#
+# `eas.json` points the Play submitter at ./credentials/play-service-account.json.
+# That file is a Google service account key with upload authority over the
+# listing -- it is a privileged credential, it is not an EXPO_PUBLIC_ value, and
+# committing it would hand anyone with repository access the ability to publish
+# as PRism. The whole directory is ignored rather than the one filename, so a
+# second credential dropped beside it is covered too.
+credentials/
+*.p8
+*.p12
+*.mobileprovision
+
 # Editor / tooling local state
 .claude/settings.local.json
 .vscode/

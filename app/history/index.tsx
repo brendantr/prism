@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { SectionList, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +39,23 @@ export default function HistoryScreen() {
   const status = useTrainingStore((s) => s.status);
   const loadError = useTrainingStore((s) => s.error);
   const refresh = useTrainingStore((s) => s.refresh);
+  const loadFullHistory = useTrainingStore((s) => s.loadFullHistory);
+
+  /*
+    Startup loads a bounded window of sessions (`src/domain/workingSet.ts`),
+    because the unbounded read grew with a lifter's tenure and ran on every cold
+    start. Every other surface works inside a window shorter than that bound;
+    this screen is the one that does not -- it is the archive, and it is the
+    only place a session from two years ago is supposed to appear.
+
+    So History asks for the rest on entry. `loadFullHistory` is a no-op once the
+    set is known complete, which is the common case after the first visit, and
+    it extends the list in place rather than flipping the shared load status --
+    so the sessions already on screen do not blink out while the rest arrive.
+  */
+  useEffect(() => {
+    void loadFullHistory();
+  }, [loadFullHistory]);
 
   const entries = useMemo(
     () => listWorkoutHistory(workouts, personalRecords),

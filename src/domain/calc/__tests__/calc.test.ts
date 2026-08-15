@@ -1,7 +1,12 @@
 import { estimateOneRepMax, isE1rmExtrapolated, weightForReps, E1RM_REP_CAP } from '../oneRepMax';
 import { setVolume, setsVolume, isVolumeSet } from '../volume';
 import { evaluateSetForPr, detectWorkoutPrs, bestsFromHistory, e1rmSeries } from '../prs';
-import { estimatedRecoveryWindowHours, estimateRecovery, recoveryStatus } from '../recovery';
+import {
+  estimatedRecoveryWindowHours,
+  estimateRecovery,
+  hasRecoveryEvidence,
+  recoveryStatus,
+} from '../recovery';
 import { recommendNextLoad, loadIncrementKg, roundToIncrement, comparableSessions } from '../loadRecommendation';
 import {
   completedThisWeek,
@@ -193,10 +198,49 @@ describe('recovery estimate', () => {
     expect(estimatedRecoveryWindowHours('chest', 40)).toBe(estimatedRecoveryWindowHours('chest', 20));
   });
 
+  /*
+    Still the contract, and still deliberately unchanged -- `averageReadiness`
+    and readiness scoring through it need a number for every muscle in a
+    session, including one this lifter has never trained.
+
+    What changed is what a *renderer* may conclude from it. This same result on
+    an account with no history is sixteen muscles at 100% "fresh", which the
+    Body screen used to draw as a full page of confident output derived from no
+    input at all. `hasRecoveryEvidence` below is the seam that separates the two
+    readings, so this test keeps asserting the per-muscle default rather than
+    being weakened into agreeing with the screen.
+  */
   it('reports untrained muscles as fully fresh', () => {
     const recovery = estimateRecovery([], EXERCISE_BY_ID, new Date('2026-06-10T12:00:00Z'));
     expect(recovery.every((r) => r.readiness === 1)).toBe(true);
     expect(recovery.every((r) => r.status === 'fresh')).toBe(true);
+  });
+
+  it('reports that a no-history estimate has nothing behind it (I-18)', () => {
+    const recovery = estimateRecovery([], EXERCISE_BY_ID, new Date('2026-06-10T12:00:00Z'));
+    expect(recovery.length).toBeGreaterThan(0);
+    expect(hasRecoveryEvidence(recovery)).toBe(false);
+  });
+
+  it('reports evidence as soon as one muscle has a real session behind it', () => {
+    // One bench session leaves most of the sixteen untrained, and the estimate
+    // is still worth showing: the fresh rows now sit beside a measured one.
+    const w = workout([set()], { startedAt: '2026-06-01T18:00:00.000Z' });
+    const recovery = estimateRecovery([w], EXERCISE_BY_ID, new Date('2026-06-02T18:00:00Z'));
+
+    expect(hasRecoveryEvidence(recovery)).toBe(true);
+    expect(recovery.some((r) => r.hoursSinceLastStimulus == null)).toBe(true);
+  });
+
+  it('does not count a session with nothing that counts as volume', () => {
+    // Warm-ups only: logged, but no stimulus was recorded, so there is still
+    // nothing to estimate from and the screen must not pretend otherwise.
+    const warmupsOnly = workout([set({ type: 'warmup' }), set({ completed: false })], {
+      startedAt: '2026-06-01T18:00:00.000Z',
+    });
+    const recovery = estimateRecovery([warmupsOnly], EXERCISE_BY_ID, new Date('2026-06-02T18:00:00Z'));
+
+    expect(hasRecoveryEvidence(recovery)).toBe(false);
   });
 
   it('recovers monotonically as time passes', () => {

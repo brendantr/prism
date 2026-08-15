@@ -6,6 +6,21 @@
 - **Date:** 2026-07-25
 - **Repository commit reviewed:** `2490c8de94b6492c2c20a3a91299313c30042320` (branch `main`, working tree clean, no staged/unstaged changes at time of review — verified via `git status`).
 - **Current baseline (2026-07-29):** `main` is at `c59cbdb12d8ba2374d4d22ad6a9f8e0b91481fcb`. Everything merged between the reviewed commit and that baseline was documentation-only (product-intent-and-guardrails, architecture-baseline-audit, readiness-inputs-and-confidence-foundation planning); no code, schema, or test changed, so this document's findings held up to that point. **The `readiness-inputs-and-confidence-foundation` implementation sprint then changed code**: the check-in path, `src/domain/types.ts`, and `src/domain/calc/readiness.ts` no longer match this document's description of them. Findings touching those files are superseded by that sprint and by `Docs/invariants.md` I-7 and I-18; the rest of this document was not re-verified from 2026-07-29 to 2026-08-01.
+- **S4 entitlement delta (2026-08-09, `feature/v1-entitlements`, not yet integrated):**
+  `react-native-purchases@10.7.0` provides purchase/restore transport for the exact lifetime product
+  `app.prism.trainer.pro.lifetime`. `src/store/entitlementStore.ts` is a fail-closed phase machine;
+  only `Repository.getEntitlement()` reading an authenticated Postgres row may unlock paid UI. The
+  paywall gates 28/84-day Insights, Progress and Body while seven-day Insights, logging, history,
+  exercises, measurements and account controls remain free. Migration `0009_entitlements.sql` adds
+  owner-select-only entitlement rows, invisible event-target rows and a service-role-only atomic,
+  idempotent event RPC. `supabase/functions/revenuecat-webhook` authenticates RevenueCat delivery and
+  maps the supported exact-product events. The authenticated `delete-account` function erases the
+  gateway-verified UUID from RevenueCat before invoking the existing no-argument database deletion,
+  preventing account deletion from leaving processor data behind. Local evidence: typecheck clean,
+  **532/532 Jest tests across 36 suites**, all **191 SQL assertions** (including 17 new entitlement
+  assertions), and iOS/Android Expo exports passed. **No hosted migration/function, RevenueCat project, App Store,
+  Play Console, EAS variable, native project or purchase was changed or exercised.** Those operational
+  steps are release blockers, not implemented facts; see `Docs/revenuecat-release-runbook.md`.
 - **Delta since the 2026-08-01 refresh (recorded 2026-08-03, not a full re-verification):** two
   feature sprints have landed on top of that baseline. `workout-session-continuity-v1`
   (2026-08-02) added the `workout/templates` route and local active-workout draft recovery;
@@ -226,12 +241,174 @@
   which closes **G-7 for `preview`**. `production` and store submission remain unexercised.
   **The binding gates are now G-4 (no crash reporting or analytics at all) and the two product gaps
   below the store bar:** no way to create a custom exercise, and check-in days bucketed in UTC.
-- **Branch provenance note `[fact, 2026-08-06, still true 2026-08-09]`:** at the time of writing, `main` is at `ecfd1f1` and
-  contains **none** of the production-posture commit (`5c18d93`), the auth work (`0af00cd`), the
-  guardrail docs (`d8c206d`), the sign-out surface (`0029a7f`) or password reset (`954d075`). All five
-  sit on their own branches, unmerged, each based on the one before it. Claims in this document
-  describing auth, sign-out, reset or the demo-fallback throw are claims about that branch chain, not
-  about `main`.
+- **Delta 2026-08-09 (`feature/v1-user-data-writes`, based on `main` at `6d8e4d9`):** the custom-
+  exercise blocker named immediately above is closed on this branch. The repository, training store,
+  and UI now create/edit/delete user-owned movements while leaving system movements read-only and
+  refusing deletion when logged history references one. Body measurements can be added, edited, and
+  deleted from Body. A Settings modal writes profile/training preferences and exposes the authenticated
+  account lifecycle; Today's header now opens Settings in demo and account modes. Onboarding answers
+  are applied to the profile before its durable completion flag opens Today. Shared-plan selection is
+  represented by the already-owned profile training-day fields because the shipped plans are global
+  rows (`profile_id is null`) and cannot carry a per-account `is_active` value. No migration, RLS
+  policy, dependency, native project, or hosted-project setting changed. Evidence on this branch:
+  `npm run verify` **passed, 543/543 across 35 suites**, and TypeScript passed; the integration lane
+  had no credentials in this Codex environment and **skipped 23/23**. `npx expo export --platform ios`
+  started Metro but did not finish after several bounded waits and was stopped, so it is not counted
+  as validation. The prior device walkthrough is superseded for the changed onboarding/routes/data
+  contracts: a new cold-start walkthrough is still required. Full record:
+  `Docs/sprints/2026-08-09-v1-user-data-writes.md`.
+- **Delta 2026-08-09 (`fix/v1-zero-data-surfaces`, based on `main` at `6d8e4d9`):** three analysis
+  surfaces now distinguish missing evidence from a result. Insights and Progress branch on zero
+  completed workouts instead of a missing profile; Body replaces sixteen unsupported 100%/fresh rows
+  with an actionable no-history state. Progress key lifts are selected from movements actually
+  repeated in completed, non-future sessions during the last eight weeks, so hosted UUID exercise ids
+  work instead of matching only demo catalogue slugs. The same selector bounds the panel to four and
+  resolves real exercise names. Default favourites are empty rather than four demo-only ids. No
+  repository, schema/RLS, dependency, native, or hosted-project change occurred. Evidence:
+  `npm run verify` passed **529/529 tests across 31 suites** with clean TypeScript; Jest retained its
+  worker-force-exit cleanup warning. The changed render states have no component tests and still need a
+  cold-start zero-account walkthrough. Full record:
+  `Docs/sprints/2026-08-09-v1-zero-data-surfaces.md`.
+- **Delta 2026-08-09 (`feature/v1-observability`, based on `main` at `6d8e4d9`):** the
+  crash-reporting half of **G-4 is implemented on this branch**. `@sentry/react-native` is wired
+  through its Expo config plugin and Metro serializer; `app/_layout.tsx` initialises it before render
+  and wraps the app in `AppErrorBoundary`; six existing handled-error sites report through one
+  boundary while preserving their console warnings. Reporting is inert in development, Jest, demo,
+  and releases without a DSN. Eligible release failures are rebuilt from a privacy allowlist:
+  identity, request/response bodies, state, exception text, free-form/unknown fields, console/click
+  breadcrumbs, screenshots, replay, performance tracing, sessions and product analytics do not
+  leave the device. **G-4 is only partially closed until a release test event proves the external
+  project and source maps; analytics remains deliberately absent, not an open implementation item.**
+  Full record: `Docs/sprints/2026-08-09-v1-observability.md`.
+- **Branch provenance note `[fact, 2026-08-09]` — supersedes the per-branch notes the four sprints
+  above each wrote for themselves.** All four were cut independently from `main` at `6d8e4d9` and
+  developed in parallel, so each recorded its own work as "branch-only until merged". That is no
+  longer true: they are integrated on the app-store-submission branch, and the three earlier notes
+  were removed rather than left contradicting each other. The production-posture, auth, sign-out,
+  password-reset, hosted-verification and local-training-day work named above are ancestors of that
+  baseline.
+
+  **What integration does and does not establish** `[fact]`: each branch was green on its own
+  (543/529/502/532 tests respectively), and that is *not* evidence the merge is green. Nothing here
+  has been applied to a hosted project, no build has been cut, and no screen has been exercised on a
+  device since these landed.
+- **Integration delta 2026-08-09 — the four sprints above, merged** `[fact]`: `npx tsc --noEmit`
+  clean and **642/642 tests across 46 suites**. That is the figure describing what exists now; the
+  four per-branch numbers describe four repositories that no longer exist.
+
+  **Two conflicts of intent were resolved by hand at integration, and neither was a textual
+  conflict** — both merged cleanly and both would have shipped a defect:
+
+  1. **The paywall took the screen the measurement writer had just been added to.**
+     `feature/v1-entitlements` gated the whole Body screen behind the Pro unlock, correctly per its
+     own brief. `feature/v1-user-data-writes` put body-measurement entry on Body, also correctly.
+     Together they put a lifter's own bodyweight log behind a purchase, which is the single thing
+     `Docs/decisions/ADR-0005-monetization.md`'s free tier is defined to prevent. Body is now split
+     across the line rather than sitting on one side of it: measurements always render, and only the
+     recovery estimate locks (`LockedProPanel`, a card, rather than `LockedProScreen`, a return).
+  2. **Two independent early returns each swallowed the whole screen.** The lock and
+     `fix/v1-zero-data-surfaces`'s no-evidence state both returned before the measurement section,
+     so a lifter with no logged sessions — exactly the person recording a starting bodyweight — could
+     not reach the writer at all. Both are now inline states within one page.
+
+  **The same class of failure hit the privacy documents, and there it was worse**
+  `[fact, see `Docs/privacy-data-inventory.md`]`: the observability and entitlement sprints each
+  rewrote that file as though it were the only change in flight, so each described **two**
+  third-party processors. There are **three** (Supabase, Sentry, RevenueCat), and both crash
+  diagnostics *and* purchase history are now collected. Separately,
+  `feature/v1-user-data-writes` falsified three standing claims in that document — that no screen
+  calls `updateProfile`, that the training preferences have no UI write path, and that
+  `body_measurements` and custom `exercises` rows are dormant. Body measurements are the **sensitive
+  health/fitness category**, so that last one would have produced a store privacy declaration that
+  under-reported the most scrutinised data PRism holds. All corrected at integration and marked as
+  corrections rather than silently rewritten.
+
+  `[recommendation]` The mechanism is worth more than the fixes: **a document owned by one sprint is
+  wrong the moment two sprints run in parallel.** Privacy and store-form claims should be re-derived
+  at integration by default, not merged.
+- **Delta 2026-08-10 — the app verified against the hosted project, and the one thing that is broken**
+  `[fact, integration lane, project ref `gyxcjmitzktffyuroucz`]`. The project ref is recorded here
+  deliberately: a probe or a lane result without the project it ran against is the ambiguity that cost
+  this repository a full schema applied to an unrelated app earlier the same day.
+
+  `npm run test:integration` against that project: **22 passed, 1 failed, 23 total.** Confirmed against
+  real PostgREST and real GoTrue rather than against a mock or local Postgres — sign-up on the real
+  `auth.users`, the whole workout graph committing through `save_workout_graph`, ownership stamped over
+  a forged payload, exact-retry idempotency, reconciliation of removed children, RLS between **two
+  genuinely separate accounts** in both directions, `save_check_in`'s omit / value / explicit-null
+  semantics through a real jsonb round trip, the `0009` entitlement read, and export completeness
+  across every table.
+
+  **The one failure is `delete_my_account`, and it is a store-submission blocker.**
+  `SupabaseRepository.deleteAccount` no longer calls the RPC directly — it invokes the `delete-account`
+  Edge Function (`repository.ts`), which also erases the RevenueCat customer so deletion does not stop
+  at Postgres. That function is not deployed, so deletion fails outright with a non-2xx. **I-10
+  requires working deletion before submission and App Review tests it**, so this would have been a
+  rejection rather than a bug report.
+
+  **Closed the same day, and the fix was a design correction rather than configuration**
+  `[decision, owner, 2026-08-10]`. `delete-account` treated a missing `REVENUECAT_PROJECT_ID` /
+  `REVENUECAT_SECRET_API_KEY` as a `503`, alongside the genuinely required platform values — so
+  **account deletion refused to run until a payment processor was configured, on a build that had no
+  RevenueCat keys in any environment and therefore could not sell anything.** That inverts the
+  priority: I-10 is a hard store gate that App Review tests, and billing is optional until you charge
+  someone.
+
+  The function now separates two cases a single condition had conflated (`revenueCatConfigured`, pure
+  and tested):
+  - **Not configured** — no customer was ever sent, so there is nothing to erase. Skip it and delete
+    the account.
+  - **Configured but failing** — a customer may exist, so this still aborts *before* the database
+    delete with a `502`. A lifter is never told their data is gone while a copy sits at a processor.
+
+  A half-set deployment counts as unconfigured, since one value without the other cannot authenticate
+  a v2 request.
+
+  `[fact]` Both Edge Functions were then deployed to `gyxcjmitzktffyuroucz` with the `verify_jwt`
+  settings `supabase/config.toml` specifies (`revenuecat-webhook` false, `delete-account` true), and
+  the lane re-run: **23 passed, 0 failed, 23 total.** Account deletion is now verified end to end
+  against a hosted project — the erasure of an account owning a custom movement logged in a session,
+  which is the exact cascade-ordering case `0007` exists to fix. **I-10 is met in practice, not only
+  in code.**
+
+  `[fact]` Still true: the earlier failing runs left their disposable test accounts behind, so that
+  project holds orphaned test users to clear before real ones arrive. And the RevenueCat secrets are
+  still unset — the webhook rejects everything until `REVENUECAT_WEBHOOK_AUTH` exists, so **entitlements
+  cannot yet be granted**; deletion simply no longer waits on that.
+
+- **Delta 2026-08-10 — the startup read is bounded** `[fact]`: `refresh()` loaded every session an
+  account had ever logged, three levels deep (`workouts → workout_exercises → sets`), with no
+  `.limit()`, `.range()` or pagination anywhere in `src/data/repository.ts`. The cost grew with
+  tenure, so the longest-standing users had the slowest cold start. `listWorkouts` now takes an
+  optional `{ limit }` and the store asks for the most recent `WORKING_SET_WORKOUT_LIMIT` (120)
+  sessions; startup also drops from **ten reads to eight**, because `getActiveRoutine()` re-fetched
+  the profile and routine list that `refresh()` already had.
+
+  Three properties worth carrying forward, all covered by tests:
+  **(1)** the bound is **opt-in** — `listWorkouts()` still returns everything, because
+  `exportAccountData` (I-10, "export everything") and `DemoRepository.deleteExercise` (a movement is
+  undeletable while any logged session references it, however old) would both have broken *silently*
+  under a bounded default. **(2)** A bounded read returns the **newest** sessions: adding `.limit()`
+  to the existing ascending query returns the *oldest* N, which typechecks, satisfies a row-count
+  assertion, and shows a lifter their first month in place of their last. **(3)** History is the only
+  surface that browses past the window and tops up on entry; every analysis window (Insights 84 days,
+  key lifts 56, readiness 28) fits inside the bound, and `coversLongestAnalysisWindow` fails a test if
+  that stops being true.
+
+  **Extended the same day to the check-in and record reads.** `listCheckIns` and
+  `listPersonalRecords` take the same optional `{ limit }`, bounded at startup to 120 and 400 rows;
+  the sort inversion the three share lives once in `readWindow`. Records carry a hazard the other two
+  do not: History matches them to sessions, so a record window narrower than the session window prints
+  **"0 PRs" on a session that set three** — a wrong number rather than a missing row. What prevents
+  that is not the constant but the coupling: `historyComplete` (renamed from `workoutsComplete`) is one
+  flag for both, false when *either* window hit its cap, and `loadFullHistory` loads sessions and
+  records together in one step.
+
+  Evidence: `npx tsc --noEmit` clean, **665/665 tests across 48 suites**. **Not** measured against a
+  real account and not run on a device — the improvement is argued from the query shape, not
+  benchmarked, and the 400-record bound is headroom rather than a derived ceiling. `listMeasurements`
+  is now the only unbounded list read. Full record:
+  `Docs/sprints/2026-08-10-workout-read-window.md`.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -257,9 +434,13 @@
 **Five most material architecture / launch risks (updated 2026-08-01):**
 1. **No authentication path exists**, so the Supabase (production) backend is currently unreachable by any UI in this repository — demo mode is the only mode a user can actually run. **Unchanged** — this is now the single most material gap, since the RLS blocker beneath it (below) is resolved.
 2. ~~**Multi-record workout writes are still not atomic**~~ — **Resolved 2026-08-06** (`feature/v1-workout-write-integrity`). The three sequential, non-transactional upserts are replaced by `save_workout_graph`, a single-transaction `security invoker` Postgres function that also reconciles removed children and makes personal-record persistence idempotent (see G-2 below, and migration `0003`). Verified by 31 assertions against a live Postgres 16.14, including the mid-sequence-failure case. **Residual risk:** the migration has been applied to a disposable local database only — applying it to the real Supabase project is a manual, un-automated step (see G-4), and until it is applied there, every workout save against that project fails outright rather than partially.
-3. **No observability** — no crash reporting, analytics, or logging pipeline was found in dependencies or source. **Unchanged.**
+3. **Observability was absent at this baseline. Partially resolved 2026-08-09** on
+   `feature/v1-observability`: crash reporting exists in code; release delivery and source-map
+   symbolication remain unverified. Product analytics remains deliberately absent.
 4. **No CD/release pipeline** — CI covers typecheck and test only; there is no `eas.json`, no EAS build/submit workflow, and no App Store/Play release automation in this repository. **Unchanged.**
-5. **Residual dependency vulnerabilities** — `npm audit` reports 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling, not shipped in the app bundle). Confirmed unfixable without a major, breaking Expo downgrade; tracked as accepted risk pending an upstream fix (`Docs/sprints/2026-08-01-dependency-hygiene.md`).
+5. **Residual dependency vulnerabilities** — this baseline recorded 11 moderate findings. The
+   2026-08-09 audit supersedes the count with 17 high / 8 moderate / 0 critical across Expo/React
+   Native/Metro tool chains; see G-10 and the observability sprint record.
 
 ~~Previously listed here, now resolved:~~ *RLS policies and the schema are unexercised* — **resolved 2026-08-01**, see above. *Unused dependencies present* (`react-hook-form`, `zod`, `@hookform/resolvers`) — **resolved 2026-08-01**, all three removed (confirmed zero imports before removal).
 
@@ -292,13 +473,14 @@
 | Routing | Expo Router | `~57.0.8` | File-based navigation, typed routes (`experiments.typedRoutes: true`) | `package.json`, `app.json` |
 | State management | Zustand | `^5.0.3` | Two stores: persisted training data, ephemeral active-workout session | `package.json`, `src/store/*.ts` |
 | Backend / data | Supabase (`@supabase/supabase-js`) | `^2.48.1` | Postgres + auth + RLS backend, optional (demo mode is default) | `package.json`, `src/data/supabase/client.ts` |
+| In-app purchase transport | RevenueCat (`react-native-purchases`) | `^10.7.0` | Exact-product native purchase/restore and store-localized price; never entitlement authority | `package.json`, `src/data/purchases.ts` |
 | Local persistence | `@react-native-async-storage/async-storage` | `2.2.0` | Demo-mode local writes; Supabase session storage | `src/data/repository.ts`, `src/data/supabase/client.ts` |
 | Auth | Supabase Auth (client SDK only) | `^2.48.1` | `auth.getUser()` used to scope queries; **no sign-in/out UI exists** | `src/data/repository.ts` (`SupabaseRepository.uid()`) |
 | Forms | *(removed 2026-08-01)* | — | `react-hook-form`, `@hookform/resolvers`, `zod` were declared but never imported anywhere in `app/` or `src/`; removed as dead weight (`Docs/sprints/2026-08-01-dependency-hygiene.md`). Auth and check-in forms use hand-rolled validation instead. | `git log` |
 | Testing | Jest `^29.7.0` + `jest-expo` `~57.0.2` | — | Unit tests for `src/domain/calc` | `package.json`, `src/domain/calc/__tests__/calc.test.ts` |
 | CI | GitHub Actions | — | Typecheck + test on push/PR to `main` | `.github/workflows/ci.yml` |
 | Build / release | Expo CLI (`expo run:ios`/`run:android`), no EAS config | — | Local native builds only; no `eas.json` found in repo | `package.json` scripts; absence confirmed via file search |
-| Environment config | `EXPO_PUBLIC_*` vars, inlined at build time | — | Demo-mode toggle + Supabase URL/anon key | `.env.example`, `src/data/supabase/client.ts` |
+| Environment config | `EXPO_PUBLIC_*` vars, inlined at build time | — | Demo-mode toggle, Supabase URL/anon key, and RevenueCat public platform SDK keys | `.env.example`, `src/data/supabase/client.ts`, `src/data/purchases.ts` |
 | Icons | `@expo/vector-icons` | `^15.0.2` | Ionicons used throughout tab bar and UI | `package.json`, `app/(tabs)/_layout.tsx` |
 | Gestures/safe area | `react-native-gesture-handler` `~2.32.0`, `react-native-safe-area-context` `~5.7.0`, `react-native-screens` `~4.26.0` | — | Navigation plumbing required by Expo Router | `package.json`, `app/_layout.tsx` |
 | Graphics | `react-native-svg` `15.15.4` | — | Present but no SVG component found in `src/components` yet (Phase 3 body map is "planned") | `package.json` |
@@ -331,7 +513,7 @@ prism/
 │   ├── store/                 # trainingStore (persisted read model),
 │   │                          # activeWorkoutStore (ephemeral session state)
 │   └── utils/                 # format.ts, id.ts
-├── supabase/migrations/       # 0001_init.sql — schema + RLS, single migration
+├── supabase/migrations/       # 0001–0009 — schema, RLS, integrity, seed, lifecycle, entitlement
 ├── .github/workflows/ci.yml   # Typecheck + test on push/PR
 ├── ios/, android/             # Git-ignored, regenerated via `expo prebuild`
 └── package.json / tsconfig.json / app.json / .env.example
@@ -371,7 +553,13 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
   - *Local draft* — every mutation mirrors `workout` to `AsyncStorage` under `prism.activeWorkout.draft.v1`, so a killed process can recover it on relaunch (`hydrate()`, and the `subscribe` at the foot of the module). Writes are queued and revision-checked, so the newest state is the one that survives a kill and a discarded session cannot be resurrected by a stale write. This mirror is read by nothing except that `hydrate()`, is scoped to a `DraftOwner`, and is removed on sign-out (`src/store/authActions.ts`).
   - *Repository-backed workout* — only on `finish()`, when the completed workout goes to `trainingStore.completeWorkout` and through the repository. This is the only layer that reaches Postgres.
 - **`src/data` (repositories/data access):** `repository.ts` defines the `Repository` interface and two implementations (`DemoRepository`, `SupabaseRepository`), selected once at module load via `getRepository()` based on `isSupabaseConfigured`. `supabase/client.ts` lazily constructs the Supabase client only when configured, so demo mode makes zero network calls.
-- **Supabase/database:** `supabase/migrations/` holds the schema — **seven files as of 2026-08-09** (`0001_init` … `0007_deletable_account_with_custom_exercises`), not the single `0001_init.sql` this line described until then. They are exercised by CI against a disposable Postgres (`supabase/tests/rls/run.sh`, wired into `.github/workflows/ci.yml`), but **applying them to a hosted project is still a manual dashboard step** — there is no `supabase/config.toml`, no `supabase link`, and therefore no `supabase db push`. That gap is why `Docs/tester-readiness-runbook.md` §2 needs a hand-written probe to answer "which migrations does this project have".
+- **Supabase/database:** `supabase/migrations/` holds the schema — **nine files as of S4 on
+  2026-08-09** (`0001_init` … `0009_entitlements`). They are exercised against a disposable Postgres
+  by `supabase/tests/rls/run.sh`. S4 adds `supabase/config.toml` to declare that the RevenueCat
+  webhook performs its own Authorization check (`verify_jwt = false`) while account deletion keeps
+  the platform user-JWT gate (`verify_jwt = true`), plus both Edge Function sources; the repository is
+  still unlinked and nothing was deployed or applied to a hosted project.
+  Hosted migration/function deployment remains an explicit manual release operation.
 - **Tests:** **Corrected 2026-08-06** `[fact, `npx jest --ci`]`. This entry claimed tests existed "only for `src/domain/calc`" with "no tests found for `src/data`, `src/store`". That stopped being true several sprints ago and stayed in the baseline. Actual coverage today: **24 suites, 375 tests**, across `src/content`, `src/data` (repository, ownership, auth posture, Supabase session flow, secure storage), `src/domain` (calc, schedule, history, auth validation, auth errors, routing, account), `src/store` (active workout, training, auth actions, session), and `src/utils`. Still genuinely untested: **anything under `app/` and anything under `src/components`** — there is no component or screen test in the repository.
 - **Configuration/build/CI:** `app.json` (Expo config), `tsconfig.json` (strict TS, `@/*` path alias to `src/`), `.env.example` (documents three `EXPO_PUBLIC_*` variables), `.github/workflows/ci.yml` (Node 20, `npm ci`, typecheck, test).
 
@@ -380,7 +568,7 @@ redrawn wholesale, to avoid introducing new unverified claims into a diagram):**
 ## Runtime Architecture
 
 **1. App startup and route entry** *(verified, `app/_layout.tsx`)*
-Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account` (modal, added 2026-08-08), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
+Expo Router's entry point (`expo-router/entry`, `package.json` → `main`) mounts `app/_layout.tsx` as the root layout. It wraps the app in `AppErrorBoundary` (added 2026-08-09 — an uncaught render error was previously a white screen with no report), then `GestureHandlerRootView` and `SafeAreaProvider`, sets the status bar, and defines a `Stack` whose top-level routes are `(tabs)` (the tab group), `auth/index` (sign-in/sign-up, gestures disabled), `account`, `settings`, `exercise`, `measurement` and `paywall` (modals), `onboarding`, `workout/active` (slide-from-bottom, gestures disabled), `workout/picker` and `workout/templates` (modals), `workout/summary`, and the two `history` routes.
 
 **Rewritten 2026-08-06 (`feature/v1-auth-and-session`).** The root layout previously ran two things on mount — an unconditional `trainingStore.load()` and a redirect effect that knew only about onboarding — and held the splash until the persisted onboarding flag resolved. It now holds **one combined gate**. `sessionStore.initialize()` and `onboardingStore.load()` both fire on mount and are allowed to race, because each only reads local storage and neither redirects; `Splash` renders until `sessionPhase !== 'unknown' && onboardingStatus === 'ready'`. Adding a second condition to the old shape would have meant two effects redirecting off the same `useSegments()` array, which is how a gate turns into a redirect loop.
 
@@ -442,18 +630,19 @@ flowchart TD
 **Entities and relationships** *(verified, `supabase/migrations/0001_init.sql` and `src/domain/types.ts`, which the file's own header states mirrors the SQL 1:1)*:
 `profiles` (1) → `workouts` (N) → `workout_exercises` (N) → `sets` (N); `profiles` → `routines` (N) → `routine_days` (N) → `routine_exercises` (N); `profiles` → `body_measurements`, `check_ins`, `personal_records` (N each); `exercises` is shared (system rows have `profile_id = null`) and referenced by `workout_exercises` and `routine_exercises`.
 
-**Ownership and lifecycle:** Every user-owned row carries `profile_id`, and `profiles.id` references `auth.users(id) on delete cascade` — deleting the Supabase auth user cascades through the entire schema (verified in migration comments and FK definitions). A trigger (`handle_new_user`) auto-creates a `profiles` row on signup. In demo mode, there is no `auth.users` equivalent — `DemoRepository` uses a fixed `DEMO_PROFILE_ID` constant and persists only *user-logged* workouts/records/check-ins to `AsyncStorage` under fixed keys (`prism.demo.workouts.v1`, etc.); the seeded 8-week history is regenerated in memory each launch and merged with anything the user has logged.
+**Ownership and lifecycle:** Every user-owned row carries `profile_id`, and `profiles.id` references `auth.users(id) on delete cascade` — deleting the Supabase auth user cascades through the entire schema (verified in migration comments and FK definitions). A trigger (`handle_new_user`) auto-creates a `profiles` row on signup. In demo mode, there is no `auth.users` equivalent — `DemoRepository` uses a fixed `DEMO_PROFILE_ID` constant and persists the profile override plus user-logged workouts, records, check-ins, custom exercises, and measurement overrides/tombstones to `AsyncStorage` under versioned keys; the seeded history is regenerated in memory each launch and merged with those writes.
 
 **Demo data vs. Supabase data:** These are two structurally-identical but operationally distinct datasets behind one `Repository` interface (verified, `src/data/repository.ts`). Demo data has no expiry, sync, or multi-device concept — it is single-device, `AsyncStorage`-backed. A `resetDemoData()` function exists to wipe it back to the pristine seed.
 
-**Repository abstraction and contracts:** The `Repository` interface (`src/data/repository.ts`) is the sole contract the UI depends on: `getProfile`, `updateProfile`, `listExercises`, `listRoutines`, `getActiveRoutine`, `listWorkouts`, `saveWorkout`, `deleteWorkout`, `listCheckIns`, `saveCheckIn`, `listMeasurements`, `listPersonalRecords`, `savePersonalRecords`. Both implementations satisfy it in full. `SupabaseRepository.saveWorkout` upserts the workout, its exercises, and its sets in three sequential calls (not a single transaction) — a partial failure mid-save (e.g. workout row succeeds, sets upsert fails) would leave Postgres in a partially-written state. This is a **confirmed code pattern**, not a confirmed production incident; no test exercises this path.
+**Repository abstraction and contracts:** The `Repository` interface (`src/data/repository.ts`) is the sole data-access contract used by the stores. It covers profile reads/updates; exercise list/create/update/delete; routine list/resolution/owned activation; atomic workout completion plus workout CRUD; partial check-in writes; measurement list/save/delete; personal-record writes; and account export/deletion. Both implementations satisfy it. Supabase ownership is stamped from the active session rather than caller fields; demo mode stamps its one `DEMO_PROFILE_ID`. Workout completion goes through `save_workout_graph`, including personal records, in one idempotent database transaction (G-2/I-2 closed).
 
-**Database migrations, RLS, and authorization posture:** One migration file, `0001_init.sql`, creates all tables, enums, indexes, the `updated_at` trigger, the `handle_new_user` trigger, and RLS policies for every table (`select`/`all` policies scoped to `auth.uid()`, with `exists`-walk policies for child tables lacking their own `profile_id`). No migration tooling (e.g. `supabase migration up`, a migrations runner script) was found in `package.json` — applying this file is a manual step per the README.
+**Database migrations, RLS, and authorization posture:** Eight migration files (`0001`–`0008`) define the schema, security hardening, atomic workout RPC, partial/day-local check-ins, account deletion, shared library seed, and deferrable custom-exercise references. The committed SQL is exercised against disposable Postgres in CI; hosted application remains an owner-run step because this repository still has no linked Supabase CLI project.
 
 **Data integrity gaps or unknowns:**
-- `saveWorkout`'s three-step upsert is not atomic (see above) — **likely risk**, unconfirmed by test.
-- No automated verification that the RLS policies actually behave as written against a real Postgres instance — **unknown, requires validation** (e.g. via `supabase test db` or a CI job with a local Postgres container, neither of which exists in this repo).
-- `exercises` table has a partial unique index (`lower(name), equipment) where profile_id is null`) preventing duplicate system exercises, but no equivalent constraint prevents a user from creating a duplicate personal exercise — **inferred, minor, not verified against runtime behavior**.
+- Shared-template choice is inferred from the profile's session target because global template rows cannot hold a per-user flag. An explicit choice distinct from that target would require an approved schema decision.
+- Saving Settings can span profile and owned-routine rows. It is safely retryable and the failure copy admits possible partial progress, but there is no cross-table transaction without a new RPC/migration.
+- `exercises` has a partial unique index for system movements only; user-created duplicate names are currently allowed by design.
+- The new write methods have hermetic ownership tests, but their staging integration cases skipped in this environment; live-project verification remains required.
 
 ---
 
@@ -465,7 +654,7 @@ A complete client-side authentication path now exists. `src/data/supabase/auth.t
 
 `SupabaseRepository.uid()` changed in two ways. It reads `auth.getSession()` rather than `auth.getUser()`: `getUser()` round-trips to `/auth/v1/user` on every call, and `uid()` is reached by six of the eight repository calls `trainingStore.refresh()` fires in parallel — six requests before a single row is fetched — while the access token is what Postgres evaluates RLS against anyway, so a second client-side validation proves nothing the query itself will not. And it throws `AuthRequiredError` rather than a bare `Error`, which is what allows the store layer to distinguish "no session" from every other failure. The error type lives in `src/data/authRequired.ts` rather than in a store, preserving the one-directional layering: `src/data` defines and throws it, stores catch and interpret it, and no repository reads session state back out of a store. No repository method accepts a caller-supplied id; `sessionStore.userId` exists for display and test assertions only.
 
-**Sign-out is reachable as of 2026-08-08** (`feature/v1-signout-surface`). Today renders an Account control in `Screen`'s previously-unused `headerRight` slot, beside the lifter's own name; it routes to `app/account.tsx`, a modal carrying an identity line, one explanatory sentence, and a destructive-toned "Sign out" row that calls `signOutAndTearDown`. Visibility is decided by one pure predicate, `canOfferSignOut({ authEnabled, sessionPhase })` (`src/domain/account.ts`), which is true only when auth is enabled **and** the phase is `'authenticated'`. Demo and misconfigured builds therefore have no control at all — absent rather than disabled, since a greyed-out "Account" implies an account that could have existed, and in the misconfigured case it would also compete with the `SUPABASE_MISCONFIGURED_MESSAGE` that build actually owes its user. Confirmation follows UX decision D6: the sheet warns before tearing down only when logged work would be lost (`shouldConfirmSignOut`, which counts completed sets including warm-ups), and signs out immediately otherwise.
+**Sign-out is reachable as of 2026-08-08** (`feature/v1-signout-surface`). As of the user-data-writes sprint, Today renders a Settings control for both demo and account modes; authenticated Settings includes an Account and privacy row leading to `app/account.tsx`, whose destructive-toned "Sign out" row calls `signOutAndTearDown`. The account row remains absent outside the authenticated phase. Confirmation follows UX decision D6: the sheet warns before tearing down only when logged work would be lost (`shouldConfirmSignOut`, which counts completed sets including warm-ups), and signs out immediately otherwise.
 
 **Password reset added 2026-08-09** (`feature/v1-password-reset`), and it is **code-based, not link-based**. `requestPasswordReset(email)` wraps `resetPasswordForEmail` and deliberately passes **no `redirectTo`**: this flow does not use the emailed link. `confirmPasswordReset(email, token, newPassword)` then runs three server calls behind one function — `verifyOtp({ type: 'recovery' })` to exchange the emailed code for a session, `updateUser({ password })` to make the change, and `signOut()` to hand the session straight back.
 
@@ -477,13 +666,32 @@ The sign-out step at the end is deliberate: `verifyOtp` leaves the app authentic
 
 Category: **resolved in the client.** What is *not* resolved, and must not be read into the above: **no code path in this repository has been executed against a live Supabase project.** The integration suite (`src/data/supabase/__tests__/sessionFlow.integration.test.ts`) is gated on `PRISM_INTEGRATION_SUPABASE_*` and skipped; no credentials were created. Sign-in has never obtained a real token here, and **whether the recovery email actually carries a six-digit code depends on an owner-side edit to the Supabase recovery template (`{{ .Token }}`) that this repository did not and cannot make.** Deep-link session capture still does not exist, and account deletion and export (I-10) remain absent — neither the Account surface nor the reset flow claims any of them.
 
-**RLS status and evidence:** RLS is enabled on all 11 tables and policies exist for every table, scoped consistently to `auth.uid()` (verified, migration lines 275–387). Category: **confirmed** as *written*; **unknown requiring validation** as *enforced*, since no test applies the migration and asserts policy behavior (e.g. that user A cannot read user B's `workouts`).
+**RLS status and evidence:** RLS is enabled on all 13 tables after S4. The full migration sequence is
+applied by the disposable Postgres runner and 191 assertions cover ownership, write integrity,
+deletion, seed visibility, local-day semantics and entitlements. Hosted production enforcement is
+still an operational validation gate.
 
-**Environment variable names (values never read or reproduced):** `EXPO_PUBLIC_DEMO_MODE`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (source: `.env.example`). All three are `EXPO_PUBLIC_`-prefixed and therefore inlined into the client bundle by design — the README explicitly states the anon key is safe for this because RLS is the actual enforcement boundary, not variable secrecy. No service-role key or other server-only secret was found referenced anywhere in the repository.
+**Environment variable names (values never read or reproduced):** `EXPO_PUBLIC_DEMO_MODE`,
+`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+`EXPO_PUBLIC_REVENUECAT_IOS_KEY`, and `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` (source:
+`.env.example`). All are public build values, inlined into the client bundle by design. The Edge
+Functions read `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`REVENUECAT_WEBHOOK_AUTH`, `REVENUECAT_SECRET_API_KEY`, and `REVENUECAT_PROJECT_ID` from their server
+environment as needed. The anon key and project id are identifiers/public configuration; the other
+three are privileged server values. No value is committed or logged.
 
-**Client/server trust boundaries:** The client (mobile app) holds only the Supabase anon key and relies entirely on Postgres RLS for row-level authorization — there is no separate backend/API layer in this repository. This is a standard, low-risk Supabase pattern **if and only if** RLS is correct (see "unknown requiring validation" above), since the anon key alone grants no access without matching policies.
+**Client/server trust boundaries:** The mobile client holds only public Supabase and RevenueCat SDK
+keys. Training/account authorization relies on Postgres RLS. Entitlement writes are a separate
+server-only path: RevenueCat calls an authenticated Edge Function, which uses the service role to call
+the exact-product event RPC. The client can select its entitlement row but has no policy permitting
+insert, update or delete. SDK state is therefore a transport hint, never access authority (I-9).
 
-**Risks around user health/training data:** The schema stores body measurements (`body_measurements.bodyweight_kg`, `body_fat_pct`, `circumferences_cm`) and check-ins (sleep/energy/soreness/stress) — data a user might reasonably consider sensitive. Category: **likely risk, requires product decision** — no privacy policy, data-export, or data-deletion UI exists yet (README lists these as Phase 6/"planned"), even though the schema's cascade-delete design would make a "delete my account" feature straightforward to implement once auth exists.
+**Risks around user health/training data:** The schema stores body measurements
+(`body_measurements.bodyweight_kg`, `body_fat_pct`, `circumferences_cm`) and check-ins
+(sleep/energy/soreness/stress) — data a user might reasonably consider sensitive. Export and deletion
+UI now exist and the privacy-policy draft inventories both Supabase and RevenueCat processing. The
+remaining release risk is operational/legal: production migrations, deletion/export, owner
+placeholders, processor terms and the published policy URL are not yet verified.
 
 **Secrets, logging, dependency, or data-access concerns:**
 - No `.env` file contents were read or reproduced by this audit, per instruction.
@@ -500,12 +708,18 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 | Route | File | Type |
 |---|---|---|
 | `auth` | `app/auth/index.tsx` | Stack screen — sign-in / sign-up, gestures disabled (added 2026-08-06, `feature/v1-auth-and-session`). There is nothing behind sign-in to return to. `app/onboarding/auth.tsx` is no longer a screen: it is a `<Redirect>` that resolves to `/auth` where accounts exist and to `/onboarding/steps` where they do not. |
-| `account` | `app/account.tsx` | Modal — identity, sign out, one explanatory line (added 2026-08-08, `feature/v1-signout-surface`). Reached only from Today's `headerRight` Account control, which renders only when `canOfferSignOut` is true. Deliberately not a settings screen: a fourth item on it would make it one. |
+| `account` | `app/account.tsx` | Modal — identity, sign out, export, account deletion, and the **Restore purchases** row Apple requires for a non-consumable. **Reached from Settings**, not from Today: the account control moved there when Settings landed, and the two sprints that changed this route each described the old entry point. |
+| `settings` | `app/settings.tsx` | Modal — profile, units/bodyweight, training preferences, active plan, equipment, and the authenticated account entry. |
+| `exercise` | `app/exercise.tsx` | Modal — create/edit a user-owned movement; delete only when no active or logged session references it. |
+| `measurement` | `app/measurement.tsx` | Modal — add/edit/delete optional bodyweight, body-fat, and waist entries. |
+| `paywall` | `app/paywall.tsx` | Modal — original Pro explanation, exact one-time product price, purchase, restore, and support-oriented outcomes. SDK success never grants access directly; the server entitlement does. |
 | `(tabs)/index` | `app/(tabs)/index.tsx` | Tab — Today |
-| `(tabs)/progress` | `app/(tabs)/progress.tsx` | Tab — Progress |
-| `(tabs)/body` | `app/(tabs)/body.tsx` | Tab — Body |
+| `(tabs)/exercises` | `app/(tabs)/exercises.tsx` | Tab — exercise library, custom movement entry/edit. |
 | `(tabs)/insights` | `app/(tabs)/insights.tsx` | Tab — Insights |
+| `(tabs)/social` | `app/(tabs)/social.tsx` | Tab — Social |
 | `(tabs)/plans` | `app/(tabs)/plans.tsx` | Tab — Plans |
+| `(tabs)/progress` | `app/(tabs)/progress.tsx` | Hidden tab route — deeper progress surface reached from Insights/Today. |
+| `(tabs)/body` | `app/(tabs)/body.tsx` | Hidden tab route — recovery plus user-entered measurements. |
 | `workout/active` | `app/workout/active.tsx` | Stack screen, slide-from-bottom, gestures disabled |
 | `workout/picker` | `app/workout/picker.tsx` | Modal |
 | `workout/summary` | `app/workout/summary.tsx` | Stack screen. **Updated 2026-08-03:** now registered explicitly in `app/_layout.tsx` (no options, so no behavioural change), closing the file-convention-only routing noted here and in `Docs/sprints/2026-08-02-workout-logging-v1-planning.md` §2.5 |
@@ -529,6 +743,24 @@ Category: **resolved in the client.** What is *not* resolved, and must not be re
 ---
 
 ## Quality and Operational Readiness
+
+**Per-branch evidence (2026-08-09), each measured on its own branch before integration** `[fact]`:
+
+| Branch | `npm run verify` |
+|---|---|
+| `feature/v1-user-data-writes` | **543/543 tests, 35 suites**, TypeScript clean |
+| `fix/v1-zero-data-surfaces` | **529/529 tests, 31 suites**, TypeScript clean |
+
+New coverage on the first spans custom-exercise and measurement validation, settings/plan selection,
+onboarding completion durability, demo persistence, Supabase ownership-shaped calls, training-store
+post-persistence updates, and copy guardrails; on the second, UUID-backed and demo-backed key-lift
+selection, evidence windows/thresholds/order, completed/non-future session boundaries, recovery
+evidence, empty favourites/reset, and zero-data copy. The credential-gated integration lane found no
+credentials and skipped. **Neither number is the post-merge figure** — the integrated result is
+recorded in the integration delta below, because two independently green branches are not evidence
+that their merge is green. App rendering still has no component-test framework, so every changed
+screen remains unverified by test and needs the cold-start walkthrough
+(`Docs/tester-readiness-runbook.md` §6).
 
 **Existing test suites and what they cover (original, 2026-07-25):** One suite, `src/domain/calc/__tests__/calc.test.ts` (434 lines, 40 tests), covering: Epley 1RM (including rep cap and inversion), training volume (warm-up exclusion, incomplete-set exclusion), PR detection (both `e1rm` and `weight` kinds, extrapolation guard), recovery estimate (monotonicity, clamping, status bands), all five next-load-recommendation branches (deload/hold/increase×2/establish, rounding-cancellation guard), readiness score (bounds, weight-sum, ISO-week boundaries), and the demo seed generator (determinism, 8-week coverage, no future dates). **No tests exist** for `src/data` (repository, mappers), `src/store` (Zustand stores), any file under `app/`, or any file under `src/components`.
 
@@ -628,12 +860,15 @@ routing decision and the sign-out visibility rule were extracted into pure funct
 **CI coverage:** `.github/workflows/ci.yml` runs on push/PR to `main` as two parallel jobs: `verify` (checkout → Node 20 setup → `npm ci` → `npm run typecheck` → `npm test -- --ci`) and, **added 2026-08-04** (PR #31, `Docs/sprints/2026-08-04-supabase-rls-ci.md`), `rls` (checkout → install `postgresql-client-16` → run `supabase/tests/rls/run.sh` against a disposable `postgres:16` GitHub Actions service container). Both were observed green on the merging PR. Still no build step, no lint step (matching the absence noted above), no E2E test, no artifact publishing, and no real Supabase project is touched by either job — the `rls` job is a plain, ephemeral Postgres instance, not a linked hosted project.
 
 **Observability, analytics, crash reporting, backups, release tooling, EAS status:**
-- **Crash reporting:** Absent — no Sentry, Bugsnag, or equivalent found in dependencies or source.
+- **Crash reporting:** Implemented on `feature/v1-observability` with Sentry, a root render boundary,
+  six handled-error call sites, Expo/Metro integration, and deterministic privacy-policy tests.
+  External release delivery and source-map symbolication are not yet verified.
 - **Analytics:** Absent — no analytics SDK found.
-- **Logging:** Absent — no structured logging library found; ad hoc `console`/`Alert.alert` usage only (verified in `app/workout/active.tsx`).
+- **Logging:** Local console warnings remain; handled failures route through one crash-reporting
+  boundary. No general remote logging pipeline exists.
 - **Backups:** Not applicable to this repository — Supabase-managed Postgres backup policy would be a Supabase-project-level configuration, not something this repo controls or documents.
-- **Release tooling:** Absent — no `eas.json`, no `eas-cli` in dependencies, no release/versioning script beyond the plain `version` field in `app.json`/`package.json` (both `0.1.0`).
-- **EAS status:** Not configured. `ios/` and `android/` directories exist locally but are git-ignored, generated via `expo prebuild`, and the `package.json` scripts (`expo run:ios`, `expo run:android`) target local device/simulator builds, not EAS cloud builds.
+- **Release tooling** *(superseded 2026-08-09; the original text said "Absent — no `eas.json`, no `eas-cli` in dependencies")*: `eas.json` is committed with three build profiles, `cli.appVersionSource: "remote"`, and a `submit.production` block configuring the Android submitter to the `internal` track as a draft. `app.json` `version` is **1.0.0**. Procedure: `Docs/store-submission-runbook.md`.
+- **EAS status** *(superseded 2026-08-09)*: configured, with an EAS project id in `app.json` and a preview build produced end to end on 2026-08-09. `ios/` and `android/` remain git-ignored and generated by `expo prebuild` — a continuous-native-generation setup, which is why `expo-secure-store`, `@sentry/react-native` and `react-native-purchases` all integrate as config plugins rather than as hand-edited native projects. **No `production` build and no store submission has been run.**
 
 ---
 
@@ -647,13 +882,15 @@ per `Docs/invariants.md` I-15, a document's history of what was found and fixed 
 | ~~G-1~~ | ~~High~~ | ~~Auth~~ | **Resolved in the client 2026-08-06** (`feature/v1-auth-and-session`). A full auth path exists: `src/store/sessionStore.ts` (four-phase machine, `onAuthStateChange` subscription), `src/store/authActions.ts` (ordered sign-out teardown), `src/data/authRequired.ts` (`AuthRequiredError`), `src/data/supabase/auth.ts` (the sole caller of Supabase's auth API), `src/domain/routing.ts` (the pure route gate), and `app/auth/index.tsx` (the real sign-in/sign-up surface). `uid()` now reads `getSession()` and throws `AuthRequiredError`, which `trainingStore.refresh()` routes to sign-in instead of to `ScreenState`. **Sign-out made reachable 2026-08-08** (`feature/v1-signout-surface`): `src/domain/account.ts` (`canOfferSignOut`, `shouldConfirmSignOut`), `src/content/account.ts`, `app/account.tsx`, and Today's `headerRight` control. **Password reset added 2026-08-09** (`feature/v1-password-reset`): `src/domain/authReset.ts`, `requestPasswordReset`/`confirmPasswordReset` in `src/data/supabase/auth.ts`, and a reset mode inside `app/auth/index.tsx` — code-based, since deep-link capture does not exist. The client-side account lifecycle is now complete: sign up, sign in, sign out, recover. Evidence: 367/367 across 24 suites. **One limit remains, stated rather than implied:** nothing here has run against a live Supabase project — the integration lane is credential-gated and skipped — and reset additionally depends on an owner-side recovery-template edit. | Production mode is now reachable by a real user in code, and a real user can sign in, sign out and recover a lost password; whether any of it works end to end against a real project is unverified | Exercise the `preview` profile against a real project once the owner creates its EAS variables, applies the migrations, and adds `{{ .Token }}` to the recovery template | No |
 | G-2 | ~~High~~ **Closed** | Data integrity | **Resolved 2026-08-06** (`feature/v1-workout-write-integrity`). The three sequential non-transactional upserts are gone; `SupabaseRepository.saveWorkout`/`completeWorkout` call `save_workout_graph` (migration `0003`), one `security invoker` transaction. Three defects were closed, not one: non-atomicity, additive-only writes that never deleted removed children, and duplicate personal records on retry. | Was: a failure mid-save could leave a workout with missing exercises/sets, against a real account's training history. Now: the save either lands whole or not at all, a retry is a no-op, and a cross-tenant id is rejected with `42501` rather than silently doing nothing. | Done — verified by `supabase/tests/rls/03_run_write_integrity_tests.sql`, 31/31 against local Postgres 16.14. **Not yet applied to the real Supabase project** (see G-4). | No |
 | ~~G-3~~ | ~~High~~ | ~~Verification gap~~ | **Resolved 2026-08-01, CI-wiring closed 2026-08-04.** `supabase/tests/rls/` (57 assertions) runs against the actual, corrected `0001_init.sql`/`0002_security_hardening.sql` on a disposable local Postgres instance and passes; a prior blocking DDL defect (non-immutable index expression) was found and fixed first. **The "wire into CI" recommendation this row used to carry is now done** — PR #31 added an `rls` job to `.github/workflows/ci.yml` running the suite against a disposable `postgres:16` service container on every push/PR to `main`, observed green (`Docs/sprints/2026-08-04-supabase-rls-ci.md`). | RLS correctness is now demonstrated, not just written, and a regression in `supabase/migrations/*.sql` now fails CI | — | No |
-| G-4 | Medium | Observability | No crash reporting, analytics, or logging framework found in dependencies. **Unchanged 2026-08-06 and explicitly untouched by the auth sprint** — recorded so its silence in that sprint's records is not mistaken for closure. | Production issues would be invisible until user-reported — now including failed sign-ins, which the app cannot report on at all | Decide on and integrate an observability stack before wider release | Yes |
+| G-4 | Medium | Observability | **Partially resolved on `feature/v1-observability`.** Privacy-filtered Sentry crash reporting covers root render failures and the six existing handled-error sites. Product analytics is deliberately absent. A release/non-demo test event and source-map symbolication have not been exercised because no DSN/upload credentials were added to this branch. | Code now has a diagnosable failure path, but the external delivery path is unproved until a release artifact sends and symbolicates one test failure | Configure owner-controlled Sentry/EAS values, send one release test event on each platform, confirm symbolication and privacy fields, then close the crash-reporting half | Yes |
 | ~~G-5~~ | ~~Medium~~ | ~~Error handling~~ | **Resolved.** All seven data-driven screens (`Today`, `Exercises`, `Insights`, `Social`, `Plans`, `Progress`, `Body`) now share `src/components/ui/ScreenState.tsx` and branch on `trainingStore.status` (`2026-07-30-ui-ux-product-polish.md`). Four of seven were individually photographed in their error state; three (Plans, Social, and one of Progress/Body) were wired identically and typecheck-covered but not individually screenshotted — see `Docs/readiness/2026-07-31-closure-inventory.md` item B2. | A load failure now shows an honest error state with retry, not stale/empty data | Photograph the remaining screens' error states (low-cost follow-up) | No |
 | ~~G-6~~ | ~~Medium~~ | ~~Dependency hygiene~~ | **Resolved 2026-08-01.** `react-hook-form`, `zod`, `@hookform/resolvers` removed — confirmed zero imports before removal (`Docs/sprints/2026-08-01-dependency-hygiene.md`). | — | — | — |
 | G-7 | Low | Release tooling | **Partially resolved 2026-08-06.** `eas.json` (development/preview/production, `appVersionSource: remote`) and an EAS project id in `app.json` are committed; `npx eas config --platform ios --profile production` resolves cleanly; each profile now sets `EXPO_PUBLIC_DEMO_MODE` explicitly. **No build has been run**, `submit.production` is empty, and the production EAS environment still has no Supabase variables — so a production build today hits the misconfigured path by design rather than shipping demo silently (`Docs/production-posture-v1.md` §4–§5). **Updated 2026-08-06 (auth sprint):** the `preview` flip from demo to real is now unblocked *in code* — G-1 no longer stands in its way — but it remains blocked on three things outside this repository, two of them owner-only: EAS environment variables for the `preview` environment (§4 currently documents only `production`), the migrations actually applied to the real project, and the project's email-confirmation setting. | A cloud build path exists on paper; whether it produces a working artifact is unverified. The auth blocker is gone, so this is now the nearest gate to a testable release | Create the EAS env vars for `preview` **and** `production`, confirm migrations are applied, then prove the `preview` profile with one build | Yes |
 | ~~G-8~~ | ~~Low~~ | ~~Accessibility (unconfirmed)~~ | **Resolved.** `maxFontSizeMultiplier` is implemented — confirmed in `src/components/ui/Text.tsx:41` (1.6×) plus `SearchField.tsx`, `Input.tsx` (1.4× each; `Stepper.tsx` also had it before its 2026-08-01 removal as dead code). The original discrepancy was this document not having read those files, not an implementation gap. | — | — | — |
 | G-9 | Low | Offline handling | No network-state detection code found (`NetInfo` or equivalent). **Precondition met 2026-08-06:** this row's recommended action was gated on "once production mode has an auth path", and that path now exists, so the item is actionable rather than blocked. | Behavior of the Supabase path when offline is unverified. One narrow case is now handled: `signOutAndTearDown` completes local teardown even when the server sign-out fails, so an offline sign-out cannot leave a lifter signed in on a shared device | Add offline detection/handling; its own branch, and out of v1 UX scope per `Docs/ui-ux-foundation-v1.md` §7 | No |
-| G-10 | Low | Dependency vulnerabilities | `npm audit`: 11 moderate findings, all transitive through `xcode`/`@expo/config-plugins` (`expo prebuild`-time tooling). `--force --dry-run` confirms no fix short of downgrading `expo` to `46.0.21` | Build-tooling-only exposure, not shipped in the app bundle; low real-world risk but nonzero | Re-check when a newer Expo SDK release lands | No |
+| G-10 | Low | Dependency vulnerabilities | **Rechecked 2026-08-09 on S4:** `npm audit --omit=dev` reports **26 findings (18 high, 8 moderate)** across transitive Expo/Metro/React Native paths (`brace-expansion`, `image-size`, `js-yaml`, `nanoid`, `uuid`). Some advisory fixes are offered by `npm audit fix`; others require forced breaking Expo/React Native changes. No fix was run because dependency upgrades beyond the approved RevenueCat addition are outside this sprint. This supersedes the older 11-moderate count. | These are dependency-tree advisories, not evidence of an exploitable PRism path; their runtime/build-time reach and safe compatible resolutions have not been assessed, so the risk cannot honestly be called build-tooling-only anymore | Open a dedicated dependency-hygiene sprint, review each path and compatible patch, then re-run Expo Doctor, exports and the full suite; do not use `--force` blindly | No |
+| G-11 | High | Monetization operations | S4 implements fail-closed entitlements and processor-aware account deletion in source, but the exact Apple/Google products, dedicated RevenueCat project/entitlement/offering, custom-ID restore behavior, webhook plan/configuration, server secrets, hosted migration/functions, public SDK keys, and sandbox purchase/restore/refund/transfer/delete have not been configured or exercised. | A missing public key disables purchase; a missing/misrouted webhook can take payment while access remains locked; a drifted product cannot be sold; missing customer-deletion configuration blocks account deletion by design. | Complete `Docs/revenuecat-release-runbook.md` against staging/sandbox, preserve evidence, then repeat the verified configuration for production before submission. | Yes |
+| G-12 | Medium | Expo SDK patch drift | `npx expo-doctor` on the integrated branch: **19/20**, failing only "packages match versions required by installed Expo SDK" — `expo`, `expo-asset`, `expo-constants`, `expo-linking` and `expo-router` are each one patch behind SDK 57's expectation. | `expo-doctor` is a documented pre-release-build gate (`Docs/release-checklist.md` §1), so this blocks a clean release build rather than the app itself | `npm run fix-deps` (`expo install --fix`), then re-run `npm run verify` and `expo-doctor`. A dependency change, so it needs owner approval per `CLAUDE.md` | Yes |
 
 ---
 

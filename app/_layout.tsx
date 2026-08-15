@@ -1,15 +1,21 @@
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { Splash } from '@/components/onboarding/Splash';
 import { resolveInitialRoute } from '@/domain/routing';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
+import { useEntitlementStore } from '@/store/entitlementStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
 import { color } from '@/theme';
+import { initTelemetry } from '@/observability/telemetry';
+
+initTelemetry();
 
 /**
  * Root layout. Resolves who is signed in and whether this is a first run, then
@@ -35,6 +41,9 @@ export default function RootLayout() {
   const completed = useOnboardingStore((s) => s.completed);
   const hydrateActiveWorkout = useActiveWorkoutStore((s) => s.hydrate);
   const initializeSession = useSessionStore((s) => s.initialize);
+  const initializeEntitlement = useEntitlementStore((s) => s.initialize);
+  const refreshEntitlement = useEntitlementStore((s) => s.refresh);
+  const resetEntitlement = useEntitlementStore((s) => s.reset);
   const sessionPhase = useSessionStore((s) => s.phase);
   const userId = useSessionStore((s) => s.userId);
 
@@ -72,6 +81,29 @@ export default function RootLayout() {
   }, [sessionPhase, userId, refresh, hydrateActiveWorkout]);
 
   useEffect(() => {
+    if (sessionPhase === 'authenticated' || sessionPhase === 'disabled') {
+      void initializeEntitlement(sessionPhase === 'authenticated' ? userId : null);
+      return;
+    }
+    // An expired/revoked Supabase session reaches this path without going
+    // through `signOutAndTearDown`. Clear account-scoped access here as well so
+    // the next signed-in user cannot inherit the previous in-memory phase.
+    if (sessionPhase === 'unauthenticated') void resetEntitlement();
+  }, [sessionPhase, userId, initializeEntitlement, resetEntitlement]);
+
+  useEffect(() => {
+    if (sessionPhase !== 'authenticated') return;
+    // A refund or transfer can land while PRism is backgrounded. Re-read the
+    // server on foreground so a process that stays alive does not keep a stale
+    // grant until its next full launch. SDK CustomerInfo remains only transport;
+    // this refresh is the same owner-scoped Postgres read used at startup.
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void refreshEntitlement();
+    });
+    return () => subscription.remove();
+  }, [sessionPhase, userId, refreshEntitlement]);
+
+  useEffect(() => {
     if (!gateReady) return;
     const target = resolveInitialRoute({
       onboardingCompleted: completed,
@@ -83,40 +115,46 @@ export default function RootLayout() {
   }, [gateReady, completed, sessionPhase, segments, router]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.bg }}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        {!gateReady ? (
-          <Splash />
-        ) : (
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: color.bg },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-            {/* No back gesture: there is nothing behind sign-in to return to. */}
-            <Stack.Screen name="auth/index" options={{ gestureEnabled: false }} />
-            {/* Reached from Today's header. A modal because it is a detour, not
-                a destination -- and because it is the only way to sign out. */}
-            <Stack.Screen name="account" options={{ presentation: 'modal' }} />
-            <Stack.Screen
-              name="workout/active"
-              options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
-            />
-            <Stack.Screen name="workout/picker" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="workout/templates" options={{ presentation: 'modal' }} />
-            {/* Registered rather than left to file-convention routing alone, so
-                every route this stack can show is visible in one place. */}
-            <Stack.Screen name="workout/summary" />
-            <Stack.Screen name="history/index" />
-            <Stack.Screen name="history/[id]" />
-          </Stack>
-        )}
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AppErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.bg }}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          {!gateReady ? (
+            <Splash />
+          ) : (
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: color.bg },
+                animation: 'slide_from_right',
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+              {/* No back gesture: there is nothing behind sign-in to return to. */}
+              <Stack.Screen name="auth/index" options={{ gestureEnabled: false }} />
+              {/* Reached from Settings. A modal because account lifecycle is a
+                  detour, not a primary destination. */}
+              <Stack.Screen name="account" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="exercise" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="measurement" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
+              <Stack.Screen
+                name="workout/active"
+                options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+              />
+              <Stack.Screen name="workout/picker" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="workout/templates" options={{ presentation: 'modal' }} />
+              {/* Registered rather than left to file-convention routing alone, so
+                  every route this stack can show is visible in one place. */}
+              <Stack.Screen name="workout/summary" />
+              <Stack.Screen name="history/index" />
+              <Stack.Screen name="history/[id]" />
+            </Stack>
+          )}
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }

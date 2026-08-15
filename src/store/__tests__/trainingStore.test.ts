@@ -9,6 +9,7 @@ import {
 } from '../trainingStore';
 import type { CheckIn } from '@/domain/types';
 import { deviceLocalDate } from '@/domain/trainingDay';
+import { PERSONAL_RECORD_LIMIT, WORKING_SET_WORKOUT_LIMIT } from '@/domain/workingSet';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -203,5 +204,243 @@ describe('check-in date selectors', () => {
     });
 
     expect(selectTodaysCheckIn(useTrainingStore.getState(), reference)).toBeNull();
+  });
+});
+
+describe('user-owned write boundaries', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+    useTrainingStore.getState().reset();
+    await useTrainingStore.getState().refresh();
+  });
+
+  const input = (name: string) => ({
+    name,
+    equipment: 'cable' as const,
+    primaryMuscles: ['lats' as const],
+    secondaryMuscles: ['biceps' as const],
+    isUnilateral: true,
+    cue: null,
+  });
+
+  it('keeps the exercise list and id index together across create, edit, and delete', async () => {
+    const created = await useTrainingStore.getState().createExercise(input('My row'));
+    expect(useTrainingStore.getState().exerciseById.get(created.id)?.name).toBe('My row');
+    expect(useTrainingStore.getState().exercises.some((e) => e.id === created.id)).toBe(true);
+
+    await useTrainingStore.getState().updateExercise(created.id, input('My cable row'));
+    expect(useTrainingStore.getState().exerciseById.get(created.id)?.name).toBe('My cable row');
+
+    useTrainingStore.setState({ favouriteExerciseIds: [created.id] });
+    await useTrainingStore.getState().deleteExercise(created.id);
+    expect(useTrainingStore.getState().exerciseById.has(created.id)).toBe(false);
+    expect(useTrainingStore.getState().favouriteExerciseIds).not.toContain(created.id);
+  });
+
+  it('does not move the exercise read model ahead of a rejected repository write', async () => {
+    const repo = getRepository();
+    const before = useTrainingStore.getState().exercises;
+    const failure = jest.spyOn(repo, 'createExercise').mockRejectedValueOnce(new Error('offline'));
+    await expect(useTrainingStore.getState().createExercise(input('Not saved'))).rejects.toThrow('offline');
+    expect(useTrainingStore.getState().exercises).toBe(before);
+    failure.mockRestore();
+  });
+
+  it('upserts and deletes measurements only after persistence succeeds', async () => {
+    const measurement = {
+      id: 'store_measurement',
+      profileId: useTrainingStore.getState().profile!.id,
+      measuredAt: '2026-08-09T12:00:00.000Z',
+      bodyweightKg: 82,
+      bodyFatPct: null,
+      circumferencesCm: {},
+    };
+    await useTrainingStore.getState().saveMeasurement(measurement);
+    await useTrainingStore.getState().saveMeasurement({ ...measurement, bodyweightKg: 83 });
+    expect(useTrainingStore.getState().measurements.filter((m) => m.id === measurement.id)).toHaveLength(1);
+    expect(useTrainingStore.getState().measurements.find((m) => m.id === measurement.id)?.bodyweightKg).toBe(83);
+
+    await useTrainingStore.getState().deleteMeasurement(measurement.id);
+    expect(useTrainingStore.getState().measurements.some((m) => m.id === measurement.id)).toBe(false);
+  });
+
+  it('re-resolves the active template when profile training days change', async () => {
+    await useTrainingStore.getState().updateProfile({ trainingDaysPerWeek: 3 });
+    expect(useTrainingStore.getState().profile?.trainingDaysPerWeek).toBe(3);
+    expect(useTrainingStore.getState().activeRoutine?.daysPerWeek).toBe(3);
+
+    const fourDay = useTrainingStore.getState().routines.find((routine) => routine.daysPerWeek === 4)!;
+    await useTrainingStore.getState().selectRoutine(fourDay.id);
+    expect(useTrainingStore.getState().profile?.trainingDaysPerWeek).toBe(4);
+    expect(useTrainingStore.getState().activeRoutine?.id).toBe(fourDay.id);
+  });
+});
+
+describe('favourite exercises', () => {
+  /*
+    `favouriteExerciseIds` used to be seeded with four `exerciseLibrary` slugs --
+    ids that exist only in the bundled catalogue demo mode reads from. Against
+    Supabase the same movements carry `gen_random_uuid()` ids, so on a real
+    account the four pre-set favourites matched nothing, and tapping the
+    "Favourites" chip in the exercise list or the workout picker filtered a
+    43-movement library down to "Nothing matches those filters".
+  */
+  beforeEach(() => {
+    useTrainingStore.getState().reset();
+  });
+
+  it('starts empty rather than pre-starring ids that may not exist', () => {
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+
+  it('stars and unstars whatever id the library actually uses', () => {
+    // The half that always worked: `toggleFavourite` keys on the id it is
+    // given, so a UUID from Supabase is as good as a bundled slug.
+    const uuid = 'c4e2a9f1-8b7d-4c3e-a6f0-15d9e7b2c084';
+    const { toggleFavourite } = useTrainingStore.getState();
+
+    toggleFavourite(uuid);
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([uuid]);
+
+    toggleFavourite(uuid);
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+
+  it('is cleared by reset, which sign-out relies on (I-19)', () => {
+    // `reset()` restores the shared `INITIAL_DATA` constant, so this field is
+    // torn down on sign-out for free. Changing its default must not break that.
+    useTrainingStore.getState().toggleFavourite('ex_bench_press');
+    useTrainingStore.getState().reset();
+
+    expect(useTrainingStore.getState().favouriteExerciseIds).toEqual([]);
+  });
+});
+
+/*
+  Startup loads a bounded window of sessions; History asks for the rest.
+
+  What matters here is the coverage flag being honest, because it is what
+  History consults before deciding whether it is showing a lifter their whole
+  archive or a recent slice of it. A flag that claims completeness it does not
+  have hides logged sessions, which is indistinguishable from data loss from
+  the outside.
+*/
+describe('workout working set', () => {
+  beforeEach(async () => {
+    await resetDemoData();
+    useTrainingStore.getState().reset();
+  });
+
+  it('reports completeness honestly after a refresh', async () => {
+    await useTrainingStore.getState().refresh();
+    const { workouts, historyComplete } = useTrainingStore.getState();
+    // Demo seeds well under the limit, so the working set is the whole archive.
+    expect(workouts.length).toBeLessThan(WORKING_SET_WORKOUT_LIMIT);
+    expect(historyComplete).toBe(true);
+  });
+
+  it('loadFullHistory is a no-op once the set is already complete', async () => {
+    await useTrainingStore.getState().refresh();
+    const before = useTrainingStore.getState().workouts;
+
+    const repo = getRepository();
+    const spy = jest.spyOn(repo, 'listWorkouts');
+    await useTrainingStore.getState().loadFullHistory();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(useTrainingStore.getState().workouts).toBe(before);
+    spy.mockRestore();
+  });
+
+  it('fills in the rest of the archive when the working set was bounded', async () => {
+    await useTrainingStore.getState().refresh();
+    const full = useTrainingStore.getState().workouts;
+
+    // Simulate a startup that hit the cap: a truncated list, flagged incomplete.
+    useTrainingStore.setState({ workouts: full.slice(-2), historyComplete: false });
+
+    await useTrainingStore.getState().loadFullHistory();
+
+    expect(useTrainingStore.getState().workouts).toHaveLength(full.length);
+    expect(useTrainingStore.getState().historyComplete).toBe(true);
+  });
+
+  it('keeps the sessions already on screen when the top-up fails, and retries later', async () => {
+    await useTrainingStore.getState().refresh();
+    const full = useTrainingStore.getState().workouts;
+    const partial = full.slice(-2);
+    useTrainingStore.setState({ workouts: partial, historyComplete: false });
+
+    const repo = getRepository();
+    const failing = jest
+      .spyOn(repo, 'listWorkouts')
+      .mockRejectedValueOnce(new Error('offline'));
+
+    await expect(useTrainingStore.getState().loadFullHistory()).resolves.toBeUndefined();
+
+    // Partial history is strictly better than an error state here: the lifter
+    // keeps what they can already see...
+    expect(useTrainingStore.getState().workouts).toBe(partial);
+    expect(useTrainingStore.getState().status).toBe('ready');
+    // ...and it stays incomplete, so the next mount tries again.
+    expect(useTrainingStore.getState().historyComplete).toBe(false);
+    failing.mockRestore();
+
+    await useTrainingStore.getState().loadFullHistory();
+    expect(useTrainingStore.getState().workouts).toHaveLength(full.length);
+  });
+
+  it('fills in the records alongside the sessions, never one without the other', async () => {
+    await useTrainingStore.getState().refresh();
+    const fullWorkouts = useTrainingStore.getState().workouts;
+    const fullRecords = useTrainingStore.getState().personalRecords;
+    expect(fullRecords.length).toBeGreaterThan(0);
+
+    /*
+      The state this guards against: a full session list beside a bounded record
+      list. History matches records to sessions, so that combination does not
+      hide a row -- it prints "0 PRs" on a session that set three, which is a
+      wrong number rather than a missing one and looks like nothing is broken.
+    */
+    useTrainingStore.setState({
+      workouts: fullWorkouts.slice(-2),
+      personalRecords: fullRecords.slice(-1),
+      historyComplete: false,
+    });
+
+    await useTrainingStore.getState().loadFullHistory();
+
+    expect(useTrainingStore.getState().workouts).toHaveLength(fullWorkouts.length);
+    expect(useTrainingStore.getState().personalRecords).toHaveLength(fullRecords.length);
+    expect(useTrainingStore.getState().historyComplete).toBe(true);
+  });
+
+  it('is incomplete when the record window hit its cap even if the session window did not', async () => {
+    const repo = getRepository();
+    const records = await repo.listPersonalRecords();
+    // A record set exactly at the cap is indistinguishable from a larger one.
+    const capped = jest
+      .spyOn(repo, 'listPersonalRecords')
+      .mockResolvedValueOnce(
+        Array.from({ length: PERSONAL_RECORD_LIMIT }, (_, i) => ({
+          ...records[0],
+          id: `pr_${i}`,
+        })),
+      );
+
+    useTrainingStore.setState({ status: 'idle' });
+    await useTrainingStore.getState().refresh();
+
+    // Sessions are well under their cap, so only the records force a top-up --
+    // and that alone has to be enough, or History matches against a short list.
+    expect(useTrainingStore.getState().workouts.length).toBeLessThan(WORKING_SET_WORKOUT_LIMIT);
+    expect(useTrainingStore.getState().historyComplete).toBe(false);
+    capped.mockRestore();
+  });
+
+  it('is cleared by reset, which sign-out relies on (I-19)', () => {
+    useTrainingStore.setState({ historyComplete: false });
+    useTrainingStore.getState().reset();
+    expect(useTrainingStore.getState().historyComplete).toBe(true);
   });
 });
