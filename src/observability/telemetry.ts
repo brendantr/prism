@@ -8,6 +8,7 @@ import {
   type TelemetryMode,
   type TelemetrySurface,
 } from '@/domain/telemetry';
+import { shouldRenderSentryVerificationRoot } from '@/domain/sentryVerification';
 
 /**
  * CRASH REPORTING — the impure boundary
@@ -59,7 +60,13 @@ export const TELEMETRY_MODE: TelemetryMode = resolveTelemetryMode({
 /** True only in a release, non-demo build with a DSN configured. */
 export const TELEMETRY_ENABLED = TELEMETRY_MODE.enabled;
 
+const SENTRY_VERIFICATION_BUILD = shouldRenderSentryVerificationRoot(
+  process.env.EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED,
+);
+const SENTRY_VERIFICATION_MESSAGE = 'PRism controlled Sentry verification diagnostic';
+
 let initialised = false;
+let verificationAttempted = false;
 
 /**
  * Start crash reporting, or do nothing at all.
@@ -167,6 +174,42 @@ export function initTelemetry(): void {
     field regardless, so adding a `setUser` call later without also changing
     that rule — and the two privacy documents — cannot silently ship identity.
   */
+}
+
+/**
+ * Emit the verification artifact's single controlled diagnostic attempt.
+ *
+ * There are deliberately no parameters: no account, session, training,
+ * free-text, request, response, or caller-provided value can enter the event.
+ * The isolated scope starts without breadcrumbs, and capture receives only a
+ * fixed Error. The returned event id is intentionally discarded.
+ *
+ * The build flag and successful initialisation are checked again here so even
+ * an accidental future call site remains inert in every normal profile. The
+ * attempt guard is set before entering the SDK and is never reset in-process;
+ * an SDK failure therefore cannot turn a repeated tap into duplicate events.
+ */
+export function sendSentryVerificationDiagnostic(): void {
+  if (
+    !SENTRY_VERIFICATION_BUILD ||
+    !TELEMETRY_ENABLED ||
+    !initialised ||
+    verificationAttempted
+  ) {
+    return;
+  }
+
+  verificationAttempted = true;
+
+  try {
+    Sentry.withScope((scope) => {
+      scope.clearBreadcrumbs();
+      Sentry.captureException(new Error(SENTRY_VERIFICATION_MESSAGE));
+    });
+  } catch {
+    // The owner verifies delivery externally. A diagnostics SDK failure must
+    // neither crash this artifact nor reveal configuration in a local log.
+  }
 }
 
 /**

@@ -8,19 +8,33 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_DEMO_MODE": "true"
+        "EXPO_PUBLIC_DEMO_MODE": "true",
+        "EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED": "false"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_DEMO_MODE": "false"
+        "EXPO_PUBLIC_DEMO_MODE": "false",
+        "EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED": "false"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DEMO_MODE": "false"
+        "EXPO_PUBLIC_DEMO_MODE": "false",
+        "EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED": "false"
+      }
+    },
+    "sentry-verification": {
+      "extends": "production",
+      "distribution": "internal",
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_DEMO_MODE": "false",
+        "EXPO_PUBLIC_MONETIZATION_ENABLED": "false",
+        "EXPO_PUBLIC_EMAIL_RECOVERY_ENABLED": "false",
+        "EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED": "true"
       }
     }
   },
