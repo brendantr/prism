@@ -1,21 +1,73 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { AppState } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { Splash } from '@/components/onboarding/Splash';
+import { Button } from '@/components/ui/Button';
+import { Text } from '@/components/ui/Text';
 import { resolveInitialRoute } from '@/domain/routing';
+import { shouldRenderSentryVerificationRoot } from '@/domain/sentryVerification';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
 import { useEntitlementStore } from '@/store/entitlementStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
-import { color } from '@/theme';
-import { initTelemetry } from '@/observability/telemetry';
+import { color, space } from '@/theme';
+import {
+  initTelemetry,
+  sendSentryVerificationDiagnostic,
+} from '@/observability/telemetry';
 
 initTelemetry();
+
+const RENDER_SENTRY_VERIFICATION_ROOT = shouldRenderSentryVerificationRoot(
+  process.env.EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED,
+);
+
+export { shouldRenderSentryVerificationRoot } from '@/domain/sentryVerification';
+
+/**
+ * The only surface in the dedicated internal verification artifact.
+ *
+ * This is intentionally not an Expo Router route. It mounts no navigator,
+ * provider, store hook, session/account hydration, or Supabase-backed data
+ * load. Its only state is whether this process already invoked the fixed,
+ * no-argument diagnostic function.
+ */
+export function SentryVerificationRoot() {
+  const [attempted, setAttempted] = useState(false);
+
+  const sendDiagnostic = () => {
+    if (attempted) return;
+    setAttempted(true);
+    sendSentryVerificationDiagnostic();
+  };
+
+  return (
+    <View style={verificationStyles.root}>
+      <Text variant="title1" align="center">
+        Sentry verification artifact
+      </Text>
+      <Text tone="secondary" align="center">
+        Owner-only internal build for one controlled diagnostic.
+      </Text>
+      <Button
+        label="Send verification diagnostic"
+        onPress={sendDiagnostic}
+        disabled={attempted}
+        fullWidth
+      />
+      {attempted ? (
+        <Text tone="positive" align="center">
+          Verification diagnostic sent for external review.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 /**
  * Root layout. Resolves who is signed in and whether this is a first run, then
@@ -34,7 +86,7 @@ initTelemetry();
  * can be enumerated in a test, which matters because this repo has no
  * component-test tooling by decision.
  */
-export default function RootLayout() {
+export function NormalAppRoot() {
   const refresh = useTrainingStore((s) => s.refresh);
   const loadOnboarding = useOnboardingStore((s) => s.load);
   const onboardingStatus = useOnboardingStore((s) => s.status);
@@ -158,3 +210,22 @@ export default function RootLayout() {
     </AppErrorBoundary>
   );
 }
+
+/** The compile-time root-selection boundary used by every build profile. */
+export default function RootLayout() {
+  return RENDER_SENTRY_VERIFICATION_ROOT ? (
+    <SentryVerificationRoot />
+  ) : (
+    <NormalAppRoot />
+  );
+}
+
+const verificationStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: space.lg,
+    padding: space.xl,
+    backgroundColor: color.bg,
+  },
+});

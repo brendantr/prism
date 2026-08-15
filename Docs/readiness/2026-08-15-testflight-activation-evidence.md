@@ -69,6 +69,21 @@ any of those three properties work.
 free-first declarations, the current merged code, or Sentry delivery/privacy behavior. No exact
 candidate build or physical-device acceptance result has been recorded yet.
 
+### Verification-build evidence
+
+`[pending, owner]` A dedicated internal-distribution `sentry-verification` artifact may be used only
+to prove controlled-event delivery, source-map symbolication, and the restricted diagnostic payload.
+Its plainly labelled action is selected by a build-time flag that is false in every normal profile;
+it is not a route and is absent from the final TestFlight/App Store candidate.
+
+Record only the verification build number, timestamp, pass/fail, and a redacted conclusion. Do not
+retain or copy an event id, event contents, payload fields, dashboard values, raw logs, screenshots,
+or any project/account identifier into this record or the repository. A passing verification artifact
+does **not** prove the final candidate's commit, build identity, effective free-first declarations,
+Sentry configuration, physical-device behavior, or App Privacy answers.
+
+### Final-candidate physical-device evidence
+
 The exact TestFlight build must complete the following matrix on a physical iPhone from a fresh install
 and cold launch. Every item is currently **Pending**.
 
@@ -83,7 +98,7 @@ and cold launch. Every item is currently **Pending**.
 | 7 | Authentication lifecycle | Sign-out/sign-in preserves server data, clears prior local user state, and exposes no password-reset control. | Pending |
 | 8 | User-data writes | Profile/unit changes, custom exercise, body measurement, and local-date check-in persist after relaunch and re-authentication. | Pending |
 | 9 | Offline and error recovery | Network loss produces an honest retryable error, never demo fallback or false success; reconnecting recovers without lost or duplicate data. | Pending |
-| 10 | Sentry-enabled diagnostics | One controlled release event reaches Sentry and is symbolicated. Review confirms that account identity, email, workout/training data, body measurements, reflections, secrets, request/response bodies, screenshots, replay, product analytics, and performance tracing are absent. App Privacy Diagnostics disclosure matches that exact binary. | Pending |
+| 10 | Final-candidate diagnostics posture | The exact candidate has Sentry enabled and contains no verification root, action, route, deep link, hidden trigger, or automatic event. Its build identity and effective configuration are recorded separately from the internal verification artifact, and App Privacy Diagnostics disclosures match this exact candidate. The separately recorded verification-artifact pass supports delivery, symbolication, and payload restrictions only. | Pending |
 
 ## 6. Remaining owner gates
 
@@ -93,12 +108,15 @@ All items below remain pending and must not be inferred from the checks in §4:
    monetization false, and email recovery false.
 2. Privately verify equality between the EAS production Supabase target and the selected project checked
    in §4.
-3. Build the exact candidate with the existing enabled Sentry posture, trigger one controlled release
-   event, and verify arrival, source-map symbolication, and the restricted payload. Record only
-   pass/fail, build number, timestamp, and a redacted conclusion. Complete App Privacy Diagnostics
-   disclosures consistent with that exact binary.
-4. Produce the production iOS build from the accepted repository baseline and upload that exact artifact
-   to TestFlight.
+3. Build the dedicated internal `sentry-verification` artifact with the existing enabled Sentry
+   posture. Invoke its plainly labelled action once and verify arrival, source-map symbolication, and
+   the restricted payload. Record only pass/fail, verification build number, timestamp, and a redacted
+   conclusion; retain no raw event contents or identifiers.
+4. Produce the production iOS candidate from the accepted repository baseline with the verification
+   flag false. Record its own build identity and effective configuration, confirm that no verification
+   affordance exists, upload that exact artifact to TestFlight, and complete App Privacy Diagnostics
+   disclosures consistent with that exact candidate. Verification-build evidence cannot substitute
+   for any of these candidate checks.
 5. Complete and accept all ten physical-device tests in §5.
 6. Publish and verify the final public privacy-policy URL.
 7. Complete accurate App Privacy answers, listing content, and review notes for the exact accepted binary.
@@ -113,8 +131,8 @@ Anonymous gateway rejection also remains unverified as noted in §4.
   declarations and EAS-to-Supabase target equality are verified. Sentry is enabled by owner decision
   and is no longer awaiting a posture decision.
 - **TestFlight acceptance:** **NO-GO.** No exact candidate build or physical-device matrix has been
-  accepted, and the Sentry-enabled release-event delivery, symbolication, and restricted-payload review
-  have not passed.
+  accepted, the internal verification-artifact delivery, symbolication, and restricted-payload review
+  have not passed, and the final candidate has not independently passed the diagnostics-posture check.
 - **App Review:** **NO-GO.** App Review remains blocked until TestFlight acceptance, a reachable public
   privacy policy, accurate store disclosures/listing for the exact binary, working reviewer access,
   and an App Privacy Diagnostics disclosure matching the verified Sentry-enabled build are complete.
