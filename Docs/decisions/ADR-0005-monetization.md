@@ -125,6 +125,11 @@ which the purchase button was tapped.
 - Tests: entitlement domain/store/transport tests, pure webhook parser tests, and
   `supabase/tests/rls/09_run_entitlement_tests.sql`.
 - Owner setup and sandbox validation: `Docs/revenuecat-release-runbook.md`.
+- **Activation status:** deferred for the intended first free-first iOS v1 binary —
+  `EXPO_PUBLIC_MONETIZATION_ENABLED=false`, no paywall/purchase/restore surface present — per
+  `Docs/sprints/2026-08-11-free-first-release-reconciliation.md` `[decision, owner, 2026-08-11]` and
+  `Docs/production-posture-v1.md` §1.1. This ADR's decision and v1.x scope are unchanged; only the
+  first binary's activation timing is.
 
 External references: [RevenueCat React Native installation](https://www.revenuecat.com/docs/getting-started/installation/reactnative),
 [identifying customers](https://www.revenuecat.com/docs/customers/identifying-customers),

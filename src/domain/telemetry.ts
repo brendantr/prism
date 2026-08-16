@@ -158,6 +158,58 @@ function scrubException(value: unknown): Json | undefined {
   return { values };
 }
 
+/**
+ * The exact shape Sentry's own bundler tooling writes for a JavaScript
+ * bundle's source-map identity (`@sentry/react-native`'s Metro serializer,
+ * mirrored in the SDK's `SourceMapDebugImage` type). Defined locally rather
+ * than imported: this module is deliberately SDK-free, and the boundary this
+ * function polices is the exact field set below, not whatever the SDK's type
+ * happens to allow.
+ */
+interface SourceMapDebugImage {
+  readonly type: 'sourcemap';
+  readonly code_file: string;
+  readonly debug_id: string;
+}
+
+const DEBUG_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isSourceMapDebugImage(value: unknown): value is SourceMapDebugImage {
+  return (
+    isRecord(value) &&
+    value.type === 'sourcemap' &&
+    typeof value.code_file === 'string' &&
+    typeof value.debug_id === 'string' &&
+    DEBUG_ID_PATTERN.test(value.debug_id)
+  );
+}
+
+/**
+ * The sole exemption from `redactSensitiveText`'s UUID rule, and it is
+ * structural, not a blanket exemption for anything living under a field named
+ * `debug_meta`. A Sentry Debug ID is a UUID by design, and the generic
+ * identifier-redaction pass in `scrubTelemetryEvent` would otherwise destroy
+ * it before it reaches Sentry, which is exactly what broke source-map
+ * symbolication for the internal verification build. Only entries
+ * matching `SourceMapDebugImage` above keep their `debug_id` untouched;
+ * `code_file` still passes through `redactSensitiveText` like any other
+ * string, and anything that doesn't match the shape -- wrong `type`, a
+ * missing field, a non-UUID standing in for `debug_id` -- is dropped rather
+ * than sanitised, the same as any other field this scrubber does not
+ * recognise.
+ */
+function scrubDebugMeta(value: unknown): Json | undefined {
+  if (!isRecord(value) || !Array.isArray(value.images)) return undefined;
+
+  const images = value.images.filter(isSourceMapDebugImage).map((image) => ({
+    type: image.type,
+    code_file: redactSensitiveText(image.code_file),
+    debug_id: image.debug_id,
+  }));
+
+  return images.length > 0 ? { images } : undefined;
+}
+
 export const TELEMETRY_EVENT_FIELDS = [
   'breadcrumbs',
   'contexts',
@@ -179,9 +231,16 @@ export const TELEMETRY_EVENT_FIELDS = [
  * Outbound events are rebuilt from an allowlist. Unknown future SDK fields are
  * excluded by default, so adding a new payload carrier cannot silently widen
  * the privacy boundary.
+ *
+ * `debug_meta` is picked into `safe` like every other allowlisted field, but
+ * deliberately removed again before the final `redactDeep` pass and rebuilt
+ * separately by `scrubDebugMeta`: a valid Sentry Debug ID is a UUID, and a
+ * generic deep redaction pass cannot tell that one apart from an account
+ * identifier without the structural check `scrubDebugMeta` performs.
  */
 export function scrubTelemetryEvent<T extends Json>(event: T): T {
   const safe = pick(event, TELEMETRY_EVENT_FIELDS);
+  delete safe.debug_meta;
 
   const contexts = scrubContexts(event.contexts);
   if (contexts) safe.contexts = contexts;
@@ -202,7 +261,12 @@ export function scrubTelemetryEvent<T extends Json>(event: T): T {
       ? { surface: redactSensitiveText(event.tags.surface).slice(0, 40) }
       : {};
 
-  return redactDeep(safe) as T;
+  const scrubbed = redactDeep(safe) as Json;
+
+  const debugMeta = scrubDebugMeta(event.debug_meta);
+  if (debugMeta) scrubbed.debug_meta = debugMeta;
+
+  return scrubbed as T;
 }
 
 export type TelemetrySurface = 'check-in' | 'account' | 'summary' | 'workout' | 'render';

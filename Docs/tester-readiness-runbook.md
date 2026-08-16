@@ -238,10 +238,10 @@ if the account owns a custom movement — which, today, is not reachable from th
 
 | Limit | Detail |
 |---|---|
-| **No custom movements** | `Repository` has no exercise write methods at all. A tester is capped at the 43 seeded movements — if their program uses something else, they cannot log it. This is the binding product gap. |
-| **No body measurements** | `listMeasurements()` has no writer anywhere in the interface, so bodyweight and measurements can never be recorded against a real account. |
+| **No custom movements** | **Closed.** `feature/v1-user-data-writes` added `createExercise`/`updateExercise`/`deleteExercise` to `Repository`, reachable from the Exercises tab and the mid-session picker — the 43-movement ceiling no longer applies. See `Docs/release-checklist.md` §4 (refreshed 2026-08-09). |
+| **No body measurements** | **Closed.** The same `feature/v1-user-data-writes` sprint added a body-measurement writer. See `Docs/release-checklist.md` §4 (refreshed 2026-08-09). |
 | **Observability not release-proven (G-4)** | `feature/v1-observability` adds privacy-filtered crash reporting, but no owner-configured release test has proved delivery or source-map symbolication. Product analytics remains deliberately absent. `[recommendation]` Complete the test-event checklist before the cohort grows past people you can talk to directly. |
-| **Check-in day is bucketed in UTC** | `feature/v1-local-training-day` addresses it (committed and pushed 2026-08-09, not yet landed — it still needs its `0006_local_training_day.sql` renamed to `0008` and a rebase). Testers west or east of UTC can see two adjacent local dates collapse, or one local date split. |
+| **Check-in day is bucketed in UTC** | **Closed.** `0008_local_training_day.sql` landed and is covered by 20 SQL assertions. See `Docs/release-checklist.md` §4 (refreshed 2026-08-09). |
 | **No favourites on a real account** | `trainingStore`'s default `favouriteExerciseIds` are bundle slugs (`ex_*`) that match no seeded UUID. Cosmetic. |
 | **Active routine is arbitrary** | `getActiveRoutine()` returns the first non-template routine or else the first by name, so every new account silently starts on "Prism 3". Nobody chose that. |
 

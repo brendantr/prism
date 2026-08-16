@@ -409,6 +409,13 @@
   benchmarked, and the 400-record bound is headroom rather than a derived ceiling. `listMeasurements`
   is now the only unbounded list read. Full record:
   `Docs/sprints/2026-08-10-workout-read-window.md`.
+- **Currentness note, added 2026-08-15** `[fact]`: this delta log predates two later branch changes —
+  implementation/configuration changes documented by `Docs/sprints/2026-08-11-free-first-release-reconciliation.md`
+  (free-first build declarations) and `Docs/sprints/2026-08-15-v1-sentry-verification-harness.md` (an
+  internal-only Sentry diagnostic root). Read current release posture from those records and
+  `Docs/production-posture-v1.md` §1.1 rather than inferring it from this document. Their repository
+  evidence does not establish device, TestFlight, or Sentry-dashboard verification; those checks remain
+  owner-gated in `Docs/readiness/2026-08-15-testflight-activation-evidence.md`.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
