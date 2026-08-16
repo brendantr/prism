@@ -10,6 +10,10 @@
 - **Redaction:** This record intentionally contains no project names or references, URLs, keys, DSNs,
   tokens, credentials, Apple identifiers, user identifiers, emails, exports, raw function logs, or
   screenshots.
+- **Updated 2026-08-16:** the internal `sentry-verification` artifact's delivery, symbolication, and
+  restricted-payload review result is recorded (§5); §6 item 3 and §7's TestFlight-acceptance line are
+  revised accordingly. §3 and §8 are also revised so they no longer read as contradicting that
+  recorded result. No other gate changed status.
 
 This document does not claim that the effective production configuration, build, TestFlight artifact,
 device behavior, privacy publication, store metadata, or reviewer access is complete.
@@ -37,8 +41,11 @@ contains them. RevenueCat activation and password-recovery delivery are not part
 
 - PR #70 merged to `main` at `e9e011d`.
 - The current branch is `release/v1-testflight-activation`.
-- This record adds documentation only. It does not validate an EAS environment, hosted runtime, signed
-  binary, TestFlight upload, physical device, or App Store Connect state.
+- Creating or editing this record is itself documentation only and performs no build, upload, or
+  external check. §5 separately records an owner-observed result for one internal verification
+  artifact. Neither this record nor that result validates the final production candidate, the
+  effective EAS environment, a TestFlight upload, physical-device behavior, or App Store Connect
+  state.
 
 ## 4. Owner external checks
 
@@ -59,9 +66,15 @@ contains them. RevenueCat activation and password-recovery delivery are not part
 `[open question, owner]` Anonymous gateway rejection was not independently exercised. The observed JWT
 setting must not be described as independent runtime proof of the gateway rejection path.
 
-`[pending, owner]` Sentry release-event delivery, source-map symbolication, and review of the
+~~`[pending, owner]` Sentry release-event delivery, source-map symbolication, and review of the
 privacy-constrained event payload have not been verified. Configuration presence is not evidence that
-any of those three properties work.
+any of those three properties work.~~
+
+**Closed 2026-08-16** `[fact, owner-observed]`. All three properties were verified against the
+replacement internal verification artifact; see §5 for the recorded result. This closes the
+verification-artifact question only — it is not evidence about the final TestFlight/App Store
+candidate's own diagnostics posture, which is tracked separately in §5's final-candidate row and §6
+item 4.
 
 ## 5. Build and device evidence
 
@@ -71,7 +84,7 @@ candidate build or physical-device acceptance result has been recorded yet.
 
 ### Verification-build evidence
 
-`[pending, owner]` A dedicated internal-distribution `sentry-verification` artifact may be used only
+`[fact, repository]` A dedicated internal-distribution `sentry-verification` artifact may be used only
 to prove controlled-event delivery, source-map symbolication, and the restricted diagnostic payload.
 Its plainly labelled action is selected by a build-time flag that is false in every normal profile;
 it is not a route and is absent from the final TestFlight/App Store candidate.
@@ -81,6 +94,32 @@ retain or copy an event id, event contents, payload fields, dashboard values, ra
 or any project/account identifier into this record or the repository. A passing verification artifact
 does **not** prove the final candidate's commit, build identity, effective free-first declarations,
 Sentry configuration, physical-device behavior, or App Privacy answers.
+
+**Result, 2026-08-16 — PASS** `[fact, owner-observed; values withheld]`
+
+| Field | Value |
+|---|---|
+| Build source | Commit `97449f1` |
+| Profile | `sentry-verification` |
+| App version | `1.0.0` |
+| App build number | `7` |
+| Build completion | `2026-08-16T06:03:09Z` |
+
+This replacement artifact reran the previously unsuccessful internal symbolication check and passed.
+
+Observed on this artifact `[fact, owner-observed; values withheld]`:
+
+- The isolated verification surface appeared, and its single labelled action was tapped exactly once.
+- Exactly one event was received; no unexpected behavior was observed.
+- Release and distribution were consistent with the recorded build.
+- A Debug ID / artifact-match association was visible on the event; the prior no-Debug-ID condition did
+  not recur.
+- JavaScript frames symbolicated to application source rather than numeric bundle offsets.
+- Payload review passed: no user identity was attached, breadcrumbs were cleared before capture, and
+  no replay/screenshot/request/response data was present.
+
+No event id, event contents, payload field value, dashboard value, raw log, screenshot, or
+project/account identifier is retained in this record, consistent with the boundary stated above.
 
 ### Final-candidate physical-device evidence
 
@@ -108,10 +147,13 @@ All items below remain pending and must not be inferred from the checks in §4:
    monetization false, and email recovery false.
 2. Privately verify equality between the EAS production Supabase target and the selected project checked
    in §4.
-3. Build the dedicated internal `sentry-verification` artifact with the existing enabled Sentry
+3. ~~Build the dedicated internal `sentry-verification` artifact with the existing enabled Sentry
    posture. Invoke its plainly labelled action once and verify arrival, source-map symbolication, and
    the restricted payload. Record only pass/fail, verification build number, timestamp, and a redacted
-   conclusion; retain no raw event contents or identifiers.
+   conclusion; retain no raw event contents or identifiers.~~ **Closed 2026-08-16** `[fact,
+   owner-observed]`. A replacement verification artifact (build `7`, commit `97449f1`) passed on all
+   three properties; recorded result in §5. This closes the verification-artifact gate only — it does
+   not stand in for item 4 below, which the final candidate must still pass independently.
 4. Produce the production iOS candidate from the accepted repository baseline with the verification
    flag false. Record its own build identity and effective configuration, confirm that no verification
    affordance exists, upload that exact artifact to TestFlight, and complete App Privacy Diagnostics
@@ -131,14 +173,22 @@ Anonymous gateway rejection also remains unverified as noted in §4.
   declarations and EAS-to-Supabase target equality are verified. Sentry is enabled by owner decision
   and is no longer awaiting a posture decision.
 - **TestFlight acceptance:** **NO-GO.** No exact candidate build or physical-device matrix has been
-  accepted, the internal verification-artifact delivery, symbolication, and restricted-payload review
-  have not passed, and the final candidate has not independently passed the diagnostics-posture check.
+  accepted, and the final candidate has not independently passed its own diagnostics-posture check.
+  **Updated 2026-08-16:** the internal verification-artifact's delivery, symbolication, and
+  restricted-payload review has now passed (§5), resolving that clause of the prior reasoning; the
+  other two clauses are unresolved, so the overall verdict is unchanged.
 - **App Review:** **NO-GO.** App Review remains blocked until TestFlight acceptance, a reachable public
   privacy policy, accurate store disclosures/listing for the exact binary, working reviewer access,
   and an App Privacy Diagnostics disclosure matching the verified Sentry-enabled build are complete.
 
 ## 8. External changes
 
-`[fact]` No database migration, Edge Function deployment, EAS mutation, build, store submission,
-RevenueCat setup, Sentry setup, credential change, or other external mutation was performed as part of
-the checks recorded here or the creation of this document.
+`[fact]` This documentation update performed no external mutation itself — no database migration, Edge
+Function deployment, EAS mutation, build, store submission, RevenueCat setup, Sentry setup, or
+credential change was made in the course of recording it.
+
+`[fact, owner-observed]` Separately, §5 records the outcome of one owner-performed build and
+installation of the internal `sentry-verification` verification artifact, and the owner's review of
+its resulting event. That action was performed outside this repository and is recorded here only as
+evidence; it does not imply, and this record does not claim, any other EAS, Sentry, Supabase, Apple,
+or RevenueCat mutation beyond that one already-recorded verification artifact.
