@@ -14,6 +14,9 @@
   restricted-payload review result is recorded (§5); §6 item 3 and §7's TestFlight-acceptance line are
   revised accordingly. §3 and §8 are also revised so they no longer read as contradicting that
   recorded result. No other gate changed status.
+- **Further updated 2026-08-16:** a post-alignment re-verification result is recorded in §5, from a
+  second internal artifact built after an accepted Expo SDK 57 patch alignment. No gate or Go/No-Go
+  verdict changed as a result.
 
 This document does not claim that the effective production configuration, build, TestFlight artifact,
 device behavior, privacy publication, store metadata, or reviewer access is complete.
@@ -120,6 +123,41 @@ Observed on this artifact `[fact, owner-observed; values withheld]`:
 
 No event id, event contents, payload field value, dashboard value, raw log, screenshot, or
 project/account identifier is retained in this record, consistent with the boundary stated above.
+
+**Post-alignment re-verification, 2026-08-16 — PASS** `[fact, owner-observed; values withheld]`
+
+Re-verification was required because an accepted Expo SDK 57 patch alignment
+(`Docs/sprints/2026-08-16-expo-sdk57-patch-alignment.md`) changed the dependency and build-toolchain
+snapshot the artifact above was built from. That earlier pass does not carry over to a build made after
+a dependency change, so a fresh internal artifact was built and exercised the same way.
+
+| Field | Value |
+|---|---|
+| Build source | Commit `540b3ef` |
+| Profile | `sentry-verification` |
+| App version | `1.0.0` |
+| App build number | `8` |
+| Build completion | `2026-08-16T21:06:29Z` |
+
+Observed on this artifact `[fact, owner-observed; values withheld]`:
+
+- The isolated verification surface appeared, and its single labelled action was tapped exactly once.
+- Exactly one event attributable to this build was received; no unexpected behavior was observed.
+- Release and distribution were consistent with the recorded build.
+- A Debug ID / artifact-match association was present, with no processing failure.
+- JavaScript frames symbolicated to application source rather than numeric bundle offsets.
+- Payload review passed: no user identity was attached, breadcrumbs were cleared before capture, and
+  no replay/screenshot/request/response data was present.
+
+No event id, event contents, payload field value, dashboard value, raw log, screenshot, source path,
+filename, line number, release suffix, distribution number, issue count, or project/account identifier
+is retained in this record, consistent with the boundary stated above.
+
+**Both artifacts above prove only the verification mechanism for the exact snapshot each was built
+from** — the first for commit `97449f1`, this one for commit `540b3ef`. Neither proves the normal
+production candidate's effective configuration, that candidate's own absence of the verification root,
+its diagnostics posture, TestFlight behavior, the physical-device matrix, App Privacy disclosures, or
+App Review readiness — each remains tracked separately in §5's final-candidate row and §6.
 
 ### Final-candidate physical-device evidence
 
