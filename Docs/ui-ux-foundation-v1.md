@@ -21,6 +21,11 @@ what is checked-in reality from what is a choice or a guess.
 | `[assumption]` | Believed true, not directly verified. Names what would confirm it. |
 | `[open question]` | Undecided. Names who decides and what it blocks. |
 
+**Acceptance-status note, added 2026-08-15** `[open question, owner]`. The status line above remains
+"Not yet accepted"; later records reference individual v1 decisions or gates from this document but do
+not record formal acceptance of it as a whole. Formal acceptance, including any effective date, remains
+an owner decision.
+
 **Relationship to other documents.** `Docs/architecture.md` remains the implementation baseline; where
 this document and the architecture audit disagree about what exists, the audit wins and this document
 is wrong `[fact]`. `Docs/decisions/ADR-0001-product-position.md` and `ADR-0002-readiness-suggestion-safety.md`
@@ -801,7 +806,7 @@ gestures this runtime recognises as a scroll, proven by the same failure on unto
 | History search, filtering, paging | v2 | In-memory derivation is correct at demo scale; the seam is already right | A real account with years of data |
 | Re-enterable summary | v2 | D8 | Feedback showing lifters hunt for it |
 | Real Social, sharing | v2 | ADR-0001 non-goals | Product decision |
-| ~~Subscriptions~~ → **a one-time purchase, shipped in v1** | **Decision reversed 2026-08-09** by `Docs/decisions/ADR-0005-monetization.md` `[decision, owner, 2026-08-09]` | This row previously deferred *subscriptions* to v2 under ADR-0001's non-goals. What shipped is deliberately **not** a subscription: a single non-consumable unlock, with logging, history, custom movements, measurements and profile free forever, and only the analysis surfaces (28/84-day Insights, Progress, Body's recovery estimate) behind it. Recorded as a reversal rather than edited away, because a non-goal that quietly becomes a feature is how a product loses track of what it decided | — |
+| ~~Subscriptions~~ → **a one-time purchase, shipped in v1** | **Decision reversed 2026-08-09** by `Docs/decisions/ADR-0005-monetization.md` `[decision, owner, 2026-08-09]` | This row previously deferred *subscriptions* to v2 under ADR-0001's non-goals. What shipped is deliberately **not** a subscription: a single non-consumable unlock, with logging, history, custom movements, measurements and profile free forever, and only the analysis surfaces (28/84-day Insights, Progress, Body's recovery estimate) behind it. Recorded as a reversal rather than edited away, because a non-goal that quietly becomes a feature is how a product loses track of what it decided. **Activation deferred 2026-08-11** `[decision, owner]`: the intended first free-first iOS v1 binary sets `EXPO_PUBLIC_MONETIZATION_ENABLED=false`, so no paywall, purchase, or restore surface is present in that build. The purchase design and this row are unchanged — only the first binary's activation timing is. See `Docs/sprints/2026-08-11-free-first-release-reconciliation.md`. | — |
 | Component-render test framework | v2 | Standing decision, reconfirmed by every UI sprint | Explicit approval |
 
 ---
