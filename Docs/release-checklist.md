@@ -164,6 +164,14 @@ if the exact candidate includes a Sentry DSN**, **G-12**, effective EAS configur
 authoritative production Supabase migration probe (including `0009`), deployed deletion verification,
 and physical-device/store evidence. `Docs/store-submission-runbook.md` is the procedure.
 
+**In-app privacy-policy access** `[fact, branch fix/v1-in-app-privacy-policy-link]`: Settings now
+includes a clearly labelled **Privacy Policy** row. Selecting it asks the platform's native URL handler
+to open `https://www.simulisten.com/prism-legal/`; if that fails, the existing handled-error boundary
+records the failure and Settings shows a retry message. Unit tests pin the exact URL, spoken label, and
+failure propagation. This source-level evidence does not prove inclusion in a release artifact: a new
+candidate containing the accepted change and cold-started device verification of the row remain
+owner-only gates.
+
 ---
 
 ## 5. What was verified for this document, and what was not

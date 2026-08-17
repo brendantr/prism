@@ -36,9 +36,11 @@ import {
   type Goal,
   type Unit,
 } from '@/domain/types';
+import { reportHandledError } from '@/observability/telemetry';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
 import { space } from '@/theme';
+import { openPrivacyPolicy } from '@/utils/privacyPolicy';
 
 const UNIT_OPTIONS: SegmentedOption<Unit>[] = [
   { value: 'kg', label: 'KG', accessibilityLabel: UNIT_LABEL.kg },
@@ -153,6 +155,18 @@ export default function SettingsScreen() {
       Alert.alert(SETTINGS_COPY.failedTitle, SETTINGS_COPY.failedMessage);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onPrivacyPolicyPressed = async () => {
+    try {
+      await openPrivacyPolicy();
+    } catch (error) {
+      reportHandledError('account', 'privacy policy link failed', error);
+      Alert.alert(
+        SETTINGS_COPY.privacyPolicyFailedTitle,
+        SETTINGS_COPY.privacyPolicyFailedMessage,
+      );
     }
   };
 
@@ -314,6 +328,19 @@ export default function SettingsScreen() {
           </Card>
         </>
       ) : null}
+
+      <SectionHeader title={SETTINGS_COPY.privacySection} />
+      <Card style={styles.gutter} padding="none">
+        <ListRow
+          title={SETTINGS_COPY.privacyPolicyLabel}
+          subtitle={SETTINGS_COPY.privacyPolicySubtitle}
+          icon="document-text-outline"
+          iconTone="violet"
+          chevron
+          accessibilityLabel={SETTINGS_COPY.privacyPolicyLabel}
+          onPress={() => void onPrivacyPolicyPressed()}
+        />
+      </Card>
 
       <Button
         label={saving ? SETTINGS_COPY.saving : SETTINGS_COPY.save}

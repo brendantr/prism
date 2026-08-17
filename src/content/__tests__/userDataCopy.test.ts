@@ -46,4 +46,10 @@ describe('user-data copy', () => {
     expect(SETTINGS_COPY.failedMessage.toLowerCase()).toMatch(/may already be saved/);
     expect(SETTINGS_COPY.failedMessage.toLowerCase()).toMatch(/review/);
   });
+
+  it('gives the privacy-policy control a clear label and destination', () => {
+    expect(SETTINGS_COPY.privacyPolicyLabel).toBe('Privacy Policy');
+    expect(SETTINGS_COPY.privacyPolicySubtitle).toMatch(/public policy/i);
+    expect(SETTINGS_COPY.privacyPolicySubtitle).toMatch(/browser/i);
+  });
 });
