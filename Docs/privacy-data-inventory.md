@@ -1,7 +1,7 @@
-# PRism — Privacy Data Inventory
+# Repello — Privacy Data Inventory
 
 > **Engineering draft. Not legal advice, and not reviewed by a lawyer.**
-> This document is an evidence-based audit of what the PRism codebase actually collects, stores and
+> This document is an evidence-based audit of what the Repello codebase actually collects, stores and
 > transmits, produced by reading the code and the SQL migrations. Every row cites a `file:line`.
 > It exists so the App Store Privacy Nutrition Labels and the Google Play Data Safety form can be
 > filled in from verified fact rather than from memory. The owner is responsible for the legal
@@ -11,7 +11,7 @@
 > `feature/v1-user-data-writes`, `fix/v1-zero-data-surfaces`, `feature/v1-observability` and
 > `feature/v1-entitlements`. Line numbers are indicative and will drift.
 >
-> **Reconciled for the first free-first binary, 2026-08-11.** The repository supports Supabase,
+> **Reconciled for the Repello free-first resubmission, 2026-08-21.** The repository supports Supabase,
 > conditional Sentry diagnostics and future RevenueCat monetization, but a store form describes the
 > exact binary. The first binary uses Supabase, uses Sentry only if its effective DSN is non-empty,
 > and does not initialize RevenueCat or collect purchase history. Re-verify the effective candidate
@@ -36,7 +36,7 @@ A column that exists but has no write path in the client is **dormant**, not col
 listed separately in §7 rather than mixed in, because declaring data you do not collect is as wrong
 as omitting data you do.
 
-### Which build are you declaring? `[fact, reconciled 2026-08-11]`
+### Which build are you declaring? `[fact, reconciled 2026-08-21]`
 
 **A store privacy form describes one binary, not the repository.** Two feature flags change what is
 collected, both default **off**, and Sentry depends separately on the exact binary's DSN. The first
@@ -66,10 +66,10 @@ unless marked otherwise.
 
 | Data item | Stored where | Purpose | Required? | Evidence |
 | --- | --- | --- | --- | --- |
-| Email address | Supabase-managed `auth.users` (not in PRism's own schema); held in app memory while signed in | Sign-in identifier; answers "which account am I in?" on a shared device. It becomes the recovery-delivery address only in a future binary that enables email recovery | **Required** to create an account | `src/data/supabase/auth.ts`; `app/auth/index.tsx`; `src/store/sessionStore.ts` |
-| Password | **Never stored by PRism.** Transmitted to Supabase Auth, which stores a hash | Authentication | **Required** | `src/data/supabase/auth.ts:71`, `:96`, `:180-184`; `app/auth/index.tsx:62` |
+| Email address | Supabase-managed `auth.users` (not in Repello's own schema); held in app memory while signed in | Sign-in identifier; answers "which account am I in?" on a shared device. It becomes the recovery-delivery address only in a future binary that enables email recovery | **Required** to create an account | `src/data/supabase/auth.ts`; `app/auth/index.tsx`; `src/store/sessionStore.ts` |
+| Password | **Never stored by Repello.** Transmitted to Supabase Auth, which stores a hash | Authentication | **Required** | `src/data/supabase/auth.ts:71`, `:96`, `:180-184`; `app/auth/index.tsx:62` |
 | Password-reset code (one-time) | **Never stored.** React component state only, for the duration of the flow | Future v1.x recovery verification; not collected by the first binary because the flow is hidden | Optional (enabled recovery flow only) | `src/data/supabase/auth.ts`; `app/auth/index.tsx` |
-| Account id (UUID) | `auth.users.id`, mirrored to `profiles.id`; used as RevenueCat's custom App User ID when purchase transport is configured | Owns every row; the value RLS checks; connects a store event to the correct PRism account without sending an email address | **Required**, server-generated | `supabase/migrations/0001_init.sql:43`; `:256-268` (`handle_new_user`); `src/data/purchases.ts` |
+| Account id (UUID) | `auth.users.id`, mirrored to `profiles.id`; used as RevenueCat's custom App User ID when purchase transport is configured | Owns every row; the value RLS checks; connects a store event to the correct Repello account without sending an email address | **Required**, server-generated | `supabase/migrations/0001_init.sql:43`; `:256-268` (`handle_new_user`); `src/data/purchases.ts` |
 | Display name | `profiles.display_name` (text, 1–60 chars, default `'Lifter'`) | Greeting on Today; fallback identity on the Account sheet | **Required by schema**, but never asked for — see note below | `supabase/migrations/0001_init.sql:44`, `:259-260`; `supabase/migrations/0002_security_hardening.sql:50-51`; `app/(tabs)/index.tsx:182`; `app/account.tsx:59` |
 | Account creation timestamp | `profiles.created_at` | Record keeping | Automatic | `supabase/migrations/0001_init.sql:55` |
 | Profile last-modified timestamp | `profiles.updated_at` | Record keeping | Automatic (trigger) | `supabase/migrations/0001_init.sql:56`, `:248-250` |
@@ -118,7 +118,7 @@ place those answers live.
 | Exercises performed | `workout_exercises` — `exercise_id`, `order_index` | Which movements, in what order | Required per logged exercise | `supabase/migrations/0001_init.sql:145-152` |
 | Sets performed | `sets` — `set_index`, `type`, `weight_kg`, `reps`, `rpe`, `completed`, `rest_seconds`, `logged_at` | The core log: load, reps, effort, rest | Required per set; `rpe` and `rest_seconds` optional | `supabase/migrations/0001_init.sql:157-172` |
 | Personal records | `personal_records` — `kind`, `value`, `reps`, `weight_kg`, `achieved_at`, `workout_id` | Progress tracking; derived from logged sets and stored | Automatic on qualifying sets | `supabase/migrations/0001_init.sql:219-231`; `src/data/repository.ts:437-451` |
-| Routines / plans | `routines`, `routine_days`, `routine_exercises` | Training plans. Rows with `profile_id = null` are PRism's own templates and are **not** user data | User rows only exist if created — **no in-app editor today** | `supabase/migrations/0001_init.sql:85-122`; `src/data/repository.ts:50-101` (interface has no routine write method) |
+| Routines / plans | `routines`, `routine_days`, `routine_exercises` | Training plans. Rows with `profile_id = null` are Repello's own templates and are **not** user data | User rows only exist if created — **no in-app editor today** | `supabase/migrations/0001_init.sql:85-122`; `src/data/repository.ts:50-101` (interface has no routine write method) |
 | Custom exercises | `exercises` with `profile_id` set | Movements the lifter defines | Optional; writable from Exercises and the workout picker | `supabase/migrations/0001_init.sql:63-73`; `src/data/repository.ts`; `app/exercise.tsx` |
 
 All of the above are written through one transactional function, `save_workout_graph`, which is
@@ -132,7 +132,7 @@ payload (`src/data/supabase/mappers.ts:130-134`, `:158-159`; `src/data/repositor
 > **Flagged deliberately.** Bodyweight, body-fat percentage, body circumferences and self-reported
 > sleep / energy / soreness / stress are treated by both Apple and Google as **health or fitness
 > data**, a sensitive category with stricter disclosure requirements than ordinary app data. They are
-> not medical records and PRism makes no diagnostic claim, but they must be disclosed as health/
+> not medical records and Repello makes no diagnostic claim, but they must be disclosed as health/
 > fitness data on both store forms and described plainly in the policy.
 
 | Data item | Stored where | Purpose | Required? | Evidence |
@@ -174,11 +174,11 @@ saw the other.
 | Data item | Stored where | Purpose | Required? | Evidence |
 | --- | --- | --- | --- | --- |
 | Store transaction and purchase history | Apple App Store or Google Play; processed by RevenueCat | Complete, validate and restore the one-time Pro unlock | Only if the user chooses to buy | `src/data/purchases.ts`; `package.json` (`react-native-purchases`) |
-| PRism account id (UUID) | RevenueCat custom App User ID | Associate the store event with the correct authenticated PRism account | Required for purchase/restore; server-generated | `src/data/purchases.ts` (`configurePurchases`, `identifyPurchaseUser`) |
+| Repello account id (UUID) | RevenueCat custom App User ID | Associate the store event with the correct authenticated Repello account | Required for purchase/restore; server-generated | `src/data/purchases.ts` (`configurePurchases`, `identifyPurchaseUser`) |
 | Entitlement record | Supabase `entitlements`: account id, entitlement id, product id, active/revoked state, event time and update time | Server-established access truth read by the client | Automatic after a supported purchase event | `supabase/migrations/0009_entitlements.sql`; `src/data/repository.ts` (`getEntitlement`) |
 | Processed event target | Supabase `revenuecat_event_targets`: RevenueCat event id, target account, entitlement id, event time and resulting action | Idempotent webhook delivery and replay protection | Automatic after a supported purchase event | `supabase/migrations/0009_entitlements.sql`; `supabase/functions/revenuecat-webhook/` |
 
-PRism does **not** receive card or bank details. PRism sends RevenueCat the account UUID, but not the
+Repello does **not** receive card or bank details. Repello sends RevenueCat the account UUID, but not the
 account email, password, workouts, check-ins, body information, or free-text notes. The app contains
 only RevenueCat's public platform SDK key; the webhook authorization value and Supabase service-role
 credential are server environment values and must never enter the client or repository.
@@ -274,7 +274,7 @@ note above, not any one branch of it.
 | **No service-role or other privileged credential in the client** | Client code reads only public values: the Supabase URL/anon key, the Sentry DSN, and the RevenueCat platform SDK keys. `SUPABASE_SERVICE_ROLE_KEY`, `REVENUECAT_WEBHOOK_AUTH` and `REVENUECAT_SECRET_API_KEY` are referenced only by Edge Function server environments; Sentry source-map upload credentials are build secrets. None of them is read by app code or present in `.env.example` (I-4, I-5) |
 
 **One honest caveat to keep in the policy.** Apple and Google also collect diagnostics at the OS and
-store level under their terms and device settings; that is separate from PRism's Sentry reporting.
+store level under their terms and device settings; that is separate from Repello's Sentry reporting.
 The EAS build service processes source code at build time, not user data at runtime.
 
 ---
@@ -285,12 +285,12 @@ The EAS build service processes source code at build time, not user data at runt
 | --- | --- | --- |
 | **Supabase** | Hosting and processing — the database, auth service and API | First-binary account/training data in §2–§5. Entitlement tables exist for repository compatibility, but no purchase event is processed |
 | **Sentry** | Conditional failure-only crash diagnostics processor | Applies only if the exact submitted binary has a non-empty DSN; restricted diagnostics described in §6, with no account identity, training/health payload, screenshot, replay or analytics |
-| **RevenueCat** | Future v1.x purchase and restore processor | **Not initialized by the first binary.** With monetization enabled later: store transaction/entitlement data and the random PRism account UUID; no training, body, password, email or free-text data sent by PRism |
+| **RevenueCat** | Future v1.x purchase and restore processor | **Not initialized by the free-first binary.** With monetization enabled in a future version: store transaction/entitlement data and the random Repello account UUID; no training, body, password, email or free-text data sent by Repello |
 | **Apple / Google** | App distribution; future payment processing | Download records and OS/store-level diagnostics under their terms. Payment processing does not apply to the free-first binary |
 | **The OS share sheet** | Export delivery only | The export JSON is handed to the OS share sheet; **the destination is chosen by the user**, not by the app (`app/account.tsx:134-137`) |
 
 **No other runtime party.** No data broker, advertiser, product-analytics vendor, or partner
-integration receives PRism data.
+integration receives Repello data.
 
 `[OWNER: confirm the Supabase project's hosting region and record it here — it is required by the
 policy and by some store questionnaires. Read it from the Supabase dashboard; it cannot be
@@ -319,10 +319,10 @@ sheet.
 
 - Screen: `app/account.tsx:123-146`, `:251-260`
 - Assembly: `src/domain/accountExport.ts:45-62`, `:81-96`
-- Serialisation and filename (`prism-export-YYYY-MM-DD.json`): `src/domain/accountExport.ts:105-107`, `:116-119`
+- Serialisation and filename (`repello-export-YYYY-MM-DD.json`): `src/domain/accountExport.ts`
 - Data fan-out: `src/data/repository.ts:564-579`
 
-The export deliberately excludes PRism's own seeded exercise library, which is the app's data rather
+The export deliberately excludes Repello's own seeded exercise library, which is the app's data rather
 than the lifter's (`src/domain/accountExport.ts:52-57`).
 It also excludes `revenuecat_event_targets`, an internal idempotency ledger that is not client-
 selectable. The public policy states this limitation rather than calling the in-app file a complete
@@ -388,7 +388,7 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 ## 12. Summary counts
 
 - **13 Postgres tables**, all of which can hold rows linked to an account. `exercises` and `routines`
-  also hold PRism's own library/template rows, distinguished by `profile_id is null`, while
+  also hold Repello's own library/template rows, distinguished by `profile_id is null`, while
   `revenuecat_event_targets` is an internal delivery ledger rather than user-facing content.
 - **Account/identity items collected: 2** actually user-supplied (email, password), plus 4
   server-generated or defaulted.
@@ -398,7 +398,7 @@ response is safe (`supabase/migrations/0005_account_deletion.sql:84-87`).
 - **Health-adjacent data:** the four check-in scales, bodyweight, body-fat percentage and body
   measurements are writable and collected when the user chooses to enter them.
 - **Purchase/access capability: 4 groups** (store transaction, custom account UUID, entitlement row,
-  and processed event target), but **none is collected by the first free-first binary**. PRism never
+  and processed event target), but **none is collected by the first free-first binary**. Repello never
   receives payment-card details.
 - **Device-local keys: 7** (1 Keychain-backed session, 6 AsyncStorage keys of which 4 are demo-only).
 - **Dormant schema columns: 4** (§7); body measurements, custom exercises and profile preferences

@@ -116,7 +116,7 @@ export function isEntitlementDisabled(): boolean {
 
 /** Whether the native purchase transport can be configured on this platform. */
 export function isPurchaseTransportEnabled(): boolean {
-  return isEntitlementBackendEnabled() && hasPurchaseCredentials();
+  return isMonetizationEnabled() && isEntitlementBackendEnabled() && hasPurchaseCredentials();
 }
 
 /**

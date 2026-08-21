@@ -113,20 +113,27 @@ let identifiedPurchaseUserId: string | null = null;
 let resolvedEntitlementUserId: string | null = null;
 let purchaseIdentityTail: Promise<void> = Promise.resolve();
 
-const INITIAL: Pick<
+type InitialEntitlementState = Pick<
   EntitlementState,
   'phase' | 'purchaseReady' | 'priceString' | 'pending' | 'lastFailure' | 'lastSuccess'
-> = {
-  phase: 'unknown',
-  purchaseReady: false,
-  priceString: null,
-  pending: null,
-  lastFailure: null,
-  lastSuccess: null,
-};
+>;
+
+function initialEntitlementState(): InitialEntitlementState {
+  return {
+    // Resolve the build declaration synchronously so the first rendered frame
+    // of a free-first build cannot expose a lock, paywall link, price or restore
+    // control while the root initialization effect is still pending.
+    phase: isEntitlementDisabled() ? 'disabled' : 'unknown',
+    purchaseReady: false,
+    priceString: null,
+    pending: null,
+    lastFailure: null,
+    lastSuccess: null,
+  };
+}
 
 export const useEntitlementStore = create<EntitlementState>((set, get) => ({
-  ...INITIAL,
+  ...initialEntitlementState(),
 
   initialize: async (userId) => {
     /*
@@ -145,7 +152,7 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
     */
     if (isEntitlementDisabled()) {
       resolvedEntitlementUserId = null;
-      set({ ...INITIAL, phase: 'disabled' });
+      set(initialEntitlementState());
       return;
     }
 
@@ -167,7 +174,7 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
     if (resolvedEntitlementUserId === userId && get().phase !== 'unknown') return;
     if (resolvedEntitlementUserId !== userId) {
       resolvedEntitlementUserId = userId;
-      set({ ...INITIAL });
+      set(initialEntitlementState());
     }
 
     let purchaseReady = false;
@@ -293,9 +300,11 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
   /**
    * Sign-out teardown (I-19).
    *
-   * Back to `'unknown'`, not to `'notEntitled'`: the next lifter on this device
-   * has had nothing confirmed about them, and `'unknown'` is the state that says
-   * so. It also re-arms `initialize`, which returns early on any other phase.
+   * In an enabled build, this returns to `'unknown'`, not `'notEntitled'`: the
+   * next lifter on this device has had nothing confirmed about them. In a
+   * free-first build, `initialEntitlementState()` resolves the reset to
+   * `'disabled'`. Either state re-arms `initialize`, which returns early on any
+   * other phase.
    *
    * RevenueCat is deliberately not logged out. This app uses custom IDs only;
    * `logOut` would create an anonymous customer and introduce a purchase-
@@ -304,7 +313,7 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
    */
   reset: async () => {
     resolvedEntitlementUserId = null;
-    set({ ...INITIAL });
+    set(initialEntitlementState());
   },
 
   /**
@@ -321,7 +330,7 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
     } finally {
       identifiedPurchaseUserId = null;
       resolvedEntitlementUserId = null;
-      set({ ...INITIAL });
+      set(initialEntitlementState());
     }
   },
 }));

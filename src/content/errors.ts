@@ -23,7 +23,7 @@
 
 export const APP_ERROR = {
   eyebrow: 'Unexpected error',
-  title: 'PRism stopped short',
+  title: 'Repello stopped short',
 
   /**
    * What happened, and — the part that matters to someone mid-session — what it
@@ -45,5 +45,5 @@ export const APP_ERROR = {
     'This build may send a report about the failure so it can be fixed. Reports describe the code that failed, not your training.',
 
   /** Shown when this build has no PRism crash reporting configured. */
-  reportNotSentNote: 'This build did not send a PRism crash report.',
+  reportNotSentNote: 'This build did not send a Repello crash report.',
 } as const;

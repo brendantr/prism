@@ -25,7 +25,7 @@ export const SOCIAL = {
   title: 'Training with others',
   notice: {
     title: 'Nothing on this tab is live',
-    body: 'PRism has no accounts, no friends list, and nothing behind this screen that talks to a server. Everything below is local placeholder content, on this device only. Nothing you log is shared or posted anywhere.',
+    body: 'Repello has no accounts, no friends list, and nothing behind this screen that talks to a server. Everything below is local placeholder content, on this device only. Nothing you log is shared or posted anywhere.',
   },
   plannedTitle: 'What this tab is for',
   plannedEyebrow: 'Intent',

@@ -185,7 +185,7 @@ export default function BodyScreen() {
         phase={3}
         summary="An original SVG body illustration, front and back, that colours each region by the recovery values listed above."
         deliverables={[
-          'Hand-drawn SVG muscle map, drawn specifically for PRism',
+          'Hand-drawn SVG muscle map, drawn specifically for Repello',
           'Tap a region for its volume, effective sets and recovery window',
           'Front/back toggle with a weekly volume-balance view',
           'Left/right and push/pull imbalance flags',

@@ -6,6 +6,10 @@
 - Decision owner: Engineer/owner
 - Relates to: ADR-0001, ADR-0002, invariants I-4/I-5/I-6/I-8/I-9/I-10/I-13/I-19
 
+> **Current v1 status:** The one-time purchase decision and future IAP architecture remain accepted,
+> but activation is deferred for the free-first resubmission. See [ADR-0006 §5 / Decision 5](ADR-0006-product-name.md#decision)
+> for the current deferral and future-activation boundary.
+
 ## Context
 
 PRism needs a sustainable v1 offer without charging a lifter to record or retrieve their own

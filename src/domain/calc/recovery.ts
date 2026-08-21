@@ -33,7 +33,7 @@ import { MUSCLE_GROUPS, type Exercise, type MuscleGroup, type MuscleRecovery, ty
 
 export const RECOVERY_REFERENCE_SETS = 6;
 export const RECOVERY_MODEL_EXPLANATION =
-  'PRism estimates recovery from how recently you trained a muscle and how many effective sets it absorbed. ' +
+  'Repello estimates recovery from how recently you trained a muscle and how many effective sets it absorbed. ' +
   'Bigger muscles and harder sessions get a longer window. This is a training heuristic, not a medical or ' +
   'physiological measurement -- treat it as a prompt to check in with your own body, not a verdict.';
 

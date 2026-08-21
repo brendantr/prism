@@ -99,7 +99,7 @@ export const PAYWALL = {
   purchasedMessage: 'Progress, Body and the longer Insights views are open on this account.',
 
   restoredTitle: 'Restored',
-  restoredMessage: 'The longer views are available on this PRism account.',
+  restoredMessage: 'The longer views are available on this Repello account.',
 
   /** Shown where a locked surface is listed but not opened. */
   lockedBadge: 'Locked',
@@ -135,14 +135,14 @@ export const PURCHASE_OUTCOME_COPY: Record<Exclude<PurchaseFailure, 'cancelled'>
   storeUnavailable: 'Your app store is not available on this device right now. Nothing was charged.',
   notAllowed: 'This device is not set up to make purchases. Nothing was charged.',
   nothingToRestore:
-    'No purchase was found for the store account signed in on this device. If you bought PRism with a different one, sign into that account and try again.',
+    'No purchase was found for the store account signed in on this device. If you bought Repello with a different one, sign into that account and try again.',
   /**
    * The one message here that must NOT say "nothing was charged", because
    * something was. It says what is true instead: the payment went through and
    * the unlock is still on its way.
    */
   awaitingServer:
-    'Your app store confirmed the payment, but access has not reached your PRism account yet. Close and reopen this screen, or use Restore to check again.',
+    'Your app store confirmed the payment, but access has not reached your Repello account yet. Close and reopen this screen, or use Restore to check again.',
   unknown:
     'The app store did not confirm completion. Check your store purchase history or use Restore before trying again.',
 };

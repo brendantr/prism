@@ -112,15 +112,15 @@ export function serialiseAccountExport(exported: AccountExport): string {
 }
 
 /**
- * `prism-export-2026-08-06.json`.
+ * `repello-export-2026-08-06.json`.
  *
  * Date only, no clock time: two exports on the same day collide by name, which
  * is the correct outcome — the second is a newer copy of the same thing, and a
- * folder of `prism-export-...T14-32-07.json` is a folder nobody can read.
+ * folder of `repello-export-...T14-32-07.json` is a folder nobody can read.
  */
 export function accountExportFilename(exported: AccountExport): string {
   const day = exported.exportedAt.slice(0, 10);
-  return `prism-export-${day}.json`;
+  return `repello-export-${day}.json`;
 }
 
 /**

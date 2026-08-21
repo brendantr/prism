@@ -1,6 +1,7 @@
 import {
   PRO_ENTITLEMENT_ID,
   PRO_PRODUCT_ID,
+  canRenderPaywall,
   isInsightsWindowLocked,
   isSurfaceLocked,
   resolveEntitlementPhase,
@@ -52,6 +53,13 @@ describe('surface gating', () => {
     expect(isInsightsWindowLocked(84, 'entitled')).toBe(false);
     expect(resolveInsightsWindow(28, 'notEntitled')).toBe(7);
     expect(resolveInsightsWindow(84, 'entitled')).toBe(84);
+  });
+
+  it('makes the paywall route unreachable when monetization is disabled', () => {
+    expect(canRenderPaywall('disabled')).toBe(false);
+    expect(canRenderPaywall('unknown')).toBe(true);
+    expect(canRenderPaywall('notEntitled')).toBe(true);
+    expect(canRenderPaywall('entitled')).toBe(true);
   });
 });
 

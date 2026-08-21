@@ -78,7 +78,7 @@ describe('initialize', () => {
     expect(purchases.configurePurchases).not.toHaveBeenCalled();
   });
 
-  it('unlocks without constructing clients only in explicit demo mode', async () => {
+  it('unlocks without constructing clients when monetization is disabled', async () => {
     purchases.isEntitlementDisabled.mockReturnValue(true);
 
     await useEntitlementStore.getState().initialize(null);
@@ -86,6 +86,28 @@ describe('initialize', () => {
     expect(useEntitlementStore.getState().phase).toBe('disabled');
     expect(getRepository).not.toHaveBeenCalled();
     expect(purchases.configurePurchases).not.toHaveBeenCalled();
+  });
+
+  it('cannot purchase, restore, read an entitlement, or resolve a price when disabled', async () => {
+    purchases.isEntitlementDisabled.mockReturnValue(true);
+
+    await useEntitlementStore.getState().reset();
+    expect(useEntitlementStore.getState().phase).toBe('disabled');
+
+    await useEntitlementStore.getState().initialize('11111111-1111-4111-8111-111111111111');
+
+    await expect(useEntitlementStore.getState().purchase()).resolves.toBe(false);
+    await expect(useEntitlementStore.getState().restore()).resolves.toBe(false);
+    expect(useEntitlementStore.getState()).toMatchObject({
+      phase: 'disabled',
+      purchaseReady: false,
+      priceString: null,
+    });
+    expect(getRepository).not.toHaveBeenCalled();
+    expect(purchases.configurePurchases).not.toHaveBeenCalled();
+    expect(purchases.getProPriceString).not.toHaveBeenCalled();
+    expect(purchases.purchasePro).not.toHaveBeenCalled();
+    expect(purchases.restorePurchases).not.toHaveBeenCalled();
   });
 
   it('stays unknown and locked when the real backend is misconfigured', async () => {

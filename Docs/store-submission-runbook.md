@@ -1,4 +1,4 @@
-# Runbook: submitting PRism to the App Store and Google Play
+# Runbook: submitting Repello to the App Store and Google Play
 
 ## Document status
 
@@ -70,7 +70,7 @@ SQL Editor. So first ask the project what it has, using the probe in
 `Docs/tester-readiness-runbook.md` §2, extended for the two newer migrations:
 
 ```sql
--- PRism migration probe. READ-ONLY: creates nothing, changes nothing.
+-- Repello migration probe. READ-ONLY: creates nothing, changes nothing.
 -- Safe to run on a completely empty project.
 with fn as (
   select p.proname, pg_get_function_identity_arguments(p.oid) as args
@@ -144,14 +144,14 @@ to **`0009`** it returns nine `true`.
 **Before you paste anything, confirm which project you are in.** `[fact, 2026-08-10]` On the day this
 was written, the probe, a failed `0008` paste, and the full `0001`–`0009` bundle were all run against
 the wrong Supabase project — an unrelated app in the same account. The probe returned nine `false`s,
-which was true of that project and said nothing about PRism's. **Nine `false`s means "wrong project"
+which was true of that project and said nothing about Repello's. **Nine `false`s means "wrong project"
 at least as often as it means "empty project", and the output cannot tell you which.** The Supabase
 dashboard shows the project name in the top-left of the SQL Editor; read it, and paste the project ref
 next to any probe output you record.
 
 The consequence was not trivial: `0001` creates `on_auth_user_created`, an `after insert on auth.users`
 trigger, and `handle_new_user`/`set_updated_at` are created with `create or replace` under names that
-are standard Supabase boilerplate. Applying PRism's schema to another app's project therefore installs
+are standard Supabase boilerplate. Applying Repello's schema to another app's project therefore installs
 a trigger on its signups and can silently overwrite its own signup hook.
 
 Apply every file the probe reports `false`, **in numeric order**, stopping at the first error.
@@ -185,7 +185,7 @@ Authentication → Emails page.
 
 The chain, each link verified:
 
-1. PRism's password reset is **code-based** — `confirmPasswordReset` calls
+1. Repello's password reset is **code-based** — `confirmPasswordReset` calls
    `verifyOtp({ type: 'recovery' })`, so the lifter types a code from the email
    (`src/data/supabase/auth.ts`). No `redirectTo` is passed, deliberately, because this repository has
    no deep-link capture.
@@ -246,7 +246,7 @@ App Review, both of which receive mail at addresses you do not own.
    | Username | `resend` |
    | Password | the API key from step 5 |
    | Sender email | an address on the domain verified in step 4 |
-   | Sender name | `PRism` |
+   | Sender name | `Repello` |
 
    `[recommendation]` Confirm host and port against Resend's own SMTP page rather than this table —
    providers do change them, and this document cannot notice when they do.
@@ -340,7 +340,7 @@ are deferred to v1.x. Before enabling `EXPO_PUBLIC_MONETIZATION_ENABLED=true`, f
 1. Fill every `[OWNER: ...]` placeholder in `Docs/privacy-policy-draft.md`. Publishing with
    placeholders intact is worse than having no policy — the draft says so itself.
 2. Have it reviewed. The draft makes **no claim of compliance** with any regulation and is explicit
-   that it has not been read by a lawyer. PRism stores health-adjacent data, which raises the stakes.
+   that it has not been read by a lawyer. Repello stores health-adjacent data, which raises the stakes.
 3. Host it, and put the URL in both store listings.
 
 `[fact]` The policy and `Docs/privacy-data-inventory.md` describe the exact first binary: Supabase
@@ -364,7 +364,7 @@ Purchases → Purchase History is **No**. Everything else is No.
 whether the processor relationships present in the exact binary count as "sharing" under Google's
 current definition, and the health-data declaration. Both are flagged `[OWNER: ...]` in the inventory.
 
-**Age rating.** `[assumption]` PRism has no user-generated content visible to others, no ads, and no
+**Age rating.** `[assumption]` Repello has no user-generated content visible to others, no ads, and no
 social features (the Social tab is a shell). That points at the lowest rating band, but the
 health/fitness data collection is what the questionnaires actually ask about — answer them from the
 inventory.
@@ -439,10 +439,10 @@ that has not synced, so this is checked by a sandbox purchase before submission,
 
 `[recommendation]` Three things worth preparing, because each is a common rejection:
 
-1. **Provide demo credentials in App Review notes.** PRism requires an account, and Apple requires
+1. **Provide demo credentials in App Review notes.** Repello requires an account, and Apple requires
    working credentials when it does. If email confirmation is on, a reviewer signing up themselves has
    to receive and click a confirmation email — avoidable friction on a reviewer's schedule, not yours.
-2. **Expect the reviewer to delete that account.** Apple actively tests account deletion, and PRism's
+2. **Expect the reviewer to delete that account.** Apple actively tests account deletion, and Repello's
    deletion works now — so the demo account can vanish mid-review and a second review attempt then
    fails to sign in. Prepare two accounts, or be ready to recreate one immediately.
 3. **The free-first surfaces must be reachable and honest.** Insights' 28/84-day windows, Progress and
@@ -486,7 +486,7 @@ non-interactive submit; it does not provide credentials or prove external App St
 
 `[fact]` The Play service account key goes at `./credentials/play-service-account.json`. That path is
 git-ignored (along with `*.p8`, `*.p12`, `*.mobileprovision`) because it is a privileged credential
-that can publish as PRism — I-4, I-5.
+that can publish as Repello — I-4, I-5.
 
 ---
 

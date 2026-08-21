@@ -1,4 +1,4 @@
-# Runbook: putting PRism in front of real testers
+# Runbook: putting Repello in front of real testers
 
 ## Document status
 
@@ -60,7 +60,7 @@ no longer an inference from the repository — it is an observation, and §4 rec
 
 ## 2. Step 0 — confirm what the project actually has
 
-`[fact]` PRism has no migration-tracking table. Migrations are applied by hand in the SQL Editor, so
+`[fact]` Repello has no migration-tracking table. Migrations are applied by hand in the SQL Editor, so
 "which ones does this project have?" is answered by looking for what each one creates. This query is
 the only authority on that question — the repository cannot see a dashboard, and this document is a
 report, not an observation. Run it in the SQL Editor of the project you intend to point testers at:
@@ -131,7 +131,7 @@ the store-submission blocker I-10 names.
 `[fact, owner, 2026-08-09]` **Done, and green: 19/19 across 2 suites against the staging project.**
 The two repository secrets are set as well, so the nightly workflow now has something to run.
 
-This is the first time PRism's data layer has been verified end-to-end against a hosted project, and
+This is the first time Repello's data layer has been verified end-to-end against a hosted project, and
 it is the strongest evidence in the repository — unlike every other status line here, it was produced
 by the app's own code talking to the real thing. What it establishes:
 
@@ -147,7 +147,7 @@ by the app's own code talking to the real thing. What it establishes:
 - **`0007` landed** — the deletion test creates a custom movement, logs a session with it, then
   deletes the account. That is exactly the cascade-ordering case `0007` fixes, and it passes.
 
-`[fact]` This is the acceptance test, and it already exists. It drives PRism's own data layer — not a
+`[fact]` This is the acceptance test, and it already exists. It drives Repello's own data layer — not a
 client the test built for itself — against the real project: sign-up on the real `auth.users`, the
 whole workout graph through PostgREST, RLS between two real accounts, `save_check_in`'s omit/value/null
 semantics, export completeness, and account deletion.

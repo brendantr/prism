@@ -1,4 +1,4 @@
-# PRism v1 production posture
+# Repello v1 production posture (formerly PRism)
 
 ## Document status
 

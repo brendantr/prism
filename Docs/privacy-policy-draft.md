@@ -1,14 +1,14 @@
-# PRism Privacy Policy — DRAFT
+# Repello Privacy Policy — DRAFT
 
 > **Read this box before using this document.**
 >
-> This is an **engineering draft**, written by reading the PRism source code and database migrations.
+> This is an **engineering draft**, written by reading the Repello source code and database migrations.
 > Every factual statement in it is traceable to a specific file and line, recorded in
 > `Docs/privacy-data-inventory.md`.
 >
 > **It has not been reviewed by a lawyer.** It deliberately makes **no claim of compliance** with
 > GDPR, UK GDPR, CCPA/CPRA, HIPAA, PIPEDA or any other regulation — it describes what the app does,
-> and nothing more. Whether that description is legally sufficient for the markets PRism ships in is
+> and nothing more. Whether that description is legally sufficient for the markets Repello ships in is
 > the owner's responsibility, and should be confirmed with qualified counsel before publication.
 >
 > Placeholders marked `[OWNER: ...]` must be filled in before this is published. Publishing with
@@ -18,7 +18,7 @@
 > measurements, notes, analytics, notifications — this document and the store forms must change in
 > the same sprint. A policy that describes an older version of the app is a liability, not a shield.
 >
-> **Synced 2026-08-11; free-first posture reconciled 2026-08-11.** Owner-supplied answers from a
+> **Synced 2026-08-11; product name and free-first posture reconciled 2026-08-21.** Owner-supplied answers from a
 > previously rendered working copy were copied back into this repository. That report is not evidence
 > that a final public URL is reachable; publication and URL verification remain owner actions. The
 > first binary has no monetization or email-recovery flow, and diagnostics remain conditional on the
@@ -26,25 +26,25 @@
 
 ---
 
-# Privacy Policy for PRism
+# Privacy Policy for Repello
 
-**Effective date:** 11 August 2026
-**Last updated:** 11 August 2026
+**Effective date:** 21 August 2026
+**Last updated:** 21 August 2026
 
-> **About in-app purchases in this version.** PRism currently offers **no in-app purchase**, and
+> **About in-app purchases in this version.** Repello currently offers **no in-app purchase**, and
 > collects no purchase or payment information of any kind. Where this policy describes purchases and
 > the payment processor RevenueCat — §2.3, and parts of §4, §5 and §6 — it describes how those will
 > work when a paid unlock ships, so the whole picture reads in one place. **None of it happens in the
 > version you are using.** When it does, the effective date above will change.
 
-PRism is a strength-training app. You log your workouts, and it shows you what has been happening to
-your training. This policy explains what information PRism holds, why, where it lives, and how you
+Repello is a strength-training app. You log your workouts, and it shows you what has been happening to
+your training. This policy explains what information Repello holds, why, where it lives, and how you
 get it back or get rid of it.
 
 It is written to be read. If anything here is unclear, contact us at
 qustrike@protonmail.com.
 
-PRism is provided by **Brendan Rodriguez**, an individual based in Florida, United States ("we", "us"). The best way to reach us about anything in this policy is email: qustrike@protonmail.com.
+Repello is provided by **Brendan Rodriguez**, an individual based in Florida, United States ("we", "us"). The best way to reach us about anything in this policy is email: qustrike@protonmail.com.
 
 ---
 
@@ -102,7 +102,7 @@ none of it is inferred from your device.
 - **Training preferences** — your goal, experience level, how many days a week you train, which days,
   what equipment you have, and whether you prefer kilograms or pounds. Weights are always stored in
   kilograms; the unit setting only changes how they are displayed.
-- **Plans and custom exercises** — if you create them. PRism's own built-in exercise library and
+- **Plans and custom exercises** — if you create them. Repello's own built-in exercise library and
   starter plans are our content, not yours, and are not part of your personal data.
 
 We use this to run the app: to show you your history, your progress, your volume and your records,
@@ -110,10 +110,10 @@ and to work out what to suggest next. We do not use it for anything else.
 
 ### 2.3 Future v1.x purchase and access data
 
-If a future v1.x version offers a one-time PRism Pro unlock and you buy it, Apple or Google will
-handle the payment. PRism will not receive or store your card or bank details. RevenueCat would
-receive the store transaction and your random PRism account identifier so it could report whether
-that account bought or restored the unlock. PRism would not send RevenueCat your email, password,
+If a future v1.x version offers an optional one-time Repello analysis unlock and you buy it, Apple or Google will
+handle the payment. Repello will not receive or store your card or bank details. RevenueCat would
+receive the store transaction and your random Repello account identifier so it could report whether
+that account bought or restored the unlock. Repello would not send RevenueCat your email, password,
 workouts, check-ins, body information, or free-text notes.
 
 In that future version, Supabase would store a small access record for your account: the entitlement
@@ -147,7 +147,7 @@ To be specific, because these are the things people reasonably assume an app is 
 - **No device permissions.** The app requests none: no camera, photos, microphone, location,
   contacts, calendar, motion sensors, or notifications.
 - **No connection to Apple Health, Google Fit or Health Connect.** Every health-adjacent number in
-  PRism is one you typed.
+  Repello is one you typed.
 - **No social features that transmit anything.** The Social tab in the current version is a preview
   of a planned feature. It makes no network calls and shares nothing.
 - **No location.** The app reads your device's timezone locally, only to work out which calendar day
@@ -155,7 +155,7 @@ To be specific, because these are the things people reasonably assume an app is 
   location is.
 
 Apple and Google collect their own diagnostics at the operating-system and app-store level, under
-their own terms and your own device settings. PRism does not receive those diagnostics. Future
+their own terms and your own device settings. Repello does not receive those diagnostics. Future
 purchase reporting through RevenueCat applies only after a paid unlock is introduced, not to this
 free-first version.
 
@@ -166,23 +166,23 @@ privacy-filtered diagnostic report. It can include the app/build version, time, 
 device model/family, code stack frames, a fixed failure category, React component names, and the
 method/path/status of a failed network request.
 
-Before a JavaScript report leaves the device, PRism rebuilds it from an allowlist and replaces the
+Before a JavaScript report leaves the device, Repello rebuilds it from an allowlist and replaces the
 exception text. Reports exclude your account id, email address, IP address, device name, training or
 health values, reflections, request/response bodies, screen contents, local runtime values, and URL
-query values. PRism does not attach a Sentry user. Screenshots, view hierarchy, session replay,
+query values. Repello does not attach a Sentry user. Screenshots, view hierarchy, session replay,
 automatic sessions, performance tracing, failed-request capture and product analytics are disabled.
 Development and demo builds do not initialise Sentry at all.
 
 If the exact submitted binary includes a non-empty DSN, Sentry processes these diagnostics so we can
 identify and fix failures. The owner must confirm the applicable project region, retention and terms
-before publishing this policy for that binary. If the binary has no DSN, PRism does not initialize
-Sentry and no PRism diagnostic report leaves the device.
+before publishing this policy for that binary. If the binary has no DSN, Repello does not initialize
+Sentry and no Repello diagnostic report leaves the device.
 
 ---
 
 ## 3. Health-adjacent information
 
-Some of what PRism stores describes your body and how you feel. We call this out separately because
+Some of what Repello stores describes your body and how you feel. We call this out separately because
 it deserves more care than the rest.
 
 **Daily check-ins.** You can rate your **sleep quality, energy, soreness and stress** on a 1–5 scale.
@@ -197,10 +197,10 @@ Entering them is entirely optional — the app works without a single one.
 
 **What we do with it.** It is used inside the app, for you: trends, readiness, and load suggestions.
 It is not used for advertising, not sold, not sent to RevenueCat, and not analysed across users.
-Supabase stores it for PRism as described in §4.
+Supabase stores it for Repello as described in §4.
 
-**What it is not.** PRism is a training log, not a medical device. Nothing in it is a diagnosis, a
-medical opinion, or medical advice, and no health professional sees your data because you use PRism.
+**What it is not.** Repello is a training log, not a medical device. Nothing in it is a diagnosis, a
+medical opinion, or medical advice, and no health professional sees your data because you use Repello.
 
 ---
 
@@ -223,24 +223,24 @@ payload, under the controls described in §2.5.
 
 **RevenueCat processes purchase and entitlement data — once the paid unlock exists** (see the notice
 at the top of this policy; nothing in this paragraph applies to the version you are using today). It
-would receive the store transaction and the random PRism account identifier described in §2.3 so
-PRism can grant or restore the correct account's access. It would not receive training, body,
-password, or free-text data from PRism.
+would receive the store transaction and the random Repello account identifier described in §2.3 so
+Repello can grant or restore the correct account's access. It would not receive training, body,
+password, or free-text data from Repello.
 
 **Apple or Google will process payment if a paid unlock is introduced.** The applicable store would
 receive the information and purchase history required to complete the transaction under its own
-terms. PRism would not receive your payment-card details.
+terms. Repello would not receive your payment-card details.
 
 For this free-first version, Supabase is the account/training processor, Sentry is conditional as
 described above, and Apple distributes the app. RevenueCat and store payment processing are future
 v1.x relationships. We use no analytics vendor, advertising network, data broker, marketing platform,
 or support tool that receives your training data.
 
-If you export your data, PRism hands the file to your phone's own share sheet and **you** choose
+If you export your data, Repello hands the file to your phone's own share sheet and **you** choose
 where it goes — Files, email, a cloud drive, whatever you pick. Once it leaves the app it is covered
 by whatever service you sent it to, not by this policy.
 
-International transfers: our database is hosted in the United States (us-east-1). If you use PRism from outside the United States, the information described above is transferred to and stored there.
+International transfers: our database is hosted in the United States (us-east-1). If you use Repello from outside the United States, the information described above is transferred to and stored there.
 
 ---
 
@@ -279,7 +279,7 @@ compromised, change your password and contact us at qustrike@protonmail.com.
 We keep your account and your training data **for as long as your account exists**. A training log is
 only useful if it goes back years, so nothing expires on its own and we do not delete old workouts.
 
-**When you delete your account in this free-first version,** PRism removes your authentication record
+**When you delete your account in this free-first version,** Repello removes your authentication record
 and every database row — profile, workouts, exercises, sets, check-ins, body measurements, personal
 records, plans, custom exercises and internal access rows — through the authenticated deletion
 function and database cascade rules. No RevenueCat customer or purchase history exists for this
@@ -305,11 +305,11 @@ Both of these are built into the app. Neither requires contacting us.
 
 This produces a single JSON file containing your profile, every workout with all of its exercises and
 sets, every check-in, every body measurement, every personal record, any exercises you created, and
-your current PRism Pro entitlement record if one exists.
+your current Repello analysis-unlock entitlement record if one exists.
 It is the stored records themselves, not a summary, and it is formatted so a person can read it.
 The app then hands it to your phone's share sheet so you can save or send it wherever you like.
 
-The file does not include PRism's own built-in exercise library, because that is our content rather
+The file does not include Repello's own built-in exercise library, because that is our content rather
 than yours and several hundred rows of it would bury the handful that are actually yours.
 It also does not include internal purchase-event delivery identifiers used only to prevent a
 webhook from being processed twice. Those records are not training or account content, are not shown
@@ -344,9 +344,9 @@ Depending on where you live, you may have further rights over your information u
 
 ## 8. Children
 
-PRism is not intended for children, and we do not knowingly collect data from them.
+Repello is not intended for children, and we do not knowingly collect data from them.
 
-- **Minimum age: 13.** PRism is not for anyone younger.
+- **Minimum age: 13.** Repello is not for anyone younger.
 - The app has **no age gate** in the current version — we ask, we do not verify.
 - If you believe a child has created an account, contact qustrike@protonmail.com and we will delete it.
 
@@ -354,7 +354,7 @@ PRism is not intended for children, and we do not knowingly collect data from th
 
 ## 9. Changes to this policy
 
-If we change what PRism collects or what we do with it, we will update this policy and change the
+If we change what Repello collects or what we do with it, we will update this policy and change the
 "last updated" date at the top. For a change that materially affects you — collecting a new category
 of data, or using existing data for a new purpose — we will tell you in the app before it takes
 effect, and where the law requires it, ask for your consent.

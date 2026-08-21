@@ -164,7 +164,7 @@ export default function SessionDetailScreen() {
       {uncounted ? (
         <Text variant="bodySm" tone="faint" style={styles.legend}>
           Warm-ups and sets you did not tick off are shown here but left out of volume, working sets
-          and reps — the same rule the rest of PRism counts by.
+          and reps — the same rule the rest of Repello counts by.
         </Text>
       ) : null}
 

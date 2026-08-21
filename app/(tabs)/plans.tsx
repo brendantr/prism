@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Chip, Screen, ScreenState, SectionHeader, Text } from '@/components/ui';
 import { PhasePanel } from '@/components/ui/PhasePanel';
+import { routineDisplayName } from '@/content/brand';
 import { estimateDayMinutes } from '@/domain/schedule';
 import { useTrainingStore } from '@/store/trainingStore';
 import { WEEKDAY_NAMES } from '@/utils/format';
@@ -55,7 +56,7 @@ export default function PlansScreen() {
           >
             <View style={styles.head}>
               <Text variant="title2" style={styles.name}>
-                {routine.name}
+                {routineDisplayName(routine.name)}
               </Text>
               {isActive ? <Chip label="Active" tone="positive" icon="checkmark" /> : null}
             </View>

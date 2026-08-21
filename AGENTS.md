@@ -43,11 +43,11 @@ Every change ships with validation evidence (commands run, actual results) and a
 
 ## Product originality and reference research
 
-Liftly and other established training apps may be used only as **private functional research references** — to understand user jobs, logging conventions, and general product flows. PRism never copies another product's brand, assets, screenshots, exact layout, wording, or source code, and is never called a "clone" anywhere in this repository. Full policy: `Docs/decisions/ADR-0003-reference-research-policy.md`, protocol: `Docs/research/README.md`.
+Liftly and other established training apps may be used only as **private functional research references** — to understand user jobs, logging conventions, and general product flows. Repello never copies another product's brand, assets, screenshots, exact layout, wording, or source code, and is never called a "clone" anywhere in this repository. Full policy: `Docs/decisions/ADR-0003-reference-research-policy.md`, protocol: `Docs/research/README.md`.
 
 ## Readiness-aware progression
 
-PRism's v1 differentiator is readiness-aware progression (`Docs/decisions/ADR-0001-product-position.md`). Any readiness suggestion must be **advisory-only, deterministic, explainable, versioned, testable, and user-overridable** — never automatic, never framed as medical advice or diagnosis. Full boundaries: `Docs/decisions/ADR-0002-readiness-suggestion-safety.md`, `Docs/invariants.md` I-7–I-12 and I-16–I-18. The readiness feature is **not implemented** as of this sprint; existing code in `src/domain/calc/readiness.ts` and `loadRecommendation.ts` predates these boundaries and has not been audited against them (see ADR-0001 open questions).
+Repello's v1 differentiator is readiness-aware progression (`Docs/decisions/ADR-0001-product-position.md`). Any readiness suggestion must be **advisory-only, deterministic, explainable, versioned, testable, and user-overridable** — never automatic, never framed as medical advice or diagnosis. Full boundaries: `Docs/decisions/ADR-0002-readiness-suggestion-safety.md`, `Docs/invariants.md` I-7–I-12 and I-16–I-18. The readiness feature is **not implemented** as of this sprint; existing code in `src/domain/calc/readiness.ts` and `loadRecommendation.ts` predates these boundaries and has not been audited against them (see ADR-0001 open questions).
 
 ## When to stop and ask
 

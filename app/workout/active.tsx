@@ -408,7 +408,7 @@ export default function ActiveWorkoutScreen() {
           <Card style={styles.empty} padding="xl">
             <Text variant="title2">Empty session</Text>
             <Text variant="body" tone="secondary" style={styles.emptyText}>
-              Add your first lift and PRism will pull in your last numbers and a load
+              Add your first lift and Repello will pull in your last numbers and a load
               suggestion for each one.
             </Text>
             <Button

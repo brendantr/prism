@@ -74,11 +74,12 @@ describe('monetization declaration', () => {
   });
 
   it('is off when unset, so an unconfigured build ships free rather than locked-and-unbuyable', () => {
-    const { isMonetizationEnabled, isEntitlementDisabled } =
+    const { isMonetizationEnabled, isEntitlementDisabled, isPurchaseTransportEnabled } =
       require('../purchases') as typeof import('../purchases');
     expect(isMonetizationEnabled()).toBe(false);
     // 'disabled' is the phase that unlocks every surface.
     expect(isEntitlementDisabled()).toBe(true);
+    expect(isPurchaseTransportEnabled()).toBe(false);
   });
 
   it('requires the literal string, so a stray value cannot silently start gating', () => {
