@@ -65,7 +65,7 @@ export const ZERO_DATA: Record<'insights' | 'progress' | 'body', ZeroDataState> 
   body: {
     icon: 'body-outline',
     title: 'Nothing to estimate from yet',
-    body: 'Recovery is estimated from sessions you have logged — how recently a muscle was trained and how much it absorbed. With nothing logged there is nothing to estimate, so PRism shows you this instead of a guess.',
+    body: 'Recovery is estimated from sessions you have logged — how recently a muscle was trained and how much it absorbed. With nothing logged there is nothing to estimate, so Repello shows you this instead of a guess.',
     actionLabel: 'Choose a workout',
     route: '/workout/templates',
   },

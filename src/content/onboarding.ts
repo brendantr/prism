@@ -15,10 +15,10 @@ import type { Equipment, Experience, Goal } from '@/domain/types';
  */
 
 export const WELCOME = {
-  eyebrow: 'Welcome to PRism',
+  eyebrow: 'Welcome to Repello',
   title: 'See your training from every angle.',
   body:
-    'A logger for lifters who want to understand the numbers, not just collect them. Every estimate PRism shows you comes with its reasoning attached.',
+    'A logger for lifters who want to understand the numbers, not just collect them. Every estimate Repello shows you comes with its reasoning attached.',
   primaryCta: 'Get started',
   secondaryCta: 'I already have an account',
 } as const;
@@ -36,7 +36,7 @@ export const FEATURE_SLIDES: FeatureSlide[] = [
     id: 'log',
     eyebrow: '01 / LOG',
     title: 'Log what happened.',
-    body: 'Sets, reps, and load — recorded in seconds. That is the evidence every estimate PRism shows you later is built from.',
+    body: 'Sets, reps, and load — recorded in seconds. That is the evidence every estimate Repello shows you later is built from.',
   },
   {
     id: 'progress',
@@ -196,7 +196,7 @@ export const AUTH_ERROR_COPY: Record<AuthFieldError, string> = {
 export const AUTH_OUTCOME_COPY: Record<AuthFailure, string> = {
   invalidCredentials: 'That email and password do not match an account.',
   rateLimited: 'Too many attempts. Wait a minute and try again.',
-  network: 'PRism could not reach the server. Check your connection and try again.',
+  network: 'Repello could not reach the server. Check your connection and try again.',
   sessionExpired: 'You have been signed out. Sign in to continue.',
   checkEmail: 'Check your email for a confirmation link, then sign in.',
   /*
@@ -316,12 +316,12 @@ export const STEPS = {
   goal: {
     eyebrow: 'Step one',
     title: 'What are you training for?',
-    body: 'This shapes the rep ranges PRism suggests. You can change it any time.',
+    body: 'This shapes the rep ranges Repello suggests. You can change it any time.',
   },
   experience: {
     eyebrow: 'Step two',
     title: 'How long have you been lifting?',
-    body: 'Experience changes how quickly PRism suggests adding load.',
+    body: 'Experience changes how quickly Repello suggests adding load.',
   },
   days: {
     eyebrow: 'Step three',
@@ -360,12 +360,12 @@ export const COMPLETE = {
    * mode can actually deliver.
    */
   bodyDemo:
-    'PRism opens on eight weeks of sample training so nothing looks empty. Log a real session whenever you want and it saves on this device.',
+    'Repello opens on eight weeks of sample training so nothing looks empty. Log a real session whenever you want and it saves on this device.',
   bodyAccount:
     'Nothing is logged yet — this account is yours and it starts empty. Everything you record saves to it, so it is there whenever you sign in.',
   primaryCta: 'Start training',
   applyFailed:
-    'PRism could not finish setup. Check your connection and try again.',
+    'Repello could not finish setup. Check your connection and try again.',
   summaryEyebrow: 'What you told us',
   /** Shown for any question that was skipped. Never a stand-in value. */
   notSet: 'Not set',

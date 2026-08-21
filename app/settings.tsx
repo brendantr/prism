@@ -39,6 +39,7 @@ import {
 import { reportHandledError } from '@/observability/telemetry';
 import { useSessionStore } from '@/store/sessionStore';
 import { useTrainingStore } from '@/store/trainingStore';
+import { routineDisplayName } from '@/content/brand';
 import { space } from '@/theme';
 import { openPrivacyPolicy } from '@/utils/privacyPolicy';
 
@@ -287,7 +288,7 @@ export default function SettingsScreen() {
           <OptionRow
             key={routine.id}
             mode="radio"
-            label={routine.name}
+            label={routineDisplayName(routine.name)}
             description={`${routine.daysPerWeek} sessions · ${routine.description}`}
             selected={selectedRoutineId === routine.id}
             onPress={() => choosePlan(routine.id)}

@@ -167,6 +167,25 @@ All items below remain pending and must not be inferred from the checks in §4:
 
 Anonymous gateway rejection also remains unverified as noted in §4.
 
+### Resubmission parity gate — added 2026-08-21
+
+`[decision, owner]` The exact App Review resubmission must have one coherent posture across all of
+the following surfaces. A mismatch in any row is a **NO-GO**, even when repository tests pass.
+
+| Surface | Required parity evidence |
+|---|---|
+| Compiled declarations | The exact production artifact resolves non-demo, monetization false, email recovery false, and the accepted diagnostics posture. |
+| Binary behavior | Clean-install and update tests on iPhone and iPad compatibility presentation show Repello branding and no paywall, price, purchase, restore, subscription, payment link, lock, or paid-entitlement path. |
+| App Store metadata | Name, description, version notes, pricing/availability, IAP presentation, categories, and App Privacy answers describe the same free-first Repello binary. |
+| Screenshots | Every submitted screenshot comes from the accepted candidate and contains no former-name or paid-feature mismatch. |
+| Review notes and response | Build number, credentials, route steps, free-first statement, and any diagnostics statement match the exact uploaded artifact. |
+| Legal and support | Reachable public policy/support surfaces and in-app links use current Repello copy and accurately describe the exact binary. |
+
+Repository source can support but cannot close this gate. The owner must record the exact commit,
+EAS build/artifact identity, uploaded build number, effective configuration review, completed device
+matrix, and external-surface review without committing secrets or reviewer credentials. See
+`Docs/sprints/2026-08-21-v1-repello-app-review-resubmission.md`.
+
 ## 7. Go/no-go
 
 - **TestFlight build:** **NO-GO.** Do not build or upload until the effective EAS free-first

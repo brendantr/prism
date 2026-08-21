@@ -1,11 +1,11 @@
-# PRism
+# Repello
 
 **See your training from every angle.**
 
-PRism is a strength-training and workout-tracking app for intermediate lifters
+Repello is a strength-training and workout-tracking app for intermediate lifters
 training 3–6 days a week. It is built around one belief: a lifter should be able
 to interrogate every number the app shows them. Readiness, recovery and load
-recommendations are all heuristics, and PRism says so — in the UI, next to the
+recommendations are all heuristics, and Repello says so — in the UI, next to the
 number, in plain language.
 
 Expo · React Native · TypeScript · Expo Router · Supabase · Zustand
@@ -107,7 +107,7 @@ xcrun simctl shutdown all
 killall -9 com.apple.CoreSimulator.CoreSimulatorService
 
 # 2. a known-clean device
-UDID=$(xcrun simctl create "PRism-Verify" "iPhone 17 Pro" \
+UDID=$(xcrun simctl create "Repello-Verify" "iPhone 17 Pro" \
   com.apple.CoreSimulator.SimRuntime.iOS-26-4)
 
 # 3. boot, and WAIT for it
@@ -116,8 +116,12 @@ xcrun simctl bootstatus "$UDID" -b
 open -a Simulator --args -CurrentDeviceUDID "$UDID"
 
 # 4. install the build product, then launch
+# The Repello app/path names below apply only after a fresh Expo prebuild. The
+# ignored local ios/PRism.xcodeproj may still emit PRism.app; that stale local
+# native project is not evidence of the EAS artifact. Do not use it to validate
+# the shipped display name.
 xcrun simctl install "$UDID" \
-  ~/Library/Developer/Xcode/DerivedData/PRism-*/Build/Products/Debug-iphonesimulator/PRism.app
+  ~/Library/Developer/Xcode/DerivedData/Repello-*/Build/Products/Debug-iphonesimulator/Repello.app
 xcrun simctl launch "$UDID" app.prism.trainer   # returns a PID when it works
 ```
 
@@ -130,7 +134,7 @@ xcrun simctl openurl "$UDID" "prism:///insights"   # deep-link a route
 ```
 
 A deep link sent while the app is already frontmost raises an
-"Open in PRism?" confirmation. Terminate the app first and the cold start skips
+"Open in Repello?" confirmation. Terminate the app first and the cold start skips
 it. Clean up a throwaway device with `xcrun simctl delete "$UDID"`.
 
 ### Other commands
@@ -240,7 +244,7 @@ prism/
 │   │
 │   ├── data/
 │   │   ├── exerciseLibrary.ts    # 43 original exercises with coaching cues
-│   │   ├── routineTemplates.ts   # "Spectrum 4" and "Prism 3" plans
+│   │   ├── routineTemplates.ts   # "Spectrum 4" and "Repello 3" display names
 │   │   ├── demoSeed.ts           # Deterministic 8-week generator
 │   │   ├── repository.ts         # Repository interface + both backends
 │   │   └── supabase/
@@ -454,8 +458,8 @@ the determinism and shape of the 8-week seed generator.
 
 ## Originality
 
-PRism's design system, copy, exercise library, coaching cues, template plans
-("Spectrum 4", "Prism 3"), calculation model, recovery heuristic, readiness
+Repello's design system, copy, exercise library, coaching cues, template plans
+("Spectrum 4", "Repello 3"), calculation model, recovery heuristic, readiness
 composite, and every component in `src/components` were written from scratch for
 this project. No UI, copy, assets, layout, ranking system or proprietary content
 was taken from any existing tracking app.

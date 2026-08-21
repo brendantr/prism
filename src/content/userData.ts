@@ -32,7 +32,7 @@ export const SETTINGS_COPY = {
   privacyPolicyFailedTitle: 'Could not open the Privacy Policy',
   privacyPolicyFailedMessage: 'Check your connection and try again.',
   displayNameLabel: 'Display name',
-  displayNameHint: 'Shown only inside your PRism account.',
+  displayNameHint: 'Shown only inside your Repello account.',
   displayNameRequired: 'Enter a display name.',
   displayNameLong: 'Keep your display name to 60 characters or fewer.',
   bodyweightLabel: 'Bodyweight',
@@ -45,7 +45,7 @@ export const SETTINGS_COPY = {
   weekdaysLabel: 'Preferred training days',
   weekdaysHint: 'These are planning preferences, not required days.',
   planHint:
-    'Choosing a PRism plan also sets its weekly session target and pinned training days.',
+    'Choosing a Repello plan also sets its weekly session target and pinned training days.',
 } as const;
 
 export const EXERCISE_COPY = {
@@ -68,9 +68,9 @@ export const EXERCISE_COPY = {
   inUseMessage: (name: string, workouts: number, sets: number) =>
     `“${name}” is used by ${workouts} ${workouts === 1 ? 'session' : 'sessions'} and ${sets} ${
       sets === 1 ? 'set' : 'sets'
-    }. PRism keeps the movement so that history stays intact.`,
+    }. Repello keeps the movement so that history stays intact.`,
   inUseFallbackMessage: (name: string) =>
-    `“${name}” is part of your logged history. PRism keeps the movement so that history stays intact.`,
+    `“${name}” is part of your logged history. Repello keeps the movement so that history stays intact.`,
   activeUseMessage: (name: string) =>
     `“${name}” is in the workout currently in progress. Remove it from that workout before deleting the movement.`,
   nameLabel: 'Movement name',
@@ -107,7 +107,7 @@ export const MEASUREMENT_COPY = {
   bodyFatHint: 'Optional · percent',
   waistHint: 'Optional · centimetres',
   explainer:
-    'Measurements are optional numbers you enter for your own record. PRism does not interpret them as a health assessment.',
+    'Measurements are optional numbers you enter for your own record. Repello does not interpret them as a health assessment.',
   deleteTitle: 'Delete this measurement?',
   deleteMessage: 'This entry will be removed from your history. This cannot be undone.',
   saveFailedTitle: 'Could not save measurement',

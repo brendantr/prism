@@ -125,11 +125,11 @@ export default function SocialScreen() {
 
       <PhasePanel
         phase={7}
-        summary="Nothing is committed. Before any of this is built, the question is whether a social surface belongs in PRism at all."
+        summary="Nothing is committed. Before any of this is built, the question is whether a social surface belongs in Repello at all."
         deliverables={[
           'An owner decision on whether social is part of the product or a held slot',
           'A sharing model where readiness, check-ins and bodyweight are never shareable',
-          'Server-side identity, which PRism does not have in any form yet',
+          'Server-side identity, which Repello does not have in any form yet',
           'A block and report path, before any user-to-user content exists',
         ]}
         readyNow={[

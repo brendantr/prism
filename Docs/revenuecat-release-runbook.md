@@ -11,7 +11,7 @@
    `app.prism.trainer.pro.lifetime`. Complete price, localization and review metadata.
 2. In Google Play Console, create a **one-time product** with the same identifier. Activate its
    purchase option and complete price/localization.
-3. In a **dedicated PRism RevenueCat project**, add the iOS and Android apps using Prism's existing
+3. In a **dedicated Repello RevenueCat project**, add the iOS and Android apps using Repello's retained
    bundle/package id `app.prism.trainer` and connect the store credentials in RevenueCat's dashboard.
    Keep this project limited to the `pro` entitlement and the two platform representations of the
    exact lifetime product. RevenueCat TRANSFER events identify the accounts moved but do not identify
@@ -19,11 +19,11 @@
    contract remains true. Adding another product or entitlement requires a webhook design review first.
 4. Import both products. Create entitlement `pro` and attach both store products to it.
 5. Create the current/default Offering and add one lifetime/custom package containing those products.
-   Verify the package's platform product identifier is exactly the contract above. Prism deliberately
+   Verify the package's platform product identifier is exactly the contract above. Repello deliberately
    refuses every other package.
 6. Set RevenueCat's project **restore behavior** for authenticated users to transfer purchases to the
    new App User ID. Record the selected behavior in the release evidence. A transfer removes access
-   from the source Prism account and grants it to the destination.
+   from the source Repello account and grants it to the destination.
 7. Confirm the RevenueCat plan in use supports webhooks before any release/spend decision. Do not
    assume account creation alone includes that capability.
 
@@ -80,7 +80,7 @@ not record UUIDs, receipts or payloads.
 | Case | Required result |
 | --- | --- |
 | New account, no purchase | Logging, History and 7-day Insights work; Progress, Body and 28/84-day Insights show the unlock path |
-| Buy lifetime product | Native sheet shows localized product/price; after webhook, the same Prism account opens paid surfaces |
+| Buy lifetime product | Native sheet shows localized product/price; after webhook, the same Repello account opens paid surfaces |
 | Force-quit/relaunch | Paid access returns from Postgres without another purchase |
 | Restore after reinstall/new device | Restore re-delivers the purchase; access opens only after the server row appears |
 | Store says purchase exists but webhook is delayed | App never grants from CustomerInfo alone; it reports that server access is still pending |
@@ -88,7 +88,7 @@ not record UUIDs, receipts or payloads.
 | Transfer/restore to B | One TRANSFER revokes A and grants B; no separate lifecycle event is assumed |
 | Refund in sandbox where supported | CANCELLATION sets `revoked_at`; paid surfaces lock while free data remains available |
 | Refund reversal where supported | REFUND_REVERSED grants again only after the server event |
-| Wrong/missing Offering product | Prism refuses before opening a purchase sheet; it never buys the first package |
+| Wrong/missing Offering product | Repello refuses before opening a purchase sheet; it never buys the first package |
 | Account export | JSON format version 3 includes `entitlement` (active or revoked) |
 | Account deletion | RevenueCat customer/history is erased first; then profile, entitlement and processed event targets are gone. The SDK detaches from the deleted UUID, and neither a delayed webhook nor an idle SDK refresh recreates it |
 | Account deletion with RevenueCat unavailable | UI reports failure; Supabase account/data remain intact so "all data deleted" is never claimed falsely |

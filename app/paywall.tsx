@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Button, Card, Screen, SectionHeader, Text } from '@/components/ui';
 import {
   PAYWALL,
@@ -8,6 +8,7 @@ import {
   PURCHASE_OUTCOME_TITLE,
   paywallPurchaseLabel,
 } from '@/content/paywall';
+import { canRenderPaywall } from '@/domain/entitlements';
 import { useEntitlementStore } from '@/store/entitlementStore';
 import { color, radius, space } from '@/theme';
 
@@ -22,6 +23,10 @@ export default function PaywallScreen() {
   const purchase = useEntitlementStore((state) => state.purchase);
   const restore = useEntitlementStore((state) => state.restore);
   const clearOutcome = useEntitlementStore((state) => state.clearOutcome);
+
+  if (!canRenderPaywall(phase)) {
+    return <Redirect href="/" />;
+  }
 
   const close = () => {
     clearOutcome();

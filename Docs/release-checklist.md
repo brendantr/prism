@@ -1,16 +1,16 @@
-# PRism release checklist
+# Repello release checklist
 
 ## Document status
 
 - **Status:** Draft for engineer/owner review.
-- **Date:** 2026-08-09; reconciled 2026-08-11 for the free-first iOS binary
+- **Date:** 2026-08-09; reconciled 2026-08-21 for the Repello free-first iOS resubmission
 - **Purpose:** One place naming the commands that gate a release, what each actually covers, and the
   release-configuration facts a build inherits today. It records state; it does not grant approval for
   any release step.
 - **Labelling** follows `Docs/invariants.md` I-15: `[fact]` / `[decision]` / `[assumption]` /
   `[open question]`.
 
-**This document does not make PRism releasable.** The blocking gates live in
+**This document does not make Repello releasable.** The blocking gates live in
 `Docs/ui-ux-foundation-v1.md` §8 and are unchanged by it — see §4 below.
 
 ---

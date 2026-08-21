@@ -67,7 +67,7 @@ export default function ExerciseEditorScreen() {
       >
         <Card style={styles.gutter} padding="lg">
           <Text variant="bodySm" tone="secondary">
-            This PRism movement is part of the shared library and cannot be edited.
+            This Repello movement is part of the shared library and cannot be edited.
           </Text>
         </Card>
       </Screen>

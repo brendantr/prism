@@ -217,7 +217,7 @@ export default function TodayScreen() {
             {`Started ${formatRelativeDay(activeWorkout.startedAt).toLowerCase()} · ${draftCompletedSets}/${draftTotalSets} sets logged`}
           </Text>
           <Text variant="bodySm" tone="secondary" style={styles.draftBody}>
-            PRism found this workout still in progress after the app was closed. Resume it, or discard
+            Repello found this workout still in progress after the app was closed. Resume it, or discard
             the draft.
           </Text>
           <View style={styles.draftActions}>
@@ -415,7 +415,7 @@ export default function TodayScreen() {
       </Card>
 
       <Text variant="eyebrow" tone="faint" style={styles.version}>
-        {`PRism v${Constants.expoConfig?.version ?? '0.0.0'}`}
+        {`Repello v${Constants.expoConfig?.version ?? '0.0.0'}`}
       </Text>
 
       {/* Dev-only: replays onboarding on next launch. Never built into a release. */}

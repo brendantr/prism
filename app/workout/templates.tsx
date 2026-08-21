@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { OptionRow, SectionHeader, Text } from '@/components/ui';
+import { routineDisplayName } from '@/content/brand';
 import { estimateDayMinutes, listTemplateChoices } from '@/domain/schedule';
 import { useActiveWorkoutStore } from '@/store/activeWorkoutStore';
 import { useTrainingStore } from '@/store/trainingStore';
@@ -102,7 +103,7 @@ export default function ChooseWorkoutScreen() {
       >
         {groups.map((group) => (
           <View key={group.routineName}>
-            <SectionHeader title={group.routineName} eyebrow="Template" />
+            <SectionHeader title={routineDisplayName(group.routineName)} eyebrow="Template" />
             <View style={styles.rows}>
               {group.days.map((day) => (
                 <OptionRow

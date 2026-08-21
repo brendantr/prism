@@ -14,7 +14,7 @@ export function Splash() {
     <View style={styles.canvas}>
       <View style={styles.mark}>
         <Text variant="display" accessibilityRole="header">
-          PRism
+          Repello
         </Text>
         <LinearSpectrum height={3} rounded style={styles.band} />
         <Text variant="bodySm" tone="muted" style={styles.tagline}>

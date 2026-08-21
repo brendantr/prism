@@ -416,6 +416,11 @@
   `Docs/production-posture-v1.md` §1.1 rather than inferring it from this document. Their repository
   evidence does not establish device, TestFlight, or Sentry-dashboard verification; those checks remain
   owner-gated in `Docs/readiness/2026-08-15-testflight-activation-evidence.md`.
+- **Current-state delta, added 2026-08-21** `[fact]`: the free-first entitlement boundary now has a
+  pure `canRenderPaywall` predicate, synchronous disabled-phase resolution in
+  `initialEntitlementState()`, and a direct `/paywall` redirect when the build is disabled. These
+  source facts do not establish the display name or behavior of an EAS artifact; see
+  `Docs/sprints/2026-08-21-v1-repello-app-review-resubmission.md` for the source/artifact boundary.
 - **Scope:** A read-only, evidence-based inventory of the current state of the PRism repository — code, schema, tests, CI, and configuration as they exist today.
 - **Non-goals:** This document does not propose a future architecture, does not create new process documents (invariants, ADRs, product intent), and does not evaluate anything outside this repository (App Store/Play listing, backend infrastructure beyond the committed SQL migration, third-party services). It is not a design review of the visual/UX system beyond what is verifiable from code.
 
@@ -719,7 +724,7 @@ placeholders, processor terms and the published policy URL are not yet verified.
 | `settings` | `app/settings.tsx` | Modal — profile, units/bodyweight, training preferences, active plan, equipment, and the authenticated account entry. |
 | `exercise` | `app/exercise.tsx` | Modal — create/edit a user-owned movement; delete only when no active or logged session references it. |
 | `measurement` | `app/measurement.tsx` | Modal — add/edit/delete optional bodyweight, body-fat, and waist entries. |
-| `paywall` | `app/paywall.tsx` | Modal — original Pro explanation, exact one-time product price, purchase, restore, and support-oriented outcomes. SDK success never grants access directly; the server entitlement does. |
+| `paywall` | `app/paywall.tsx` | Modal — redirects in disabled/free-first mode; otherwise exposes future purchase content only when entitlement state permits. SDK success never grants access directly; the server entitlement does. |
 | `(tabs)/index` | `app/(tabs)/index.tsx` | Tab — Today |
 | `(tabs)/exercises` | `app/(tabs)/exercises.tsx` | Tab — exercise library, custom movement entry/edit. |
 | `(tabs)/insights` | `app/(tabs)/insights.tsx` | Tab — Insights |

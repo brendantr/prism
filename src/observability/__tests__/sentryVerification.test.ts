@@ -147,7 +147,7 @@ describe('controlled verification diagnostic', () => {
     expect(captureArguments).toHaveLength(1);
     expect(captureArguments?.[0]).toBeInstanceOf(Error);
     expect((captureArguments?.[0] as Error).message).toBe(
-      'PRism controlled Sentry verification diagnostic',
+      'Repello controlled Sentry verification diagnostic',
     );
   });
 

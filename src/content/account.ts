@@ -44,7 +44,7 @@ export const ACCOUNT = {
    * afraid of, the second is what they are actually asking.
    */
   explanation:
-    'Signing out clears your training data from this device. Your account and everything you have logged stay on your PRism account.',
+    'Signing out clears your training data from this device. Your account and everything you have logged stay on your Repello account.',
 
   confirmTitle: 'Discard current session?',
   /**
@@ -62,7 +62,7 @@ export const ACCOUNT = {
   exportSubtitle: 'A copy of your account, training and access data',
   exportBusyLabel: 'Preparing your data…',
   /** The share sheet's subject line, when the destination has one (mail). */
-  exportShareTitle: 'PRism data export',
+  exportShareTitle: 'Repello data export',
   exportEmptyTitle: 'Nothing to export yet',
   exportEmptyMessage:
     'Once you have logged a session or a check-in, you can take a copy of it with you.',
@@ -101,7 +101,7 @@ export const ACCOUNT = {
    */
   deleteFinalTitle: 'This cannot be undone',
   deleteFinalMessage:
-    'Your account and everything you have logged will be erased. PRism cannot recover it afterwards.',
+    'Your account and everything you have logged will be erased. Repello cannot recover it afterwards.',
   deleteFinalCancel: 'Keep my account',
   deleteFinalConfirm: 'Delete permanently',
 
@@ -126,5 +126,5 @@ export const ACCOUNT = {
    */
   deletedCleanupFailedTitle: 'Account deleted',
   deletedCleanupFailedMessage:
-    'Your account and your data have been permanently deleted. PRism could not clear everything from this device — reinstalling the app will remove what is left.',
+    'Your account and your data have been permanently deleted. Repello could not clear everything from this device — reinstalling the app will remove what is left.',
 } as const;

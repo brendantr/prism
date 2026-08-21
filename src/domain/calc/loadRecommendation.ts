@@ -150,7 +150,7 @@ export function recommendNextLoad(input: LoadRecommendationInput): LoadSuggestio
       confidence: 'low',
       rationale: [
         'No history for this lift yet.',
-        `Work up to a weight you could stop ${targetReps + 2} reps into, and log it — PRism takes over from there.`,
+        `Work up to a weight you could stop ${targetReps + 2} reps into, and log it — Repello takes over from there.`,
       ],
     };
   }

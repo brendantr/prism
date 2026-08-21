@@ -57,7 +57,7 @@ export class RoutineNotSelectableError extends Error {
   readonly routineId: string;
 
   constructor(routineId: string) {
-    super('A shared PRism plan cannot be marked active for one account.');
+    super('A shared Repello plan cannot be marked active for one account.');
     this.name = 'RoutineNotSelectableError';
     this.routineId = routineId;
   }

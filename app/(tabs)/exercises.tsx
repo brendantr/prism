@@ -169,7 +169,7 @@ export default function ExercisesScreen() {
 
   // Same chrome in every state, so the header does not move when the body
   // swaps between loading, error and the list.
-  const header = { eyebrow: 'Every movement PRism knows', title: 'Exercises' } as const;
+  const header = { eyebrow: 'Every movement Repello knows', title: 'Exercises' } as const;
 
   if (status !== 'ready') {
     return (

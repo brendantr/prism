@@ -47,16 +47,16 @@
  *                    the paid surfaces being given away to every cold start.
  *  - `'entitled'`    a live, unrevoked row exists for this account.
  *  - `'notEntitled'` resolved, and there is no such row.
- *  - `'disabled'`    explicit demo mode only. Gates as **unlocked**, because a
- *                    demo has no account and intentionally demonstrates the
- *                    whole product. A real-backend build missing its public
- *                    store key does NOT use this phase: it still reads the
- *                    server and fails closed for paid surfaces.
+ *  - `'disabled'`    explicit demo mode or a build that declares monetization
+ *                    off. Gates as **unlocked**, because neither mode offers a
+ *                    paid tier. A monetized real-backend build missing its
+ *                    public store key does NOT use this phase: it still reads
+ *                    the server and fails closed for paid surfaces.
  */
 export type EntitlementPhase = 'unknown' | 'entitled' | 'notEntitled' | 'disabled';
 
 /**
- * The one thing PRism sells.
+ * The deferred product identifier retained from Repello's former PRism name.
  *
  * A **non-consumable**, not a subscription: a single purchase that unlocks the
  * paid surfaces permanently (`Docs/decisions/ADR-0005-monetization.md`). Named
@@ -168,6 +168,11 @@ export function resolveInsightsWindow(
  */
 export function canOfferPurchase(phase: EntitlementPhase): boolean {
   return phase === 'notEntitled' || phase === 'unknown';
+}
+
+/** Disabled builds must not render any paywall content, even by direct route. */
+export function canRenderPaywall(phase: EntitlementPhase): boolean {
+  return phase !== 'disabled';
 }
 
 /**

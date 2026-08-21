@@ -63,7 +63,7 @@ export const TELEMETRY_ENABLED = TELEMETRY_MODE.enabled;
 const SENTRY_VERIFICATION_BUILD = shouldRenderSentryVerificationRoot(
   process.env.EXPO_PUBLIC_SENTRY_VERIFICATION_ENABLED,
 );
-const SENTRY_VERIFICATION_MESSAGE = 'PRism controlled Sentry verification diagnostic';
+const SENTRY_VERIFICATION_MESSAGE = 'Repello controlled Sentry verification diagnostic';
 
 let initialised = false;
 let verificationAttempted = false;

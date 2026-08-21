@@ -145,7 +145,7 @@ describe('buildAccountExport', () => {
     expect(exported.customExercises).toHaveLength(1);
   });
 
-  it('includes the lifter’s own exercises and excludes PRism’s library', () => {
+  it('includes the lifter’s own exercises and excludes Repello’s library', () => {
     // The seeded library is the app's data, not theirs, and several hundred
     // system rows would bury the handful that are personal.
     const exported = buildAccountExport(source(), AT);
@@ -202,7 +202,7 @@ describe('accountExportFilename', () => {
     // Two exports on the same day colliding by name is the correct outcome:
     // the second is a newer copy of the same thing.
     expect(accountExportFilename(buildAccountExport(source(), AT))).toBe(
-      'prism-export-2026-08-06.json',
+      'repello-export-2026-08-06.json',
     );
   });
 });
